@@ -33,7 +33,6 @@ test:
 # Format code (frontend + backend)
 fmt:
 	cd src-tauri && cargo fmt
-	pnpm exec prettier --write "src/**/*.{ts,js,svelte}" 2>/dev/null || true
 
 # Lint code (frontend + backend)
 lint:
