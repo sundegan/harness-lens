@@ -1,4 +1,6 @@
 <script lang="ts">
+  import AboutDialog from '$lib/menu/AboutDialog.svelte';
+
   const isLinux = () => {
     try {
       const ua = navigator.userAgent || '';
@@ -15,8 +17,10 @@
   {#if dragRegionEnabled}
     <div class="drag-region" aria-hidden="true" data-tauri-drag-region></div>
   {/if}
+
   <h1>Codex Timeline</h1>
   <p>Local-first desktop tool for inspecting Codex agent runs.</p>
+  <AboutDialog />
 </main>
 
 <style>

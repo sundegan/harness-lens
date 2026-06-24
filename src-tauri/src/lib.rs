@@ -4,6 +4,8 @@ use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 #[cfg(target_os = "linux")]
 mod linux_fix;
+#[cfg(target_os = "macos")]
+mod menu;
 
 const WINDOW_SCREEN_MARGIN: u32 = 48;
 const DEFAULT_WINDOW_LOGICAL_WIDTH: u32 = 1280;
@@ -114,7 +116,19 @@ fn schedule_main_window_bounds_clamp(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(|app| menu::build_app_menu(app))
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == menu::ABOUT_MENU_ID {
+                focus_main_window(app);
+                let _ = tauri::Emitter::emit(app, menu::SHOW_ABOUT_EVENT, ());
+            }
+        });
+
+    builder
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             focus_main_window(app);
         }))
