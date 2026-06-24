@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { themeManager } from '$lib/theme.svelte';
 
   // Reactively track theme manager theme state to ensure native integration updates
@@ -8,22 +9,12 @@
     void themeManager.updateTheme();
   });
 
-  // Prevent default context menu (right-click) in production to remove browser-like behavior
-  $effect(() => {
-    if (import.meta.env.PROD) {
-      const handleContextMenu = (e: MouseEvent) => {
-        e.preventDefault();
-      };
+  onMount(() => {
+    // Prevent default browser context menu globally to eliminate web feeling
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
 
-      document.addEventListener('contextmenu', handleContextMenu);
-      return () => {
-        document.removeEventListener('contextmenu', handleContextMenu);
-      };
-    }
-  });
-
-  // Prevent zooming via gestures and shortcut keys
-  $effect(() => {
     // Prevent wheel zoom (Ctrl + Mouse Wheel / Pinch gesture on trackpad)
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey) {
@@ -46,12 +37,14 @@
       e.preventDefault();
     };
 
+    document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('wheel', handleWheel, { passive: false });
     document.addEventListener('keydown', handleKeydown);
     document.addEventListener('gesturestart', handleGesture);
     document.addEventListener('gesturechange', handleGesture);
 
     return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('wheel', handleWheel);
       document.removeEventListener('keydown', handleKeydown);
       document.removeEventListener('gesturestart', handleGesture);
@@ -111,13 +104,9 @@
     color: var(--text-color);
     background: var(--bg-color);
     transition: background-color 0.2s ease, color 0.2s ease;
-    /* Prevent WebView rubber-band scrolling from exposing a white edge. */
-    overscroll-behavior: none;
-    /* Disable global text selection to match native application behavior */
+    overscroll-behavior: none; /* Disables elastic overscroll bounce globally */
+    user-select: none; /* Prevents text selection on UI elements globally */
     -webkit-user-select: none;
-    user-select: none;
-    /* Prevent touch/pinch scaling actions */
-    touch-action: pan-x pan-y;
   }
 
   /* Re-enable text selection for input fields, textareas, editable areas, and code/log containers */
@@ -129,5 +118,11 @@
   :global(.selectable-text) {
     -webkit-user-select: text;
     user-select: text;
+  }
+
+  /* Prevent image and drag actions that show browser selection outlines */
+  :global(img),
+  :global(a) {
+    -webkit-user-drag: none;
   }
 </style>
