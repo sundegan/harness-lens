@@ -21,7 +21,8 @@
         "minHeight": 640,
         "center": true,
         "visible": false,
-        "backgroundColor": "#f7f8f8"
+        "backgroundColor": "#f7f8f8",
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {

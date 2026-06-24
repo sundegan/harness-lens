@@ -22,6 +22,43 @@
     }
   });
 
+  // Prevent zooming via gestures and shortcut keys
+  $effect(() => {
+    // Prevent wheel zoom (Ctrl + Mouse Wheel / Pinch gesture on trackpad)
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
+    // Prevent keyboard zoom shortcuts: Cmd/Ctrl + = / - / 0
+    const handleKeydown = (e: KeyboardEvent) => {
+      const isZoomKey = e.key === '=' || e.key === '-' || e.key === '0' || e.key === '+' ||
+                        e.code === 'Minus' || e.code === 'Equal' || e.code === 'Digit0' ||
+                        e.code === 'NumpadAdd' || e.code === 'NumpadSubtract';
+      if ((e.ctrlKey || e.metaKey) && isZoomKey) {
+        e.preventDefault();
+      }
+    };
+
+    // Prevent Safari/WebKit gesture zoom (pinch gesture on macOS/iOS)
+    const handleGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('gesturestart', handleGesture);
+    document.addEventListener('gesturechange', handleGesture);
+
+    return () => {
+      document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('keydown', handleKeydown);
+      document.removeEventListener('gesturestart', handleGesture);
+      document.removeEventListener('gesturechange', handleGesture);
+    };
+  });
+
   let { children } = $props();
 </script>
 
@@ -79,6 +116,8 @@
     /* Disable global text selection to match native application behavior */
     -webkit-user-select: none;
     user-select: none;
+    /* Prevent touch/pinch scaling actions */
+    touch-action: pan-x pan-y;
   }
 
   /* Re-enable text selection for input fields, textareas, editable areas, and code/log containers */
