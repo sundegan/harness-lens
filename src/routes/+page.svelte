@@ -1,4 +1,20 @@
+<script lang="ts">
+  const isLinux = () => {
+    try {
+      const ua = navigator.userAgent || '';
+      return /linux|x11/i.test(ua) && !/android/i.test(ua);
+    } catch {
+      return false;
+    }
+  };
+
+  const dragRegionEnabled = !isLinux();
+</script>
+
 <main>
+  {#if dragRegionEnabled}
+    <div class="drag-region" aria-hidden="true" data-tauri-drag-region></div>
+  {/if}
   <h1>Codex Timeline</h1>
   <p>Local-first desktop tool for inspecting Codex agent runs.</p>
 </main>
@@ -21,6 +37,17 @@
     justify-content: center;
     padding: 32px 32px 96px;
     text-align: center;
+  }
+
+  .drag-region {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 28px;
+    user-select: none;
+    -webkit-app-region: drag;
   }
 
   h1 {

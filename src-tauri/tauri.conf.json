@@ -12,9 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "Codex Timeline",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "",
+        "titleBarStyle": "Overlay",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {
