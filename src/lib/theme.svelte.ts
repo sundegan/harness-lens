@@ -1,0 +1,68 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
+export type Theme = 'system' | 'light' | 'dark';
+
+class ThemeManager {
+  theme = $state<Theme>('system');
+  isDarkMode = $state(false);
+
+  constructor() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const savedTheme = localStorage.getItem('theme') as Theme;
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+      this.theme = savedTheme;
+    }
+
+    void this.updateTheme();
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    mediaQuery.addEventListener('change', () => {
+      if (this.theme === 'system') {
+        void this.updateTheme();
+      }
+    });
+  }
+
+  toggleTheme() {
+    if (this.theme === 'system') {
+      this.setTheme('light');
+    } else if (this.theme === 'light') {
+      this.setTheme('dark');
+    } else {
+      this.setTheme('system');
+    }
+  }
+
+  setTheme(theme: Theme) {
+    this.theme = theme;
+    localStorage.setItem('theme', theme);
+    void this.updateTheme();
+  }
+
+  async updateTheme() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const dark =
+      this.theme === 'system'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : this.theme === 'dark';
+
+    this.isDarkMode = dark;
+    document.documentElement.classList.toggle('dark', dark);
+    document.documentElement.classList.toggle('light', !dark);
+
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.setBackgroundColor(dark ? '#0f172a' : '#f7f8f8');
+      await appWindow.setTheme(dark ? 'dark' : 'light');
+    } catch (err) {
+      console.error('Failed to sync native window theme:', err);
+    }
+  }
+}
+
+export const themeManager = new ThemeManager();

@@ -100,7 +100,7 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgb(8 11 16 / 42%);
+    background: var(--backdrop-bg);
     backdrop-filter: blur(10px);
   }
 
@@ -109,11 +109,11 @@
     box-sizing: border-box;
     width: min(420px, 100%);
     padding: 24px;
-    border: 1px solid rgb(15 23 42 / 12%);
+    border: 1px solid var(--dialog-border);
     border-radius: 14px;
-    color: #1f2933;
-    background: #ffffff;
-    box-shadow: 0 24px 80px rgb(15 23 42 / 28%);
+    color: var(--text-color);
+    background: var(--dialog-bg);
+    box-shadow: var(--dialog-shadow);
     text-align: left;
   }
 
@@ -128,15 +128,15 @@
     height: 30px;
     border: 1px solid transparent;
     border-radius: 8px;
-    color: #98a2b3;
+    color: var(--close-btn-color);
     background: transparent;
     cursor: pointer;
   }
 
   .about-close:hover {
-    border-color: #d0d5dd;
-    color: #1f2933;
-    background: #f3f4f6;
+    border-color: var(--close-btn-hover-border);
+    color: var(--text-color);
+    background: var(--close-btn-hover-bg);
   }
 
   .about-close svg {
@@ -170,7 +170,7 @@
 
   .about-copy p {
     margin: 6px 0 0;
-    color: #667085;
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.45;
     white-space: nowrap;
@@ -190,20 +190,20 @@
     justify-content: space-between;
     gap: 14px;
     padding: 0 12px;
-    border: 1px solid #e4e7ec;
+    border: 1px solid var(--row-border);
     border-radius: 8px;
-    background: #f9fafb;
+    background: var(--row-bg);
   }
 
   .about-row span {
-    color: #667085;
+    color: var(--text-muted);
     font-size: 12px;
     font-weight: 700;
   }
 
   .about-row strong {
     min-width: 0;
-    color: #1f2933;
+    color: var(--text-color);
     font-size: 13px;
     font-weight: 700;
     line-height: 1.35;
@@ -217,12 +217,12 @@
   }
 
   .about-github:hover {
-    border-color: #2f80ed;
-    background: #eff6ff;
+    border-color: var(--github-hover-border);
+    background: var(--github-hover-bg);
   }
 
   .about-github:hover strong {
-    color: #2f80ed;
+    color: var(--github-hover-text);
   }
 
   .about-github svg {
@@ -240,7 +240,7 @@
 
   .about-footer {
     margin: 18px 0 0;
-    color: #98a2b3;
+    color: var(--footer-color);
     font-size: 12px;
     text-align: center;
   }

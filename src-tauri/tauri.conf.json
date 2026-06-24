@@ -20,7 +20,8 @@
         "minWidth": 960,
         "minHeight": 640,
         "center": true,
-        "visible": false
+        "visible": false,
+        "backgroundColor": "#f7f8f8"
       }
     ],
     "security": {
