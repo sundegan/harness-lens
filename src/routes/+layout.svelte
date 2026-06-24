@@ -52,6 +52,7 @@
     --backdrop-bg: rgb(0 0 0 / 60%);
   }
 
+  :global(html),
   :global(body) {
     margin: 0;
     font-family:
@@ -59,5 +60,7 @@
     color: var(--text-color);
     background: var(--bg-color);
     transition: background-color 0.2s ease, color 0.2s ease;
+    /* Prevent WebView rubber-band scrolling from exposing a white edge. */
+    overscroll-behavior: none;
   }
 </style>
