@@ -8,6 +8,20 @@
     void themeManager.updateTheme();
   });
 
+  // Prevent default context menu (right-click) in production to remove browser-like behavior
+  $effect(() => {
+    if (import.meta.env.PROD) {
+      const handleContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+      };
+
+      document.addEventListener('contextmenu', handleContextMenu);
+      return () => {
+        document.removeEventListener('contextmenu', handleContextMenu);
+      };
+    }
+  });
+
   let { children } = $props();
 </script>
 
@@ -62,5 +76,19 @@
     transition: background-color 0.2s ease, color 0.2s ease;
     /* Prevent WebView rubber-band scrolling from exposing a white edge. */
     overscroll-behavior: none;
+    /* Disable global text selection to match native application behavior */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Re-enable text selection for input fields, textareas, editable areas, and code/log containers */
+  :global(input),
+  :global(textarea),
+  :global([contenteditable="true"]),
+  :global(pre),
+  :global(code),
+  :global(.selectable-text) {
+    -webkit-user-select: text;
+    user-select: text;
   }
 </style>
