@@ -31,19 +31,35 @@
     activeTab = tab;
   };
 
-  const formatDate = (value: string) => {
-    if (!value) return 'Unknown';
-    return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date(value));
-  };
+
 
   const setThemeFromSelect = (event: Event) => {
     const value = (event.target as HTMLSelectElement).value;
     if (value === 'system' || value === 'light' || value === 'dark') {
       themeManager.setTheme(value);
+    }
+  };
+
+  let showRestartModal = $state(false);
+
+  $effect(() => {
+    if (appUpdateManager.status === 'ready') {
+      showRestartModal = true;
+    }
+  });
+
+  const handleRestart = async () => {
+    // @ts-ignore
+    if (import.meta.env.DEV) {
+      window.location.reload();
+    } else {
+      const { invoke } = await import('@tauri-apps/api/core');
+      try {
+        await invoke('restart_app');
+      } catch (e) {
+        console.warn('Failed to restart app:', e);
+        window.location.reload();
+      }
     }
   };
 </script>
@@ -56,12 +72,11 @@
   <div class="settings-body">
     <!-- Sidebar -->
     <aside class="settings-sidebar">
-      <a href="/" class="back-link" title="Back to Timeline">
+      <a href="/" class="back-link" title="Back to Timeline" aria-label="Back to Timeline">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="19" y1="12" x2="5" y2="12" />
           <polyline points="12 19 5 12 12 5" />
         </svg>
-        <span>Back</span>
       </a>
 
       <div class="sidebar-divider"></div>
@@ -119,68 +134,63 @@
             </div>
           </div>
 
-          <div class="settings-subsection">
-            <h3>Application Updates</h3>
-
-            <div class="update-card" class:is-available={appUpdateManager.hasUpdate}>
-              <div class="update-card-header">
-                <div>
-                  <strong>
-                    {#if appUpdateManager.hasUpdate}
-                      New version available
-                    {:else if appUpdateManager.status === 'checking'}
-                      Checking for updates
-                    {:else if appUpdateManager.status === 'installing'}
-                      Installing update
-                    {:else if appUpdateManager.status === 'ready'}
-                      Update ready
-                    {:else if appUpdateManager.status === 'error'}
-                      Update check failed
-                    {:else}
-                      Codex Timeline is up to date
-                    {/if}
-                  </strong>
-                  <span>
-                    Current version {appUpdateManager.currentVersion || 'Unknown'}
-                    {#if appUpdateManager.latestVersion}
-                      · Latest version {appUpdateManager.latestVersion}
-                    {/if}
-                  </span>
-                </div>
-
-                {#if appUpdateManager.hasUpdate}
-                  <span class="update-badge">Update</span>
+          <div class="setting-row" class:has-update={appUpdateManager.hasUpdate}>
+            <div class="setting-info">
+              <label for="check-update-btn">Application Update</label>
+              <span class="setting-desc">
+                {#if appUpdateManager.status === 'checking'}
+                  Checking for updates...
+                {:else if appUpdateManager.status === 'installing'}
+                  Installing update...
+                {:else if appUpdateManager.status === 'ready'}
+                  Update installed successfully. Please restart.
+                {:else if appUpdateManager.status === 'error'}
+                  Update failed: {appUpdateManager.error}
+                {:else if appUpdateManager.hasUpdate}
+                  New version <span class="new-version-number">v{appUpdateManager.latestVersion}</span> is available (Current: v{appUpdateManager.currentVersion || '0.1.0'})
+                {:else}
+                  Codex Timeline is up to date (Current: v{appUpdateManager.currentVersion || '0.1.0'})
                 {/if}
-              </div>
-
-              {#if appUpdateManager.publishedAt}
-                <p>Published {formatDate(appUpdateManager.publishedAt)}</p>
-              {/if}
-
-              {#if appUpdateManager.error}
-                <p class="update-error">{appUpdateManager.error}</p>
-              {/if}
-
-              {#if appUpdateManager.releaseNotes}
-                <pre class="release-notes selectable-text">{appUpdateManager.releaseNotes}</pre>
-              {/if}
-
-              <div class="update-actions">
+              </span>
+            </div>
+            <div class="setting-control">
+              {#if appUpdateManager.status === 'ready'}
                 <button
+                  id="check-update-btn"
+                  class="primary-action install-btn"
+                  type="button"
+                  onclick={async () => {
+                    // @ts-ignore
+                    if (import.meta.env.DEV) {
+                      window.location.reload();
+                    } else {
+                      const { invoke } = await import('@tauri-apps/api/core');
+                      try {
+                        await invoke('restart_app');
+                      } catch (e) {
+                        console.warn('Failed to restart app:', e);
+                        window.location.reload();
+                      }
+                    }
+                  }}
+                >
+                  Restart App
+                </button>
+              {:else if appUpdateManager.hasUpdate}
+                <button id="check-update-btn" class="primary-action install-btn" type="button" onclick={() => appUpdateManager.installUpdate()}>
+                  Install Update
+                </button>
+              {:else}
+                <button
+                  id="check-update-btn"
                   class="secondary-action"
                   type="button"
                   disabled={appUpdateManager.isChecking}
                   onclick={() => appUpdateManager.checkForUpdates()}
                 >
-                  {appUpdateManager.status === 'checking' ? 'Checking...' : 'Check Again'}
+                  {appUpdateManager.status === 'checking' ? 'Checking...' : 'Check now'}
                 </button>
-
-                {#if appUpdateManager.hasUpdate}
-                  <button class="primary-action" type="button" onclick={() => appUpdateManager.installUpdate()}>
-                    Install Update
-                  </button>
-                {/if}
-              </div>
+              {/if}
             </div>
           </div>
         </div>
@@ -211,6 +221,33 @@
     </section>
   </div>
 </main>
+
+{#if showRestartModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" role="presentation" onclick={() => showRestartModal = false}>
+    <dialog
+      class="modal-dialog"
+      open
+      aria-modal="true"
+      onclick={(event) => event.stopPropagation()}
+    >
+      <div class="modal-header">
+        <h4>Restart Required</h4>
+      </div>
+      <div class="modal-body">
+        <p>The application has been successfully updated. Restart now to apply the changes?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary-action" type="button" onclick={() => showRestartModal = false}>
+          Restart Later
+        </button>
+        <button class="primary-action restart-confirm-btn" type="button" onclick={handleRestart}>
+          Restart Now
+        </button>
+      </div>
+    </dialog>
+  </div>
+{/if}
 
 <style>
   :global(:root) {
@@ -275,14 +312,13 @@
   .back-link {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     color: var(--text-muted);
     background: transparent;
     text-decoration: none;
-    font-size: 12px;
-    font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
   }
@@ -293,8 +329,8 @@
   }
 
   .back-link svg {
-    width: 13px;
-    height: 13px;
+    width: 15px;
+    height: 15px;
   }
 
   .sidebar-divider {
@@ -351,9 +387,7 @@
     margin-bottom: 28px;
   }
 
-  .settings-subsection {
-    margin-top: 28px;
-  }
+
 
   .settings-section h3 {
     margin: 0 0 12px;
@@ -451,88 +485,7 @@
     transform: translateX(16px);
   }
 
-  .update-card {
-    display: grid;
-    gap: 14px;
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--row-bg);
-  }
 
-  .update-card.is-available {
-    border-color: rgba(22, 163, 74, 0.36);
-    background: rgba(22, 163, 74, 0.06);
-  }
-
-  :global(html.dark) .update-card.is-available {
-    border-color: rgba(74, 222, 128, 0.32);
-    background: rgba(74, 222, 128, 0.08);
-  }
-
-  .update-card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .update-card-header div {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .update-card-header strong {
-    color: var(--text-color);
-    font-size: 14px;
-    line-height: 1.35;
-  }
-
-  .update-card-header span,
-  .update-card p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .update-badge {
-    flex: 0 0 auto;
-    padding: 2px 7px;
-    border-radius: 999px;
-    color: #15803d;
-    background: rgba(22, 163, 74, 0.13);
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  :global(html.dark) .update-badge {
-    color: #4ade80;
-    background: rgba(74, 222, 128, 0.16);
-  }
-
-  .update-error {
-    color: #dc2626 !important;
-  }
-
-  .release-notes {
-    max-height: 130px;
-    margin: 0;
-    overflow: auto;
-    white-space: pre-wrap;
-    color: var(--text-muted);
-    font-family: inherit;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .update-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
 
   .primary-action,
   .secondary-action {
@@ -560,5 +513,164 @@
   .secondary-action:disabled {
     cursor: default;
     opacity: 0.58;
+  }
+
+  /* Beautiful glowing update row highlight and install button pulse */
+  :global(:root) {
+    --update-glow: rgba(22, 163, 74, 0.35);
+    --update-glow-transparent: rgba(22, 163, 74, 0);
+  }
+
+  :global(html.dark) {
+    --update-glow: rgba(74, 222, 128, 0.28);
+    --update-glow-transparent: rgba(74, 222, 128, 0);
+  }
+
+  .setting-row.has-update {
+    background: rgba(22, 163, 74, 0.05);
+    border: 1px solid rgba(22, 163, 74, 0.18);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 8px -14px;
+    transition: all 0.25s ease;
+  }
+
+  :global(html.dark) .setting-row.has-update {
+    background: rgba(74, 222, 128, 0.06);
+    border-color: rgba(74, 222, 128, 0.22);
+  }
+
+  .new-version-number {
+    color: #16a34a;
+    font-weight: 600;
+  }
+
+  :global(html.dark) .new-version-number {
+    color: #4ade80;
+  }
+
+  .primary-action.install-btn {
+    color: #16a34a;
+    border-color: rgba(22, 163, 74, 0.3);
+    background: rgba(22, 163, 74, 0.08);
+    box-shadow: 0 0 0 0 var(--update-glow);
+    animation: button-pulse 2.4s infinite ease-in-out;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+
+  .primary-action.install-btn:hover {
+    background: rgba(22, 163, 74, 0.16);
+    border-color: rgba(22, 163, 74, 0.45);
+  }
+
+  :global(html.dark) .primary-action.install-btn {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.25);
+    background: rgba(74, 222, 128, 0.08);
+  }
+
+  :global(html.dark) .primary-action.install-btn:hover {
+    background: rgba(74, 222, 128, 0.16);
+    border-color: rgba(74, 222, 128, 0.38);
+  }
+
+  @keyframes button-pulse {
+    0% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 var(--update-glow);
+    }
+    50% {
+      transform: scale(1.02);
+      box-shadow: 0 0 0 5px var(--update-glow-transparent);
+    }
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 var(--update-glow-transparent);
+    }
+  }
+
+  /* Custom Svelte Modal styling */
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--backdrop-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-dialog {
+    width: 320px;
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-border);
+    border-radius: 12px;
+    box-shadow: var(--dialog-shadow);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes scale-up {
+    0% {
+      transform: scale(0.92);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .modal-header h4 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-color);
+  }
+
+  .modal-body p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .restart-confirm-btn {
+    color: #16a34a;
+    border-color: rgba(22, 163, 74, 0.3);
+    background: rgba(22, 163, 74, 0.08);
+    box-shadow: 0 0 0 0 var(--update-glow);
+    animation: button-pulse 2.4s infinite ease-in-out;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+
+  .restart-confirm-btn:hover {
+    background: rgba(22, 163, 74, 0.16);
+    border-color: rgba(22, 163, 74, 0.45);
+  }
+
+  :global(html.dark) .restart-confirm-btn {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.25);
+    background: rgba(74, 222, 128, 0.08);
+  }
+
+  :global(html.dark) .restart-confirm-btn:hover {
+    background: rgba(74, 222, 128, 0.16);
+    border-color: rgba(74, 222, 128, 0.38);
   }
 </style>

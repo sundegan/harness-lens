@@ -39,8 +39,8 @@
     <a
       class="control-btn update-btn"
       href="/settings"
-      aria-label={`Update available: ${appUpdateManager.latestVersion}`}
-      title={`Update available: ${appUpdateManager.latestVersion}`}
+      aria-label={`Update available: v${appUpdateManager.latestVersion}`}
+      title={`Update available: v${appUpdateManager.latestVersion}`}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3v12" />
@@ -114,6 +114,13 @@
     border: none;
     box-shadow: none;
     -webkit-app-region: no-drag;
+    --btn-glow: rgba(22, 163, 74, 0.3);
+    --btn-glow-trans: rgba(22, 163, 74, 0);
+  }
+
+  :global(html.dark) .control-bar {
+    --btn-glow: rgba(74, 222, 128, 0.25);
+    --btn-glow-trans: rgba(74, 222, 128, 0);
   }
 
   .control-btn {
@@ -157,12 +164,51 @@
   .control-btn.update-btn {
     opacity: 1;
     color: #16a34a;
-    background: rgba(22, 163, 74, 0.12);
+    background: #ffffff;
+    border-radius: 50%;
+    border: 1px solid rgba(22, 163, 74, 0.35);
+    box-sizing: border-box;
+    animation: header-pulse 2.4s infinite ease-in-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .control-btn.update-btn:hover {
+    background: #f8fafc;
+    border-color: rgba(22, 163, 74, 0.5);
+    opacity: 1;
+  }
+
+  .control-btn.update-btn:active {
+    background: #f1f5f9;
   }
 
   :global(html.dark) .control-btn.update-btn {
     color: #4ade80;
-    background: rgba(74, 222, 128, 0.16);
+    background: #1e293b;
+    border: 1px solid rgba(74, 222, 128, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  :global(html.dark) .control-btn.update-btn:hover {
+    background: #334155;
+    border-color: rgba(74, 222, 128, 0.65);
+    opacity: 1;
+  }
+
+  :global(html.dark) .control-btn.update-btn:active {
+    background: #0f172a;
+  }
+
+  @keyframes header-pulse {
+    0% {
+      box-shadow: 0 0 0 0 var(--btn-glow);
+    }
+    70% {
+      box-shadow: 0 0 0 5px var(--btn-glow-trans);
+    }
+    100% {
+      box-shadow: 0 0 0 0 var(--btn-glow-trans);
+    }
   }
 
   :global(html.dark) .control-btn.is-active {

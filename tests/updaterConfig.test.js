@@ -18,6 +18,7 @@ test('tauri updater plugin is configured in cargo, config and capability files',
   assert.equal(packageJson.dependencies['@tauri-apps/plugin-updater'], '2.9.0');
   assert.match(cargoToml, /tauri-plugin-updater\s*=\s*"=2\.9\.0"/);
   assert.match(libRs, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
+  assert.match(libRs, /restart_app/);
   assert.equal(tauriConfig.bundle.createUpdaterArtifacts, true);
   assert.ok(defaultCapability.permissions.includes('updater:default'));
 });
