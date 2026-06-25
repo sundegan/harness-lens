@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -34,6 +35,21 @@
 </script>
 
 <div class="control-bar">
+  {#if appUpdateManager.hasUpdate}
+    <a
+      class="control-btn update-btn"
+      href="/settings"
+      aria-label={`Update available: ${appUpdateManager.latestVersion}`}
+      title={`Update available: ${appUpdateManager.latestVersion}`}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </svg>
+    </a>
+  {/if}
+
   <!-- Theme Toggle (Only Light & Dark in main interface) -->
   <button
     class="control-btn"
@@ -136,6 +152,17 @@
     opacity: 1;
     color: #3b82f6;
     background: rgba(59, 130, 246, 0.12);
+  }
+
+  .control-btn.update-btn {
+    opacity: 1;
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.12);
+  }
+
+  :global(html.dark) .control-btn.update-btn {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.16);
   }
 
   :global(html.dark) .control-btn.is-active {

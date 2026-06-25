@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
 
   const isLinux = () => {
@@ -12,9 +14,38 @@
 
   const dragRegionEnabled = !isLinux();
 
-  let activeTab = $state('general');
-  let autoCheckUpdates = $state(true);
-  let minimizeToTray = $state(false);
+  type SettingsTab = 'general' | 'appearance';
+
+  let activeTab = $state<SettingsTab>('general');
+
+  onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+
+    if (tab === 'appearance') {
+      activeTab = tab;
+    }
+  });
+
+  const setActiveTab = (tab: SettingsTab) => {
+    activeTab = tab;
+  };
+
+  const formatDate = (value: string) => {
+    if (!value) return 'Unknown';
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(value));
+  };
+
+  const setThemeFromSelect = (event: Event) => {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === 'system' || value === 'light' || value === 'dark') {
+      themeManager.setTheme(value);
+    }
+  };
 </script>
 
 <main class="settings-container">
@@ -38,7 +69,7 @@
       <button
         class="sidebar-item"
         class:is-active={activeTab === 'general'}
-        onclick={() => activeTab = 'general'}
+        onclick={() => setActiveTab('general')}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -50,7 +81,7 @@
       <button
         class="sidebar-item"
         class:is-active={activeTab === 'appearance'}
-        onclick={() => activeTab = 'appearance'}
+        onclick={() => setActiveTab('appearance')}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/>
@@ -59,6 +90,7 @@
         </svg>
         <span>Appearance</span>
       </button>
+
     </aside>
 
     <!-- Content Pane -->
@@ -73,17 +105,82 @@
               <span class="setting-desc">Check for new versions of the application upon startup</span>
             </div>
             <div class="setting-control">
-              <input type="checkbox" id="auto-check-updates" bind:checked={autoCheckUpdates} class="native-switch" />
+              <input
+                type="checkbox"
+                id="auto-check-updates"
+                checked={appUpdateManager.autoCheckUpdates}
+                onchange={(event) => {
+                  appUpdateManager.setAutoCheckUpdates(
+                    (event.currentTarget as HTMLInputElement).checked,
+                  );
+                }}
+                class="native-switch"
+              />
             </div>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="minimize-to-tray">Minimize to System Tray on Close</label>
-              <span class="setting-desc">Keep the application running in the background when closing the main window</span>
-            </div>
-            <div class="setting-control">
-              <input type="checkbox" id="minimize-to-tray" bind:checked={minimizeToTray} class="native-switch" />
+          <div class="settings-subsection">
+            <h3>Application Updates</h3>
+
+            <div class="update-card" class:is-available={appUpdateManager.hasUpdate}>
+              <div class="update-card-header">
+                <div>
+                  <strong>
+                    {#if appUpdateManager.hasUpdate}
+                      New version available
+                    {:else if appUpdateManager.status === 'checking'}
+                      Checking for updates
+                    {:else if appUpdateManager.status === 'installing'}
+                      Installing update
+                    {:else if appUpdateManager.status === 'ready'}
+                      Update ready
+                    {:else if appUpdateManager.status === 'error'}
+                      Update check failed
+                    {:else}
+                      Codex Timeline is up to date
+                    {/if}
+                  </strong>
+                  <span>
+                    Current version {appUpdateManager.currentVersion || 'Unknown'}
+                    {#if appUpdateManager.latestVersion}
+                      · Latest version {appUpdateManager.latestVersion}
+                    {/if}
+                  </span>
+                </div>
+
+                {#if appUpdateManager.hasUpdate}
+                  <span class="update-badge">Update</span>
+                {/if}
+              </div>
+
+              {#if appUpdateManager.publishedAt}
+                <p>Published {formatDate(appUpdateManager.publishedAt)}</p>
+              {/if}
+
+              {#if appUpdateManager.error}
+                <p class="update-error">{appUpdateManager.error}</p>
+              {/if}
+
+              {#if appUpdateManager.releaseNotes}
+                <pre class="release-notes selectable-text">{appUpdateManager.releaseNotes}</pre>
+              {/if}
+
+              <div class="update-actions">
+                <button
+                  class="secondary-action"
+                  type="button"
+                  disabled={appUpdateManager.isChecking}
+                  onclick={() => appUpdateManager.checkForUpdates()}
+                >
+                  {appUpdateManager.status === 'checking' ? 'Checking...' : 'Check Again'}
+                </button>
+
+                {#if appUpdateManager.hasUpdate}
+                  <button class="primary-action" type="button" onclick={() => appUpdateManager.installUpdate()}>
+                    Install Update
+                  </button>
+                {/if}
+              </div>
             </div>
           </div>
         </div>
@@ -101,7 +198,7 @@
                 id="theme-select"
                 class="native-select"
                 value={themeManager.theme}
-                onchange={(e) => themeManager.setTheme((e.target as HTMLSelectElement).value as any)}
+                onchange={setThemeFromSelect}
               >
                 <option value="system">System Default</option>
                 <option value="light">Light Mode</option>
@@ -254,6 +351,10 @@
     margin-bottom: 28px;
   }
 
+  .settings-subsection {
+    margin-top: 28px;
+  }
+
   .settings-section h3 {
     margin: 0 0 12px;
     font-size: 11px;
@@ -348,5 +449,116 @@
 
   .native-switch:checked::before {
     transform: translateX(16px);
+  }
+
+  .update-card {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--row-bg);
+  }
+
+  .update-card.is-available {
+    border-color: rgba(22, 163, 74, 0.36);
+    background: rgba(22, 163, 74, 0.06);
+  }
+
+  :global(html.dark) .update-card.is-available {
+    border-color: rgba(74, 222, 128, 0.32);
+    background: rgba(74, 222, 128, 0.08);
+  }
+
+  .update-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .update-card-header div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .update-card-header strong {
+    color: var(--text-color);
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .update-card-header span,
+  .update-card p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .update-badge {
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.13);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  :global(html.dark) .update-badge {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.16);
+  }
+
+  .update-error {
+    color: #dc2626 !important;
+  }
+
+  .release-notes {
+    max-height: 130px;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .update-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .primary-action,
+  .secondary-action {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 7px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .primary-action {
+    border: 1px solid #2563eb;
+    color: white;
+    background: #2563eb;
+  }
+
+  .secondary-action {
+    border: 1px solid var(--border);
+    color: var(--text-color);
+    background: var(--panel-bg);
+  }
+
+  .secondary-action:disabled {
+    cursor: default;
+    opacity: 0.58;
   }
 </style>

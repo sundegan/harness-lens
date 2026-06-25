@@ -125,6 +125,9 @@ pub fn run() {
             if event.id().as_ref() == menu::ABOUT_MENU_ID {
                 focus_main_window(app);
                 let _ = tauri::Emitter::emit(app, menu::SHOW_ABOUT_EVENT, ());
+            } else if event.id().as_ref() == menu::CHECK_UPDATES_MENU_ID {
+                focus_main_window(app);
+                let _ = tauri::Emitter::emit(app, menu::CHECK_UPDATES_EVENT, ());
             }
         });
 
@@ -133,6 +136,7 @@ pub fn run() {
             focus_main_window(app);
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_handle = app.handle();

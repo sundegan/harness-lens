@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { listen } from '@tauri-apps/api/event';
+  import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
 
   // Reactively track theme manager theme state to ensure native integration updates
@@ -10,6 +13,13 @@
   });
 
   onMount(() => {
+    void appUpdateManager.init();
+
+    const unlistenUpdate = listen('check-for-updates', () => {
+      void goto('/settings');
+      void appUpdateManager.checkForUpdates();
+    });
+
     // Prevent default browser context menu globally to eliminate web feeling
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -49,6 +59,7 @@
       document.removeEventListener('keydown', handleKeydown);
       document.removeEventListener('gesturestart', handleGesture);
       document.removeEventListener('gesturechange', handleGesture);
+      void unlistenUpdate.then((dispose) => dispose());
     };
   });
 
