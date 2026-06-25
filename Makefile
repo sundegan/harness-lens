@@ -1,10 +1,11 @@
-.PHONY: help dev build check test fmt lint clean install
+.PHONY: help dev dev-mock-update build check test fmt lint clean install
 
 # Default target: show help
 help:
 	@echo "Codex Timeline development commands"
 	@echo ""
 	@echo "  make dev      - Run the Tauri desktop app in development mode"
+	@echo "  make dev-mock-update - Run the Tauri desktop app with mock update enabled"
 	@echo "  make build    - Build the Tauri desktop app"
 	@echo "  make check    - Type check frontend and Rust backend"
 	@echo "  make test     - Run Rust tests"
@@ -17,6 +18,9 @@ help:
 dev:
 	pnpm tauri dev
 
+dev-mock-update:
+	VITE_MOCK_APP_UPDATE=1 pnpm tauri dev
+
 # Build application (frontend + backend)
 build:
 	pnpm tauri build
@@ -28,6 +32,7 @@ check:
 
 # Run tests
 test:
+	pnpm test
 	cd src-tauri && cargo test
 
 # Format code (frontend + backend)
