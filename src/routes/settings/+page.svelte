@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
+  import Select from '$lib/components/Select.svelte';
 
   const isLinux = () => {
     try {
@@ -29,15 +30,6 @@
 
   const setActiveTab = (tab: SettingsTab) => {
     activeTab = tab;
-  };
-
-
-
-  const setThemeFromSelect = (event: Event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === 'system' || value === 'light' || value === 'dark') {
-      themeManager.setTheme(value);
-    }
   };
 
   let showRestartModal = $state(false);
@@ -204,16 +196,16 @@
               <span class="setting-desc">Choose between System default, Light mode, or Dark mode</span>
             </div>
             <div class="setting-control">
-              <select
-                id="theme-select"
-                class="native-select"
-                value={themeManager.theme}
-                onchange={setThemeFromSelect}
-              >
-                <option value="system">System Default</option>
-                <option value="light">Light Mode</option>
-                <option value="dark">Dark Mode</option>
-              </select>
+              <Select
+                bind:value={themeManager.theme}
+                options={[
+                  { value: 'system', label: 'System Default' },
+                  { value: 'light', label: 'Light Mode' },
+                  { value: 'dark', label: 'Dark Mode' }
+                ]}
+                id="theme-select-btn"
+                ariaLabel="Theme options"
+              />
             </div>
           </div>
         </div>
@@ -430,42 +422,36 @@
   }
 
   /* Control elements */
-  .native-select {
-    font-family: inherit;
-    font-size: 12px;
-    padding: 5px 24px 5px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--row-bg);
-    color: var(--text-color);
-    cursor: pointer;
-    outline: none;
-    transition: all 0.15s ease;
-  }
 
-  .native-select:hover {
-    border-color: var(--close-btn-hover-border);
-  }
 
   /* Native-looking Switch (Checkbox styled) */
   .native-switch {
     appearance: none;
     position: relative;
-    width: 36px;
-    height: 20px;
-    border-radius: 10px;
-    background: #cbd5e1;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background-color 0.2s, border-color 0.2s;
     outline: none;
+    box-sizing: border-box;
   }
 
   :global(html.dark) .native-switch {
-    background: #475569;
+    background: #0f172a;
+    border-color: #334155;
   }
 
   .native-switch:checked {
     background: #3b82f6;
+    border-color: #3b82f6;
+  }
+
+  :global(html.dark) .native-switch:checked {
+    background: #60a5fa;
+    border-color: #60a5fa;
   }
 
   .native-switch::before {
@@ -476,13 +462,21 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: white;
-    transition: transform 0.2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    background: #ffffff;
+    transition: transform 0.2s, background-color 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  :global(html.dark) .native-switch::before {
+    background: #94a3b8;
+  }
+
+  :global(html.dark) .native-switch:checked::before {
+    background: #ffffff;
   }
 
   .native-switch:checked::before {
-    transform: translateX(16px);
+    transform: translateX(18px);
   }
 
 
