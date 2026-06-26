@@ -3,6 +3,7 @@
   import { getVersion } from '@tauri-apps/api/app';
   import { listen } from '@tauri-apps/api/event';
   import { openUrl } from '@tauri-apps/plugin-opener';
+  import { i18nManager } from '$lib/i18n.svelte';
 
   const GITHUB_URL = 'https://github.com/sundegan/codex-timeline';
 
@@ -54,7 +55,7 @@
       aria-labelledby="about-title"
       onclick={(event) => event.stopPropagation()}
     >
-      <button class="about-close" type="button" aria-label="Close" onclick={close}>
+      <button class="about-close" type="button" aria-label={i18nManager.t('about.close')} onclick={close}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M18 6 6 18M6 6l12 12" />
         </svg>
@@ -63,15 +64,15 @@
       <div class="about-hero">
         <img class="about-icon" src="/app-icon.png" alt="" />
         <div class="about-copy">
-          <h2 id="about-title">Codex Timeline</h2>
-          <p>View Codex agent execution timelines.</p>
+          <h2 id="about-title">{i18nManager.t('about.title')}</h2>
+          <p>{i18nManager.t('about.desc')}</p>
         </div>
       </div>
 
       <div class="about-meta">
         <div class="about-row">
-          <span>Version</span>
-          <strong>{appVersion || 'Unknown'}</strong>
+          <span>{i18nManager.t('about.version')}</span>
+          <strong>{appVersion || i18nManager.t('about.unknown')}</strong>
         </div>
       </div>
 
@@ -83,11 +84,11 @@
               d="M12 .5A11.5 11.5 0 0 0 .5 12.28c0 5.2 3.36 9.6 8.02 11.16.58.11.79-.26.79-.57v-2.02c-3.26.72-3.95-1.61-3.95-1.61-.53-1.39-1.3-1.76-1.3-1.76-1.07-.75.08-.74.08-.74 1.18.09 1.8 1.25 1.8 1.25 1.05 1.85 2.76 1.32 3.43 1 .11-.78.41-1.32.75-1.62-2.6-.3-5.33-1.33-5.33-5.94 0-1.31.46-2.38 1.21-3.22-.12-.31-.53-1.54.12-3.2 0 0 .99-.33 3.24 1.23a10.95 10.95 0 0 1 5.9 0c2.25-1.56 3.24-1.23 3.24-1.23.65 1.66.24 2.89.12 3.2.75.84 1.21 1.91 1.21 3.22 0 4.62-2.73 5.64-5.34 5.94.42.37.8 1.1.8 2.22v3.28c0 .31.21.68.8.57a11.77 11.77 0 0 0 8.01-11.16A11.5 11.5 0 0 0 12 .5Z"
             />
           </svg>
-          Star on GitHub
+          {i18nManager.t('about.star')}
         </strong>
       </button>
 
-      <p class="about-footer">Copyright © 2026 Codex Timeline</p>
+      <p class="about-footer">{i18nManager.t('about.copyright')}</p>
     </dialog>
   </div>
 {/if}

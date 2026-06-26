@@ -1,6 +1,7 @@
 <script lang="ts">
   import AboutDialog from '$lib/menu/AboutDialog.svelte';
   import ControlBar from '$lib/menu/ControlBar.svelte';
+  import { i18nManager } from '$lib/i18n.svelte';
 
   const isLinux = () => {
     try {
@@ -19,8 +20,8 @@
     <div class="drag-region" aria-hidden="true" data-tauri-drag-region></div>
   {/if}
 
-  <h1>Codex Timeline</h1>
-  <p>Local-first desktop tool for inspecting Codex agent runs.</p>
+  <h1>{i18nManager.t('main.title')}</h1>
+  <p>{i18nManager.t('main.desc')}</p>
   <AboutDialog />
   <ControlBar />
 </main>

@@ -3,8 +3,20 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 export type Theme = 'system' | 'light' | 'dark';
 
 class ThemeManager {
-  theme = $state<Theme>('system');
+  #theme = $state<Theme>('system');
   isDarkMode = $state(false);
+
+  get theme() {
+    return this.#theme;
+  }
+
+  set theme(value: Theme) {
+    this.#theme = value;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('theme', value);
+    }
+    void this.updateTheme();
+  }
 
   constructor() {
     if (typeof window === 'undefined') {
@@ -13,7 +25,7 @@ class ThemeManager {
 
     const savedTheme = localStorage.getItem('theme') as Theme;
     if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
-      this.theme = savedTheme;
+      this.#theme = savedTheme;
     }
 
     void this.updateTheme();
@@ -38,8 +50,6 @@ class ThemeManager {
 
   setTheme(theme: Theme) {
     this.theme = theme;
-    localStorage.setItem('theme', theme);
-    void this.updateTheme();
   }
 
   async updateTheme() {

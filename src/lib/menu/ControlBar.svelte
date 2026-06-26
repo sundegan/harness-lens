@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
+  import { i18nManager } from '$lib/i18n.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   let isAlwaysOnTop = $state(false);
@@ -39,8 +40,8 @@
     <a
       class="control-btn update-btn"
       href="/settings"
-      aria-label={`Update available: v${appUpdateManager.latestVersion}`}
-      title={`Update available: v${appUpdateManager.latestVersion}`}
+      aria-label={i18nManager.t('control.update_available', { version: appUpdateManager.latestVersion })}
+      title={i18nManager.t('control.update_available', { version: appUpdateManager.latestVersion })}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3v12" />
@@ -54,9 +55,9 @@
   <button
     class="control-btn"
     type="button"
-    aria-label={themeManager.isDarkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+    aria-label={themeManager.isDarkMode ? i18nManager.t('control.theme_light') : i18nManager.t('control.theme_dark')}
     onclick={toggleThemeMain}
-    title={themeManager.isDarkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+    title={themeManager.isDarkMode ? i18nManager.t('control.theme_light') : i18nManager.t('control.theme_dark')}
   >
     {#if themeManager.isDarkMode}
       <!-- Sun icon (for switching to light) -->
@@ -76,8 +77,8 @@
   <a
     class="control-btn"
     href="/settings"
-    aria-label="Settings"
-    title="Settings"
+    aria-label={i18nManager.t('control.settings')}
+    title={i18nManager.t('control.settings')}
   >
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -91,8 +92,8 @@
     class:is-active={isAlwaysOnTop}
     type="button"
     onclick={toggleAlwaysOnTop}
-    aria-label={isAlwaysOnTop ? 'Unpin Window' : 'Pin Window'}
-    title={isAlwaysOnTop ? 'Unpin Window' : 'Pin Window'}
+    aria-label={isAlwaysOnTop ? i18nManager.t('control.unpin') : i18nManager.t('control.pin')}
+    title={isAlwaysOnTop ? i18nManager.t('control.unpin') : i18nManager.t('control.pin')}
   >
     <svg viewBox="0 0 24 24" fill={isAlwaysOnTop ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <line x1="12" y1="17" x2="12" y2="22" />

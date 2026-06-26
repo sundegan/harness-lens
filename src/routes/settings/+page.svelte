@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
+  import { i18nManager } from '$lib/i18n.svelte';
   import Select from '$lib/components/Select.svelte';
 
   const isLinux = () => {
@@ -64,7 +65,7 @@
   <div class="settings-body">
     <!-- Sidebar -->
     <aside class="settings-sidebar">
-      <a href="/" class="back-link" title="Back to Timeline" aria-label="Back to Timeline">
+      <a href="/" class="back-link" title={i18nManager.t('nav.back')} aria-label={i18nManager.t('nav.back')}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="19" y1="12" x2="5" y2="12" />
           <polyline points="12 19 5 12 12 5" />
@@ -82,7 +83,7 @@
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
-        <span>General</span>
+        <span>{i18nManager.t('nav.general')}</span>
       </button>
 
       <button
@@ -95,7 +96,7 @@
           <path d="M12 2a7 7 0 1 0 10 10"/>
           <path d="M12 6a6 6 0 1 0 6 6"/>
         </svg>
-        <span>Appearance</span>
+        <span>{i18nManager.t('nav.appearance')}</span>
       </button>
 
     </aside>
@@ -104,12 +105,38 @@
     <section class="settings-content-pane">
       {#if activeTab === 'general'}
         <div class="settings-section">
-          <h3>General Settings</h3>
+          <h3>{i18nManager.t('settings.general.title')}</h3>
+
+          <!-- Language Selection -->
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="language-select-btn">{i18nManager.t('settings.language.title')}</label>
+              <span class="setting-desc">{i18nManager.t('settings.language.desc')}</span>
+            </div>
+            <div class="setting-control">
+              <Select
+                bind:value={i18nManager.language}
+                options={[
+                  { value: 'system', label: i18nManager.t('settings.language.lang_system') },
+                  { value: 'en', label: i18nManager.t('settings.language.lang_en') },
+                  { value: 'zh', label: i18nManager.t('settings.language.lang_zh') },
+                  { value: 'zh_tw', label: i18nManager.t('settings.language.lang_zh_tw') },
+                  { value: 'ja', label: i18nManager.t('settings.language.lang_ja') },
+                  { value: 'ko', label: i18nManager.t('settings.language.lang_ko') },
+                  { value: 'es', label: i18nManager.t('settings.language.lang_es') },
+                  { value: 'fr', label: i18nManager.t('settings.language.lang_fr') },
+                  { value: 'de', label: i18nManager.t('settings.language.lang_de') }
+                ]}
+                id="language-select-btn"
+                ariaLabel="Language options"
+              />
+            </div>
+          </div>
 
           <div class="setting-row">
             <div class="setting-info">
-              <label for="auto-check-updates">Check for Updates Automatically</label>
-              <span class="setting-desc">Check for new versions of the application upon startup</span>
+              <label for="auto-check-updates">{i18nManager.t('settings.general.auto_check')}</label>
+              <span class="setting-desc">{i18nManager.t('settings.general.auto_check_desc')}</span>
             </div>
             <div class="setting-control">
               <input
@@ -128,20 +155,20 @@
 
           <div class="setting-row" class:has-update={appUpdateManager.hasUpdate}>
             <div class="setting-info">
-              <label for="check-update-btn">Application Update</label>
+              <label for="check-update-btn">{i18nManager.t('settings.general.app_update')}</label>
               <span class="setting-desc">
                 {#if appUpdateManager.status === 'checking'}
-                  Checking for updates...
+                  {i18nManager.t('update.status.checking')}
                 {:else if appUpdateManager.status === 'installing'}
-                  Installing update...
+                  {i18nManager.t('update.status.installing')}
                 {:else if appUpdateManager.status === 'ready'}
-                  Update installed successfully. Please restart.
+                  {i18nManager.t('update.status.ready')}
                 {:else if appUpdateManager.status === 'error'}
-                  Update failed: {appUpdateManager.error}
+                  {i18nManager.t('update.status.error', { error: appUpdateManager.error })}
                 {:else if appUpdateManager.hasUpdate}
-                  New version <span class="new-version-number">v{appUpdateManager.latestVersion}</span> is available (Current: v{appUpdateManager.currentVersion || '0.1.0'})
+                  {i18nManager.t('update.status.available_prefix')}<span class="new-version-number">v{appUpdateManager.latestVersion}</span>{i18nManager.t('update.status.available_suffix', { currentVersion: appUpdateManager.currentVersion || '0.1.0' })}
                 {:else}
-                  Codex Timeline is up to date (Current: v{appUpdateManager.currentVersion || '0.1.0'})
+                  {i18nManager.t('update.status.latest', { currentVersion: appUpdateManager.currentVersion || '0.1.0' })}
                 {/if}
               </span>
             </div>
@@ -166,11 +193,11 @@
                     }
                   }}
                 >
-                  Restart App
+                  {i18nManager.t('update.action.restart')}
                 </button>
               {:else if appUpdateManager.hasUpdate}
                 <button id="check-update-btn" class="primary-action install-btn" type="button" onclick={() => appUpdateManager.installUpdate()}>
-                  Install Update
+                  {i18nManager.t('update.action.install')}
                 </button>
               {:else}
                 <button
@@ -180,7 +207,7 @@
                   disabled={appUpdateManager.isChecking}
                   onclick={() => appUpdateManager.checkForUpdates()}
                 >
-                  {appUpdateManager.status === 'checking' ? 'Checking...' : 'Check now'}
+                  {appUpdateManager.status === 'checking' ? i18nManager.t('update.action.checking') : i18nManager.t('update.action.check_now')}
                 </button>
               {/if}
             </div>
@@ -188,20 +215,20 @@
         </div>
       {:else if activeTab === 'appearance'}
         <div class="settings-section">
-          <h3>App Theme</h3>
+          <h3>{i18nManager.t('settings.appearance.title')}</h3>
 
           <div class="setting-row">
             <div class="setting-info">
-              <label for="theme-select">Theme Selection</label>
-              <span class="setting-desc">Choose between System default, Light mode, or Dark mode</span>
+              <label for="theme-select">{i18nManager.t('settings.appearance.select')}</label>
+              <span class="setting-desc">{i18nManager.t('settings.appearance.desc')}</span>
             </div>
             <div class="setting-control">
               <Select
                 bind:value={themeManager.theme}
                 options={[
-                  { value: 'system', label: 'System Default' },
-                  { value: 'light', label: 'Light Mode' },
-                  { value: 'dark', label: 'Dark Mode' }
+                  { value: 'system', label: i18nManager.t('settings.appearance.theme_system') },
+                  { value: 'light', label: i18nManager.t('settings.appearance.theme_light') },
+                  { value: 'dark', label: i18nManager.t('settings.appearance.theme_dark') }
                 ]}
                 id="theme-select-btn"
                 ariaLabel="Theme options"
@@ -224,17 +251,17 @@
       onclick={(event) => event.stopPropagation()}
     >
       <div class="modal-header">
-        <h4>Restart Required</h4>
+        <h4>{i18nManager.t('modal.restart.title')}</h4>
       </div>
       <div class="modal-body">
-        <p>The application has been successfully updated. Restart now to apply the changes?</p>
+        <p>{i18nManager.t('modal.restart.desc')}</p>
       </div>
       <div class="modal-footer">
         <button class="secondary-action" type="button" onclick={() => showRestartModal = false}>
-          Restart Later
+          {i18nManager.t('modal.restart.later')}
         </button>
         <button class="primary-action restart-confirm-btn" type="button" onclick={handleRestart}>
-          Restart Now
+          {i18nManager.t('modal.restart.now')}
         </button>
       </div>
     </dialog>
