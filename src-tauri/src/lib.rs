@@ -125,7 +125,7 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     let builder = builder
-        .menu(|app| menu::build_app_menu(app))
+        .menu(menu::build_app_menu)
         .on_menu_event(|app, event| {
             if event.id().as_ref() == menu::ABOUT_MENU_ID {
                 focus_main_window(app);
