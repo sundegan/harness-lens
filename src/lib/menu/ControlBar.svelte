@@ -104,13 +104,10 @@
 
 <style>
   .control-bar {
-    position: fixed;
-    top: 14px;
-    right: 14px;
-    z-index: 100;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    padding-inline: 8px;
     background: transparent;
     border: none;
     box-shadow: none;

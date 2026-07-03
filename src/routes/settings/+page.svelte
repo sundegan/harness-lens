@@ -5,17 +5,6 @@
   import { i18nManager } from '$lib/i18n.svelte';
   import Select from '$lib/components/Select.svelte';
 
-  const isLinux = () => {
-    try {
-      const ua = navigator.userAgent || '';
-      return /linux|x11/i.test(ua) && !/android/i.test(ua);
-    } catch {
-      return false;
-    }
-  };
-
-  const dragRegionEnabled = !isLinux();
-
   type SettingsTab = 'general' | 'appearance';
 
   let activeTab = $state<SettingsTab>('general');
@@ -58,10 +47,6 @@
 </script>
 
 <main class="settings-container">
-  {#if dragRegionEnabled}
-    <div class="drag-region" aria-hidden="true" data-tauri-drag-region></div>
-  {/if}
-
   <div class="settings-body">
     <!-- Sidebar -->
     <aside class="settings-sidebar">
@@ -285,23 +270,12 @@
 
   .settings-container {
     display: flex;
-    min-height: 100vh;
+    min-height: 100%;
     background: var(--bg-color);
     box-sizing: border-box;
     padding: 32px;
     justify-content: center;
     align-items: center;
-  }
-
-  .drag-region {
-    position: fixed;
-    top: 0;
-    right: 0;
-    left: 0;
-    z-index: 10;
-    height: 28px;
-    user-select: none;
-    -webkit-app-region: drag;
   }
 
   .settings-body {

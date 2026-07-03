@@ -1,52 +1,24 @@
 <script lang="ts">
   import AboutDialog from '$lib/menu/AboutDialog.svelte';
-  import ControlBar from '$lib/menu/ControlBar.svelte';
   import { i18nManager } from '$lib/i18n.svelte';
-
-  const isLinux = () => {
-    try {
-      const ua = navigator.userAgent || '';
-      return /linux|x11/i.test(ua) && !/android/i.test(ua);
-    } catch {
-      return false;
-    }
-  };
-
-  const dragRegionEnabled = !isLinux();
 </script>
 
 <main>
-  {#if dragRegionEnabled}
-    <div class="drag-region" aria-hidden="true" data-tauri-drag-region></div>
-  {/if}
-
   <h1>{i18nManager.t('main.title')}</h1>
   <p>{i18nManager.t('main.desc')}</p>
   <AboutDialog />
-  <ControlBar />
 </main>
 
 <style>
   main {
     display: flex;
     box-sizing: border-box;
-    min-height: 100vh;
+    min-height: 100%;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 32px 32px 96px;
     text-align: center;
-  }
-
-  .drag-region {
-    position: fixed;
-    top: 0;
-    right: 0;
-    left: 0;
-    z-index: 10;
-    height: 28px;
-    user-select: none;
-    -webkit-app-region: drag;
   }
 
   h1 {

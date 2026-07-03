@@ -67,7 +67,6 @@ class ThemeManager {
 
     try {
       const appWindow = getCurrentWindow();
-      await appWindow.setBackgroundColor(dark ? '#0f172a' : '#f7f8f8');
       await appWindow.setTheme(dark ? 'dark' : 'light');
     } catch (err) {
       console.error('Failed to sync native window theme:', err);

@@ -10,18 +10,19 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "",
-        "titleBarStyle": "Overlay",
+        "decorations": false,
+        "transparent": true,
         "width": 1280,
         "height": 800,
         "minWidth": 960,
         "minHeight": 640,
         "center": true,
         "visible": false,
-        "backgroundColor": "#f7f8f8",
         "zoomHotkeysEnabled": false
       }
     ],
