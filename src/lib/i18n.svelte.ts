@@ -63,7 +63,7 @@ const dictionaries = {
     'update.status.error': 'Update failed: {error}',
     'update.status.available_prefix': 'New version ',
     'update.status.available_suffix': ' is available (Current: v{currentVersion})',
-    'update.status.latest': 'Codex Timeline is up to date (Current: v{currentVersion})',
+    'update.status.latest': 'Up to date (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': 'Restart App',
@@ -139,7 +139,7 @@ const dictionaries = {
     'update.status.error': '更新失败: {error}',
     'update.status.available_prefix': '新版本 ',
     'update.status.available_suffix': ' 已可用（当前版本：v{currentVersion}）',
-    'update.status.latest': 'Codex Timeline 已经是最新版本（当前版本：v{currentVersion}）',
+    'update.status.latest': '已是最新版本（v{currentVersion}）',
 
     // Update Action Buttons
     'update.action.restart': '重启应用',
@@ -215,7 +215,7 @@ const dictionaries = {
     'update.status.error': '更新失敗: {error}',
     'update.status.available_prefix': '新版本 ',
     'update.status.available_suffix': ' 已可用（當前版本：v{currentVersion}）',
-    'update.status.latest': 'Codex Timeline 已經是最新版本（當前版本：v{currentVersion}）',
+    'update.status.latest': '已是最新版本（v{currentVersion}）',
 
     // Update Action Buttons
     'update.action.restart': '重啟應用',
@@ -291,7 +291,7 @@ const dictionaries = {
     'update.status.error': 'アップデート失敗: {error}',
     'update.status.available_prefix': '新バージョン ',
     'update.status.available_suffix': ' が利用可能です (現在のバージョン: v{currentVersion})',
-    'update.status.latest': 'Codex Timeline は最新です (現在のバージョン: v{currentVersion})',
+    'update.status.latest': '最新版です (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': 'アプリを再起動',
@@ -367,7 +367,7 @@ const dictionaries = {
     'update.status.error': '업데이트 실패: {error}',
     'update.status.available_prefix': '새로운 버전 ',
     'update.status.available_suffix': '을 사용할 수 있습니다 (현재 버전: v{currentVersion})',
-    'update.status.latest': 'Codex Timeline이 최신 상태입니다 (현재 버전: v{currentVersion})',
+    'update.status.latest': '최신 상태입니다 (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': '앱 재시작',
@@ -443,7 +443,7 @@ const dictionaries = {
     'update.status.error': 'Actualización fallida: {error}',
     'update.status.available_prefix': 'Nueva versión ',
     'update.status.available_suffix': ' disponible (Actual: v{currentVersion})',
-    'update.status.latest': 'Codex Timeline está actualizado (Actual: v{currentVersion})',
+    'update.status.latest': 'Actualizado (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': 'Reiniciar aplicación',
@@ -519,7 +519,7 @@ const dictionaries = {
     'update.status.error': 'Échec de la mise à jour : {error}',
     'update.status.available_prefix': 'Nouvelle version ',
     'update.status.available_suffix': ' disponible (Actuelle : v{currentVersion})',
-    'update.status.latest': 'Codex Timeline est à jour (Actuelle : v{currentVersion})',
+    'update.status.latest': 'À jour (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': "Redémarrer l'application",
@@ -595,7 +595,7 @@ const dictionaries = {
     'update.status.error': 'Update fehlgeschlagen: {error}',
     'update.status.available_prefix': 'Neue Version ',
     'update.status.available_suffix': ' ist verfügbar (Aktuell: v{currentVersion})',
-    'update.status.latest': 'Codex Timeline ist auf dem neuesten Stand (Aktuell: v{currentVersion})',
+    'update.status.latest': 'Aktuell (v{currentVersion})',
 
     // Update Action Buttons
     'update.action.restart': 'App neu starten',

@@ -8,6 +8,7 @@ test('tauri updater plugin is configured in cargo, config and capability files',
   );
   const cargoToml = readFileSync(new URL('../src-tauri/Cargo.toml', import.meta.url), 'utf8');
   const libRs = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  const commandsRs = readFileSync(new URL('../src-tauri/src/commands.rs', import.meta.url), 'utf8');
   const tauriConfig = JSON.parse(
     readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8')
   );
@@ -18,7 +19,7 @@ test('tauri updater plugin is configured in cargo, config and capability files',
   assert.equal(packageJson.dependencies['@tauri-apps/plugin-updater'], '2.9.0');
   assert.match(cargoToml, /tauri-plugin-updater\s*=\s*"=2\.9\.0"/);
   assert.match(libRs, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
-  assert.match(libRs, /restart_app/);
+  assert.match(commandsRs, /restart_app/);
   assert.equal(tauriConfig.bundle.createUpdaterArtifacts, true);
   assert.ok(defaultCapability.permissions.includes('updater:default'));
 });

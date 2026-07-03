@@ -32,6 +32,9 @@
       void goto('/settings');
       void appUpdateManager.checkForUpdates();
     });
+    const unlistenSettings = listen('open-settings', () => {
+      void goto('/settings');
+    });
 
     // Prevent default browser context menu globally to eliminate web feeling
     const handleContextMenu = (e: MouseEvent) => {
@@ -73,6 +76,7 @@
       document.removeEventListener('gesturestart', handleGesture);
       document.removeEventListener('gesturechange', handleGesture);
       void unlistenUpdate.then((dispose) => dispose());
+      void unlistenSettings.then((dispose) => dispose());
       for (const unlisten of unlisteners) unlisten();
     };
   });

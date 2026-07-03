@@ -12,6 +12,7 @@ type AppUpdate = {
 
 const AUTO_CHECK_DELAY_MS = 1200;
 const AUTO_CHECK_UPDATES_KEY = 'codex-timeline:auto-check-updates';
+const DEFAULT_AUTO_CHECK_UPDATES = true;
 
 function isMockAppUpdateEnabled() {
   // @ts-ignore
@@ -43,7 +44,8 @@ class AppUpdateManager {
     }
 
     this.#initialized = true;
-    this.autoCheckUpdates = localStorage.getItem(AUTO_CHECK_UPDATES_KEY) !== 'false';
+    this.autoCheckUpdates =
+      (localStorage.getItem(AUTO_CHECK_UPDATES_KEY) ?? String(DEFAULT_AUTO_CHECK_UPDATES)) !== 'false';
 
     try {
       this.currentVersion = await getVersion();
