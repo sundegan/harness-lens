@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { listen } from '@tauri-apps/api/event';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
   import TitleBar from '$lib/menu/TitleBar.svelte';
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
@@ -15,26 +13,39 @@
   });
 
   onMount(() => {
-    const appWindow = getCurrentWindow();
     const unlisteners: Array<() => void> = [];
 
     void appUpdateManager.init();
-    void appWindow.isFocused().then((focused) => {
-      isWindowInactive = !focused;
-    });
-    void appWindow.onFocusChanged(({ payload: focused }) => {
-      isWindowInactive = !focused;
-    }).then((unlisten) => {
-      unlisteners.push(unlisten);
-    });
 
-    const unlistenUpdate = listen('check-for-updates', () => {
-      void goto('/settings');
-      void appUpdateManager.checkForUpdates();
-    });
-    const unlistenSettings = listen('open-settings', () => {
-      void goto('/settings');
-    });
+    void (async () => {
+      if (import.meta.env.VITE_WDIO_TAURI === '1') {
+        await import('@wdio/tauri-plugin');
+      }
+
+      const { isTauri } = await import('@tauri-apps/api/core');
+      if (!isTauri()) return;
+
+      const { listen } = await import('@tauri-apps/api/event');
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const appWindow = getCurrentWindow();
+
+      isWindowInactive = !(await appWindow.isFocused());
+      const unlistenFocus = await appWindow.onFocusChanged(({ payload: focused }) => {
+        isWindowInactive = !focused;
+      });
+      unlisteners.push(unlistenFocus);
+
+      const unlistenUpdate = await listen('check-for-updates', () => {
+        void goto('/settings');
+        void appUpdateManager.checkForUpdates();
+      });
+      unlisteners.push(unlistenUpdate);
+
+      const unlistenSettings = await listen('open-settings', () => {
+        void goto('/settings');
+      });
+      unlisteners.push(unlistenSettings);
+    })();
 
     // Prevent default browser context menu globally to eliminate web feeling
     const handleContextMenu = (e: MouseEvent) => {
@@ -75,8 +86,6 @@
       document.removeEventListener('keydown', handleKeydown);
       document.removeEventListener('gesturestart', handleGesture);
       document.removeEventListener('gesturechange', handleGesture);
-      void unlistenUpdate.then((dispose) => dispose());
-      void unlistenSettings.then((dispose) => dispose());
       for (const unlisten of unlisteners) unlisten();
     };
   });

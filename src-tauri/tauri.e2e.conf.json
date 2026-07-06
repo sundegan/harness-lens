@@ -1,0 +1,8 @@
+{
+  "build": {
+    "beforeBuildCommand": "VITE_WDIO_TAURI=1 VITE_MOCK_APP_UPDATE=1 pnpm build"
+  },
+  "app": {
+    "withGlobalTauri": true
+  }
+}

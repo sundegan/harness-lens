@@ -17,6 +17,7 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-is-always-on-top",
     "opener:default",
-    "updater:default"
+    "updater:default",
+    "wdio:default"
   ]
 }

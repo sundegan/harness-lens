@@ -1,13 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import ControlBar from '$lib/menu/ControlBar.svelte';
 
   type TitlebarPlatform = 'macos' | 'windows' | 'linux';
 
-  const appWindow = getCurrentWindow();
-
+  let appWindow: TauriWindow | null = null;
   let platform = $state<TitlebarPlatform>('macos');
   let isWindowExpanded = $state(false);
 
@@ -18,18 +16,20 @@
   };
 
   const closeWindow = () => {
-    void appWindow.close();
+    void appWindow?.close();
   };
 
   const minimizeWindow = () => {
-    void appWindow.minimize();
+    void appWindow?.minimize();
   };
 
   const updateWindowState = async () => {
+    if (!appWindow) return;
     isWindowExpanded = (await appWindow.isFullscreen()) || (await appWindow.isMaximized());
   };
 
   const toggleMaximizeWindow = async () => {
+    if (!appWindow) return;
     await appWindow.toggleMaximize();
     await updateWindowState();
   };
@@ -37,21 +37,28 @@
   onMount(() => {
     const unlisteners: Array<() => void> = [];
 
-    void invoke<string>('desktop_platform')
-      .then((value) => {
+    void (async () => {
+      const { invoke, isTauri } = await import('@tauri-apps/api/core');
+
+      try {
+        const value = await invoke<string>('desktop_platform');
         platform = normalizePlatform(value);
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Failed to detect desktop platform:', err);
+      }
+
+      if (!isTauri()) return;
+
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      appWindow = getCurrentWindow();
+
+      await updateWindowState();
+
+      const unlisten = await appWindow.onResized(() => {
+        void updateWindowState();
       });
-
-    void updateWindowState();
-
-    void appWindow.onResized(() => {
-      void updateWindowState();
-    }).then((unlisten) => {
       unlisteners.push(unlisten);
-    });
+    })();
 
     return () => {
       for (const unlisten of unlisteners) unlisten();

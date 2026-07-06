@@ -16,7 +16,9 @@ const DEFAULT_AUTO_CHECK_UPDATES = true;
 
 function isMockAppUpdateEnabled() {
   // @ts-ignore
-  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return false;
+  // @ts-ignore
+  if (!import.meta.env.DEV && import.meta.env.VITE_WDIO_TAURI !== '1') return false;
   // @ts-ignore
   if (import.meta.env.VITE_MOCK_APP_UPDATE === '1') return true;
 

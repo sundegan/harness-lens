@@ -8,7 +8,7 @@ help:
 	@echo "  make dev-mock-update - Run the Tauri desktop app with mock update enabled"
 	@echo "  make build    - Build the Tauri desktop app"
 	@echo "  make check    - Type check frontend and Rust backend"
-	@echo "  make test     - Run Rust tests"
+	@echo "  make test     - Run end-to-end and Rust tests"
 	@echo "  make fmt      - Format frontend and Rust code"
 	@echo "  make lint     - Run Rust clippy and frontend type check"
 	@echo "  make clean    - Remove build artifacts"
