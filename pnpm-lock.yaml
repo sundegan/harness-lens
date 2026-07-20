@@ -23,13 +23,13 @@ importers:
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.6
-        version: 3.0.10(@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))
+        version: 3.0.10(@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))
       '@sveltejs/kit':
         specifier: ^2.9.0
-        version: 2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+        version: 2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
       '@sveltejs/vite-plugin-svelte':
         specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+        version: 5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
       '@tauri-apps/cli':
         specifier: 2.10.1
         version: 2.10.1
@@ -56,7 +56,7 @@ importers:
         version: 1.2.0(tsx@4.22.5)
       '@wdio/tauri-service':
         specifier: ^1.2.0
-        version: 1.2.0(expect-webdriverio@5.7.0)(tsx@4.22.5)(webdriverio@9.29.1)
+        version: 1.2.0(expect-webdriverio@5.7.0)(supports-color@8.1.1)(tsx@4.22.5)(webdriverio@9.29.1)
       svelte:
         specifier: ^5.0.0
         version: 5.56.3
@@ -3075,15 +3075,15 @@ snapshots:
     dependencies:
       acorn: 8.17.0
 
-  '@sveltejs/adapter-static@3.0.10(@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))':
+  '@sveltejs/adapter-static@3.0.10(@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))':
     dependencies:
-      '@sveltejs/kit': 2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+      '@sveltejs/kit': 2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
 
-  '@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
+  '@sveltejs/kit@2.66.0(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(typescript@5.6.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@sveltejs/acorn-typescript': 1.0.10(acorn@8.17.0)
-      '@sveltejs/vite-plugin-svelte': 5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte': 5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
       '@types/cookie': 0.6.0
       acorn: 8.17.0
       cookie: 0.6.0
@@ -3101,18 +3101,18 @@ snapshots:
 
   '@sveltejs/load-config@0.1.1': {}
 
-  '@sveltejs/vite-plugin-svelte-inspector@4.0.1(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
+  '@sveltejs/vite-plugin-svelte-inspector@4.0.1(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte': 5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte': 5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
       debug: 4.4.3(supports-color@8.1.1)
       svelte: 5.56.3
       vite: 6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
-  '@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
+  '@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte-inspector': 4.0.1(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte-inspector': 4.0.1(@sveltejs/vite-plugin-svelte@5.1.1(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0)))(supports-color@8.1.1)(svelte@5.56.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
       debug: 4.4.3(supports-color@8.1.1)
       deepmerge: 4.3.1
       kleur: 4.1.5
@@ -3376,7 +3376,7 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@wdio/native-core@1.0.0(tsx@4.22.5)':
+  '@wdio/native-core@1.0.0(supports-color@8.1.1)(tsx@4.22.5)':
     dependencies:
       '@wdio/logger': 9.18.0
       '@wdio/native-types': 2.3.1
@@ -3477,11 +3477,11 @@ snapshots:
       - supports-color
       - tsx
 
-  '@wdio/tauri-service@1.2.0(expect-webdriverio@5.7.0)(tsx@4.22.5)(webdriverio@9.29.1)':
+  '@wdio/tauri-service@1.2.0(expect-webdriverio@5.7.0)(supports-color@8.1.1)(tsx@4.22.5)(webdriverio@9.29.1)':
     dependencies:
       '@wdio/globals': 9.27.1(expect-webdriverio@5.7.0)(webdriverio@9.29.1)
       '@wdio/logger': 9.18.0
-      '@wdio/native-core': 1.0.0(tsx@4.22.5)
+      '@wdio/native-core': 1.0.0(supports-color@8.1.1)(tsx@4.22.5)
       '@wdio/native-spy': 1.1.0
       '@wdio/native-types': 2.4.0
       '@wdio/native-utils': 2.5.0(tsx@4.22.5)
