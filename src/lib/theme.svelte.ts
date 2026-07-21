@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -66,8 +66,7 @@ class ThemeManager {
     document.documentElement.classList.toggle('light', !dark);
 
     try {
-      const appWindow = getCurrentWindow();
-      await appWindow.setTheme(dark ? 'dark' : 'light');
+      await invoke('set_window_theme', { isDark: dark });
     } catch (err) {
       console.error('Failed to sync native window theme:', err);
     }

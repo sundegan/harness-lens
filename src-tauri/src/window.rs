@@ -12,6 +12,18 @@ const MIN_WINDOW_LOGICAL_WIDTH: u32 = 960;
 const MIN_WINDOW_LOGICAL_HEIGHT: u32 = 640;
 const RESTORED_WINDOW_MAX_SCREEN_RATIO: f64 = 0.9;
 
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+    NSColor, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+};
+
+#[cfg(target_os = "macos")]
+const NATIVE_TRAFFIC_LIGHT_X: f64 = 12.0;
+
+#[cfg(target_os = "macos")]
+const NATIVE_TRAFFIC_LIGHT_TOP_INSET: f64 = 19.0;
+
 pub fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -22,6 +34,121 @@ pub fn focus_main_window(app: &tauri::AppHandle) {
         {
             linux_fix::nudge_main_window(window);
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn apply_macos_native_titlebar(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Ok(ns_window) = window.ns_window() {
+            unsafe { configure_macos_native_titlebar(ns_window) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn apply_macos_window_theme(
+    window: &tauri::WebviewWindow,
+    is_dark: bool,
+) -> Result<(), String> {
+    let ns_window = window.ns_window().map_err(|error| error.to_string())?;
+
+    unsafe {
+        let ns_window_ref = &*ns_window.cast::<NSWindow>();
+        let appearance_name = if is_dark {
+            &NSAppearanceNameDarkAqua
+        } else {
+            &NSAppearanceNameAqua
+        };
+
+        if let Some(appearance) = NSAppearance::appearanceNamed(appearance_name) {
+            ns_window_ref.setAppearance(Some(&appearance));
+        }
+
+        configure_macos_native_titlebar(ns_window);
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn reposition_macos_native_traffic_lights(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Ok(ns_window) = window.ns_window() {
+            unsafe {
+                position_macos_native_traffic_lights(&*ns_window.cast::<NSWindow>());
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn configure_macos_native_titlebar(ns_window: *mut std::ffi::c_void) {
+    let ns_window = &*ns_window.cast::<NSWindow>();
+    let current_style_mask = ns_window.styleMask();
+    let required_style_mask = NSWindowStyleMask::Titled
+        | NSWindowStyleMask::Closable
+        | NSWindowStyleMask::Miniaturizable
+        | NSWindowStyleMask::Resizable
+        | NSWindowStyleMask::FullSizeContentView;
+    let style_mask = current_style_mask | required_style_mask;
+
+    if style_mask != current_style_mask {
+        ns_window.setStyleMask(style_mask);
+    }
+
+    ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+    ns_window.setTitlebarAppearsTransparent(true);
+    ns_window.setOpaque(false);
+    let clear_color = NSColor::clearColor();
+    ns_window.setBackgroundColor(Some(&clear_color));
+
+    for button_kind in [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ] {
+        if let Some(button) = ns_window.standardWindowButton(button_kind) {
+            button.setHidden(false);
+        }
+    }
+
+    position_macos_native_traffic_lights(ns_window);
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn position_macos_native_traffic_lights(ns_window: &NSWindow) {
+    let Some(close_button) = ns_window.standardWindowButton(NSWindowButton::CloseButton) else {
+        return;
+    };
+    let Some(minimize_button) = ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton)
+    else {
+        return;
+    };
+    let Some(zoom_button) = ns_window.standardWindowButton(NSWindowButton::ZoomButton) else {
+        return;
+    };
+    let Some(button_superview) = close_button.superview() else {
+        return;
+    };
+    let Some(titlebar_container) = button_superview.superview() else {
+        return;
+    };
+
+    let close_frame = close_button.frame();
+    let mut titlebar_frame = titlebar_container.frame();
+    titlebar_frame.size.height = close_frame.size.height + NATIVE_TRAFFIC_LIGHT_TOP_INSET;
+    titlebar_frame.origin.y = ns_window.frame().size.height - titlebar_frame.size.height;
+    titlebar_container.setFrame(titlebar_frame);
+
+    let button_gap = minimize_button.frame().origin.x - close_frame.origin.x;
+    for (index, button) in [close_button, minimize_button, zoom_button]
+        .into_iter()
+        .enumerate()
+    {
+        let mut frame = button.frame();
+        frame.origin.x = NATIVE_TRAFFIC_LIGHT_X + index as f64 * button_gap;
+        button.setFrameOrigin(frame.origin);
     }
 }
 

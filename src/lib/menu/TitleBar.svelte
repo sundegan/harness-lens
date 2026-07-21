@@ -24,7 +24,7 @@
   };
 
   const updateWindowState = async () => {
-    if (!appWindow) return;
+    if (!appWindow || platform === 'macos') return;
     isWindowExpanded = (await appWindow.isFullscreen()) || (await appWindow.isMaximized());
   };
 
@@ -52,6 +52,8 @@
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       appWindow = getCurrentWindow();
 
+      if (platform === 'macos') return;
+
       await updateWindowState();
 
       const unlisten = await appWindow.onResized(() => {
@@ -67,20 +69,7 @@
 </script>
 
 <header class={`titlebar titlebar-${platform}`} data-tauri-drag-region>
-  <div class="titlebar-left" data-tauri-drag-region>
-    {#if platform === 'macos'}
-      <div class="window-controls macos" aria-label="Window controls">
-        <button class="traffic close" type="button" aria-label="Close" onclick={closeWindow}></button>
-        <button class="traffic minimize" type="button" aria-label="Minimize" onclick={minimizeWindow}></button>
-        <button
-          class={`traffic maximize ${isWindowExpanded ? 'is-expanded' : ''}`}
-          type="button"
-          aria-label={isWindowExpanded ? 'Restore' : 'Maximize'}
-          onclick={toggleMaximizeWindow}
-        ></button>
-      </div>
-    {/if}
-  </div>
+  <div class="titlebar-left" data-tauri-drag-region></div>
 
   <div class="titlebar-center" data-tauri-drag-region></div>
 
@@ -109,6 +98,7 @@
     grid-template-columns: minmax(120px, 1fr) minmax(0, 1fr) minmax(120px, 1fr);
     height: var(--titlebar-height);
     flex: 0 0 var(--titlebar-height);
+    box-sizing: border-box;
     user-select: none;
     color: var(--text-color);
     background: var(--titlebar-bg);
@@ -118,6 +108,7 @@
 
   .titlebar-macos {
     --titlebar-height: 38px;
+    padding-left: 76px;
   }
 
   .titlebar-left,
@@ -143,93 +134,6 @@
   .window-controls,
   .window-controls button {
     -webkit-app-region: no-drag;
-  }
-
-  .window-controls.macos {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding-left: 12px;
-    padding-right: 10px;
-  }
-
-  .traffic {
-    position: relative;
-    width: 12px;
-    height: 12px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 14%);
-  }
-
-  .traffic.close {
-    background: #ff5f57;
-  }
-
-  .traffic.minimize {
-    background: #ffbd2e;
-  }
-
-  .traffic.maximize {
-    background: #28c840;
-  }
-
-  .traffic::before,
-  .traffic::after {
-    position: absolute;
-    display: block;
-    content: "";
-    background: rgb(0 0 0 / 58%);
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .window-controls.macos:hover .traffic::before,
-  .window-controls.macos:hover .traffic::after {
-    opacity: 1;
-  }
-
-  .traffic.close::before,
-  .traffic.close::after {
-    top: 50%;
-    left: 50%;
-    width: 6.5px;
-    height: 1.3px;
-    border-radius: 999px;
-  }
-
-  .traffic.close::before {
-    transform: translate(-50%, -50%) rotate(45deg);
-  }
-
-  .traffic.close::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-  }
-
-  .traffic.minimize::before {
-    top: 50%;
-    left: 50%;
-    width: 7.5px;
-    height: 1.5px;
-    border-radius: 999px;
-    transform: translate(-50%, -50%);
-  }
-
-  .traffic.maximize::before {
-    inset: 2px;
-    background: rgb(0 0 0 / 58%);
-    -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 8 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 1.7H1.7v1.8M1.7 1.7l2 2M4.5 6.3h1.8V4.5M6.3 6.3l-2-2' fill='none' stroke='black' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
-    mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 8 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 1.7H1.7v1.8M1.7 1.7l2 2M4.5 6.3h1.8V4.5M6.3 6.3l-2-2' fill='none' stroke='black' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
-  }
-
-  .traffic.maximize::after {
-    display: none;
-  }
-
-  .traffic.maximize.is-expanded::before {
-    -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 8 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1.7 1.7l2 2M3.7 2.1v1.6H2.1M6.3 6.3l-2-2M4.3 5.9V4.3h1.6' fill='none' stroke='black' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 8 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1.7 1.7l2 2M3.7 2.1v1.6H2.1M6.3 6.3l-2-2M4.3 5.9V4.3h1.6' fill='none' stroke='black' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .window-controls.desktop {
@@ -270,9 +174,9 @@
   .caption.maximize::before {
     width: 10px;
     height: 10px;
+    box-sizing: border-box;
     background: transparent;
     border: 1px solid currentColor;
-    box-sizing: border-box;
   }
 
   .caption.maximize.is-expanded::before {

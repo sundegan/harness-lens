@@ -4,6 +4,26 @@ pub fn restart_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+pub fn set_window_theme(window: tauri::WebviewWindow, is_dark: bool) -> Result<(), String> {
+    let theme = if is_dark {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    };
+    window
+        .set_theme(Some(theme))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_background_color(Some(tauri::window::Color(0, 0, 0, 0)))
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    crate::window::apply_macos_window_theme(&window, is_dark)?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn desktop_platform() -> &'static str {
     std::env::consts::OS
 }

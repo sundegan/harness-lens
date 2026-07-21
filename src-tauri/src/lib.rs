@@ -27,11 +27,12 @@ pub fn run() {
     #[cfg(not(feature = "e2e"))]
     let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
-    builder
+    let app = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::restart_app,
+            commands::set_window_theme,
             commands::desktop_platform
         ])
         .setup(|app| {
@@ -39,8 +40,25 @@ pub fn run() {
             window::schedule_main_window_bounds_clamp(app_handle);
             #[cfg(not(feature = "e2e"))]
             window::focus_main_window(app_handle);
+            #[cfg(target_os = "macos")]
+            window::apply_macos_native_titlebar(app_handle);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Codex Timeline");
+        .build(tauri::generate_context!())
+        .expect("error while building Codex Timeline");
+
+    app.run(move |app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::WindowEvent { label, event, .. } = event {
+            if label == "main" {
+                match event {
+                    tauri::WindowEvent::Resized(_)
+                    | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                        window::reposition_macos_native_traffic_lights(app_handle);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
 }

@@ -205,10 +205,6 @@
     --titlebar-border: rgb(255 255 255 / 7%);
   }
 
-  .macos-window-frame.is-inactive :global(.traffic) {
-    opacity: 0.55;
-  }
-
   .content-region {
     flex: 1 1 auto;
     min-height: 0;
