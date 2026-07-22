@@ -47,18 +47,5 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Codex Timeline");
 
-    app.run(move |app_handle, event| {
-        #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::WindowEvent { label, event, .. } = event {
-            if label == "main" {
-                match event {
-                    tauri::WindowEvent::Resized(_)
-                    | tauri::WindowEvent::ScaleFactorChanged { .. } => {
-                        window::reposition_macos_native_traffic_lights(app_handle);
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
+    app.run(|_, _| {});
 }

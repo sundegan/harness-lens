@@ -17,6 +17,10 @@
         "title": "",
         "decorations": false,
         "transparent": true,
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 19
+        },
         "width": 1280,
         "height": 800,
         "minWidth": 960,

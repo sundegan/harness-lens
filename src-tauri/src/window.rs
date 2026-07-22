@@ -2,6 +2,9 @@ use std::time::Duration;
 
 use tauri::{LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicU64, Ordering};
+
 #[cfg(target_os = "linux")]
 use crate::linux_fix;
 
@@ -19,10 +22,10 @@ use objc2_app_kit::{
 };
 
 #[cfg(target_os = "macos")]
-const NATIVE_TRAFFIC_LIGHT_X: f64 = 12.0;
+use dispatch2::DispatchQueue;
 
 #[cfg(target_os = "macos")]
-const NATIVE_TRAFFIC_LIGHT_TOP_INSET: f64 = 19.0;
+static MACOS_THEME_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -41,7 +44,11 @@ pub fn focus_main_window(app: &tauri::AppHandle) {
 pub fn apply_macos_native_titlebar(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if let Ok(ns_window) = window.ns_window() {
-            unsafe { configure_macos_native_titlebar(ns_window) };
+            unsafe {
+                let ns_window = &*ns_window.cast::<NSWindow>();
+                configure_macos_native_titlebar(ns_window);
+                layout_macos_titlebar(ns_window);
+            };
         }
     }
 }
@@ -51,40 +58,66 @@ pub fn apply_macos_window_theme(
     window: &tauri::WebviewWindow,
     is_dark: bool,
 ) -> Result<(), String> {
-    let ns_window = window.ns_window().map_err(|error| error.to_string())?;
+    let generation = MACOS_THEME_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
+    let app_handle = window.app_handle().clone();
+    let window_label = window.label().to_owned();
 
-    unsafe {
-        let ns_window_ref = &*ns_window.cast::<NSWindow>();
-        let appearance_name = if is_dark {
-            &NSAppearanceNameDarkAqua
-        } else {
-            &NSAppearanceNameAqua
-        };
-
-        if let Some(appearance) = NSAppearance::appearanceNamed(appearance_name) {
-            ns_window_ref.setAppearance(Some(&appearance));
-        }
-
-        configure_macos_native_titlebar(ns_window);
-    }
-
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-pub fn reposition_macos_native_traffic_lights(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        if let Ok(ns_window) = window.ns_window() {
-            unsafe {
-                position_macos_native_traffic_lights(&*ns_window.cast::<NSWindow>());
+    window
+        .run_on_main_thread(move || {
+            if MACOS_THEME_GENERATION.load(Ordering::Acquire) != generation {
+                return;
             }
-        }
-    }
+
+            let Some(window) = app_handle.get_webview_window(&window_label) else {
+                return;
+            };
+            let Ok(ns_window) = window.ns_window() else {
+                return;
+            };
+
+            unsafe {
+                let ns_window = &*ns_window.cast::<NSWindow>();
+                let appearance_name = if is_dark {
+                    &NSAppearanceNameDarkAqua
+                } else {
+                    &NSAppearanceNameAqua
+                };
+
+                if let Some(appearance) = NSAppearance::appearanceNamed(appearance_name) {
+                    ns_window.setAppearance(Some(&appearance));
+                }
+
+                configure_macos_native_titlebar(ns_window);
+                layout_macos_titlebar(ns_window);
+            }
+
+            // setAppearance can schedule a later AppKit titlebar layout. Keep the
+            // second pass outside live-resize handling so AppKit owns that path.
+            let follow_up_app = app_handle.clone();
+            let follow_up_label = window_label.clone();
+            DispatchQueue::main().exec_async(move || {
+                if MACOS_THEME_GENERATION.load(Ordering::Acquire) != generation {
+                    return;
+                }
+
+                let Some(window) = follow_up_app.get_webview_window(&follow_up_label) else {
+                    return;
+                };
+                let Ok(ns_window) = window.ns_window() else {
+                    return;
+                };
+
+                unsafe {
+                    let ns_window = &*ns_window.cast::<NSWindow>();
+                    layout_macos_titlebar(ns_window);
+                }
+            });
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn configure_macos_native_titlebar(ns_window: *mut std::ffi::c_void) {
-    let ns_window = &*ns_window.cast::<NSWindow>();
+unsafe fn configure_macos_native_titlebar(ns_window: &NSWindow) {
     let current_style_mask = ns_window.styleMask();
     let required_style_mask = NSWindowStyleMask::Titled
         | NSWindowStyleMask::Closable
@@ -112,43 +145,12 @@ unsafe fn configure_macos_native_titlebar(ns_window: *mut std::ffi::c_void) {
             button.setHidden(false);
         }
     }
-
-    position_macos_native_traffic_lights(ns_window);
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn position_macos_native_traffic_lights(ns_window: &NSWindow) {
-    let Some(close_button) = ns_window.standardWindowButton(NSWindowButton::CloseButton) else {
-        return;
-    };
-    let Some(minimize_button) = ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton)
-    else {
-        return;
-    };
-    let Some(zoom_button) = ns_window.standardWindowButton(NSWindowButton::ZoomButton) else {
-        return;
-    };
-    let Some(button_superview) = close_button.superview() else {
-        return;
-    };
-    let Some(titlebar_container) = button_superview.superview() else {
-        return;
-    };
-
-    let close_frame = close_button.frame();
-    let mut titlebar_frame = titlebar_container.frame();
-    titlebar_frame.size.height = close_frame.size.height + NATIVE_TRAFFIC_LIGHT_TOP_INSET;
-    titlebar_frame.origin.y = ns_window.frame().size.height - titlebar_frame.size.height;
-    titlebar_container.setFrame(titlebar_frame);
-
-    let button_gap = minimize_button.frame().origin.x - close_frame.origin.x;
-    for (index, button) in [close_button, minimize_button, zoom_button]
-        .into_iter()
-        .enumerate()
-    {
-        let mut frame = button.frame();
-        frame.origin.x = NATIVE_TRAFFIC_LIGHT_X + index as f64 * button_gap;
-        button.setFrameOrigin(frame.origin);
+unsafe fn layout_macos_titlebar(ns_window: &NSWindow) {
+    if let Some(content_view) = ns_window.contentView() {
+        content_view.layoutSubtreeIfNeeded();
     }
 }
 
