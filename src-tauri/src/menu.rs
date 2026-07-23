@@ -13,7 +13,7 @@ pub fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>>
     let about_item = MenuItem::with_id(
         app,
         ABOUT_MENU_ID,
-        "About Codex Timeline",
+        "About HarnessLens",
         true,
         None::<&str>,
     )?;
@@ -34,14 +34,14 @@ pub fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>>
         Some("CmdOrCtrl+,"),
     )?;
 
-    let app_menu = SubmenuBuilder::new(app, "Codex Timeline")
+    let app_menu = SubmenuBuilder::new(app, "HarnessLens")
         .item(&about_item)
         .item(&settings_item)
         .item(&check_updates_item)
         .separator()
-        .hide_with_text("Hide Codex Timeline")
+        .hide_with_text("Hide HarnessLens")
         .separator()
-        .quit_with_text("Quit Codex Timeline")
+        .quit_with_text("Quit HarnessLens")
         .build()?;
 
     MenuBuilder::new(app).item(&app_menu).build()

@@ -534,24 +534,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-timeline"
-version = "0.1.0"
-dependencies = [
- "dispatch2",
- "objc2-app-kit",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tauri-plugin-wdio",
- "tauri-plugin-wdio-webdriver",
- "tauri-plugin-window-state",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1606,6 +1588,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "harness-lens"
+version = "0.1.0"
+dependencies = [
+ "dispatch2",
+ "objc2-app-kit",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tauri-plugin-wdio",
+ "tauri-plugin-wdio-webdriver",
+ "tauri-plugin-window-state",
 ]
 
 [[package]]

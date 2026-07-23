@@ -3,21 +3,21 @@ export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | '
 const dictionaries = {
   en: {
     // Shared / Navigation
-    'nav.back': 'Back to Timeline',
+    'nav.back': 'Back to Analytics',
     'nav.general': 'General',
     'nav.appearance': 'Appearance',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': 'Local-first desktop tool for inspecting Codex agent runs.',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens analyzes the effectiveness of AI coding harness usage, providing clear data to guide harness improvements.',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': 'View Codex agent execution timelines.',
+    'about.title': 'HarnessLens',
+    'about.desc': 'Measure and improve AI coding workflows.',
     'about.version': 'Version',
     'about.unknown': 'Unknown',
     'about.star': 'Star on GitHub',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Close',
 
     // Control Bar
@@ -79,21 +79,21 @@ const dictionaries = {
   },
   zh: {
     // Shared / Navigation
-    'nav.back': '返回时间线',
+    'nav.back': '返回分析面板',
     'nav.general': '通用设置',
     'nav.appearance': '外观设置',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': '用于检查 Codex 智能体运行的本地优先桌面工具。',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens是AI Coding Harness的使用效能分析工具，为Harness改进提供直观的数据依据。',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': '查看 Codex 智能体执行时间线。',
+    'about.title': 'HarnessLens',
+    'about.desc': '度量并改进 AI Coding 工作流。',
     'about.version': '版本',
     'about.unknown': '未知',
     'about.star': '去 GitHub 点赞',
-    'about.copyright': '版权所有 © 2026 Codex Timeline',
+    'about.copyright': '版权所有 © 2026 HarnessLens',
     'about.close': '关闭',
 
     // Control Bar
@@ -155,21 +155,21 @@ const dictionaries = {
   },
   zh_tw: {
     // Shared / Navigation
-    'nav.back': '返回時間線',
+    'nav.back': '返回分析面板',
     'nav.general': '通用設定',
     'nav.appearance': '外觀設定',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': '用於檢查 Codex 智能體執行的本地優先桌面工具。',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens是AI Coding Harness的使用效能分析工具，為Harness改進提供直觀的數據依據。',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': '檢視 Codex 智能體執行時間線。',
+    'about.title': 'HarnessLens',
+    'about.desc': '度量並改進 AI Coding 工作流。',
     'about.version': '版本',
     'about.unknown': '未知',
     'about.star': '去 GitHub 點贊',
-    'about.copyright': '版權所有 © 2026 Codex Timeline',
+    'about.copyright': '版權所有 © 2026 HarnessLens',
     'about.close': '關閉',
 
     // Control Bar
@@ -231,21 +231,21 @@ const dictionaries = {
   },
   ja: {
     // Shared / Navigation
-    'nav.back': 'タイムラインに戻る',
+    'nav.back': '分析に戻る',
     'nav.general': '一般設定',
     'nav.appearance': '外観設定',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': 'Codex エージェントの実行ログを検査するローカルファーストのデスクトップツール。',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLensはAI Coding Harnessの利用効率を分析し、Harness改善のための分かりやすいデータ根拠を提供するツールです。',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': 'Codex エージェントの実行タイムラインを表示します。',
+    'about.title': 'HarnessLens',
+    'about.desc': 'AI Coding ワークフローを測定し、改善します。',
     'about.version': 'バージョン',
     'about.unknown': '不明',
     'about.star': 'GitHub でスター',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': '閉じる',
 
     // Control Bar
@@ -307,21 +307,21 @@ const dictionaries = {
   },
   ko: {
     // Shared / Navigation
-    'nav.back': '타임라인으로 돌아가기',
+    'nav.back': '분석으로 돌아가기',
     'nav.general': '일반 설정',
     'nav.appearance': '화면 설정',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': 'Codex 에이전트 실행을 검사하는 로컬 우선 데스크톱 도구.',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens는 AI 코딩 하니스의 사용 효율을 분석하고 하니스 개선을 위한 직관적인 데이터 근거를 제공하는 도구입니다.',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': 'Codex 에이전트 실행 타임라인을 확인합니다.',
+    'about.title': 'HarnessLens',
+    'about.desc': 'AI 코딩 워크플로를 측정하고 개선합니다.',
     'about.version': '버전',
     'about.unknown': '알 수 없음',
     'about.star': 'GitHub 스타하기',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': '닫기',
 
     // Control Bar
@@ -383,21 +383,21 @@ const dictionaries = {
   },
   es: {
     // Shared / Navigation
-    'nav.back': 'Volver a la línea de tiempo',
+    'nav.back': 'Volver a análisis',
     'nav.general': 'General',
     'nav.appearance': 'Apariencia',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': 'Herramienta de escritorio local-first para inspeccionar ejecuciones de agentes Codex.',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens es una herramienta de análisis de la eficacia de uso de los harnesses de programación con IA que aporta datos claros para mejorarlos.',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': 'Ver líneas de tiempo de ejecución de agentes Codex.',
+    'about.title': 'HarnessLens',
+    'about.desc': 'Mide y mejora los flujos de trabajo de coding con IA.',
     'about.version': 'Versión',
     'about.unknown': 'Desconocido',
     'about.star': 'Destacar en GitHub',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Cerrar',
 
     // Control Bar
@@ -459,21 +459,21 @@ const dictionaries = {
   },
   fr: {
     // Shared / Navigation
-    'nav.back': 'Retour à la chronologie',
+    'nav.back': 'Retour aux analyses',
     'nav.general': 'Général',
     'nav.appearance': 'Apparence',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': "Outil de bureau local-first pour inspecter les exécutions d'agents Codex.",
+    'main.title': 'HarnessLens',
+    'main.desc': "HarnessLens est un outil d'analyse de l'efficacité d'utilisation des harnesses de coding assisté par IA, fournissant des données claires pour les améliorer.",
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': "Afficher la chronologie d'exécution des agents Codex.",
+    'about.title': 'HarnessLens',
+    'about.desc': "Mesurez et améliorez les workflows de coding assisté par IA.",
     'about.version': 'Version',
     'about.unknown': 'Inconnu',
     'about.star': 'Ajouter une étoile sur GitHub',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Fermer',
 
     // Control Bar
@@ -535,21 +535,21 @@ const dictionaries = {
   },
   de: {
     // Shared / Navigation
-    'nav.back': 'Zurück zur Timeline',
+    'nav.back': 'Zurück zu Analytics',
     'nav.general': 'Allgemein',
     'nav.appearance': 'Aussehen',
 
     // Main Page
-    'main.title': 'Codex Timeline',
-    'main.desc': 'Lokales Desktop-Tool zur Inspektion von Codex-Agentenläufen.',
+    'main.title': 'HarnessLens',
+    'main.desc': 'HarnessLens ist ein Werkzeug zur Analyse der Nutzungseffizienz von AI-Coding-Harnesses und liefert anschauliche Daten für deren Verbesserung.',
 
     // About Dialog
-    'about.title': 'Codex Timeline',
-    'about.desc': 'Codex-Agenten-Ausführungs-Timeline anzeigen.',
+    'about.title': 'HarnessLens',
+    'about.desc': 'AI-Coding-Workflows messen und verbessern.',
     'about.version': 'Version',
     'about.unknown': 'Unbekannt',
     'about.star': 'Stern auf GitHub geben',
-    'about.copyright': 'Copyright © 2026 Codex Timeline',
+    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Schließen',
 
     // Control Bar

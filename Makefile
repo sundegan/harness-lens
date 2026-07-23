@@ -16,7 +16,7 @@ endif
 
 # Default target: show help
 help:
-	@echo "Codex Timeline development commands"
+	@echo "HarnessLens development commands"
 	@echo ""
 	@echo "  make dev [port] - Run the Tauri desktop app (default port: 1420)"
 	@echo "  make dev-mock-update [port] - Run the Tauri desktop app with mock update enabled"

@@ -1,7 +1,7 @@
 {
-  "name": "codex-timeline",
+  "name": "Harness Lens",
   "version": "0.1.0",
-  "description": "Local-first execution timeline for Codex agent runs.",
+  "description": "HarnessLens analyzes how teams use AI coding workflows, skills, MCP tools, and agents to identify high-cost, low-success, high-intervention, and rework patterns, providing verifiable evidence for harness improvement.",
   "type": "module",
   "packageManager": "pnpm@11.13.1",
   "scripts": {

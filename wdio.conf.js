@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const appName = process.platform === 'win32' ? 'codex-timeline.exe' : 'codex-timeline';
+const appName = process.platform === 'win32' ? 'harness-lens.exe' : 'harness-lens';
 const appBinaryPath = path.join(rootDir, 'src-tauri', 'target', 'debug', appName);
 
 export const config = {

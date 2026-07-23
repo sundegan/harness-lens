@@ -5,10 +5,11 @@
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { i18nManager } from '$lib/i18n.svelte';
 
-  const GITHUB_URL = 'https://github.com/sundegan/codex-timeline';
+  // Keep the in-app link aligned with the canonical GitHub repository URL.
+  const GITHUB_URL = 'https://github.com/sundegan/harness-lens';
 
-  let appVersion = '';
-  let isOpen = false;
+  let appVersion = $state('');
+  let isOpen = $state(false);
 
   const close = () => {
     isOpen = false;

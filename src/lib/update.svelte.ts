@@ -11,7 +11,8 @@ type AppUpdate = {
 };
 
 const AUTO_CHECK_DELAY_MS = 1200;
-const AUTO_CHECK_UPDATES_KEY = 'codex-timeline:auto-check-updates';
+const AUTO_CHECK_UPDATES_KEY = 'harness-lens:auto-check-updates';
+const LEGACY_AUTO_CHECK_UPDATES_KEY = 'codex-timeline:auto-check-updates';
 const DEFAULT_AUTO_CHECK_UPDATES = true;
 
 function isMockAppUpdateEnabled() {
@@ -46,8 +47,12 @@ class AppUpdateManager {
     }
 
     this.#initialized = true;
-    this.autoCheckUpdates =
-      (localStorage.getItem(AUTO_CHECK_UPDATES_KEY) ?? String(DEFAULT_AUTO_CHECK_UPDATES)) !== 'false';
+    const storedPreference = localStorage.getItem(AUTO_CHECK_UPDATES_KEY) ?? localStorage.getItem(LEGACY_AUTO_CHECK_UPDATES_KEY);
+    this.autoCheckUpdates = (storedPreference ?? String(DEFAULT_AUTO_CHECK_UPDATES)) !== 'false';
+
+    if (storedPreference !== null && localStorage.getItem(AUTO_CHECK_UPDATES_KEY) === null) {
+      localStorage.setItem(AUTO_CHECK_UPDATES_KEY, storedPreference);
+    }
 
     try {
       this.currentVersion = await getVersion();
@@ -80,7 +85,7 @@ class AppUpdateManager {
         await new Promise((resolve) => setTimeout(resolve, AUTO_CHECK_DELAY_MS));
         this.update = {
           version: '9.9.9-dev',
-          body: 'Local mock update for testing Codex Timeline updates.',
+          body: 'Local mock update for testing HarnessLens updates.',
           date: new Date().toISOString(),
           downloadAndInstall: async () => {
             await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -88,7 +93,7 @@ class AppUpdateManager {
         };
         this.currentVersion = this.currentVersion || '0.1.0';
         this.latestVersion = '9.9.9-dev';
-        this.releaseNotes = 'Local mock update for testing Codex Timeline updates.';
+        this.releaseNotes = 'Local mock update for testing HarnessLens updates.';
         this.publishedAt = new Date().toISOString();
         this.status = 'available';
         return;

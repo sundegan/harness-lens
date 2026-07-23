@@ -45,7 +45,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Codex Timeline");
+        .expect("error while building HarnessLens");
 
     app.run(|_, _| {});
 }
