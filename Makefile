@@ -34,14 +34,18 @@ dev:
 		''|*[!0-9]*) echo "Usage: make dev [port] (port must be a number from 1 to 65535)"; exit 2;; \
 		*) if [ "$(DEV_PORT)" -lt 1 ] || [ "$(DEV_PORT)" -gt 65535 ]; then echo "Port must be between 1 and 65535"; exit 2; fi;; \
 	esac
-	VITE_PORT=$(DEV_PORT) pnpm tauri dev --config '{"build":{"devUrl":"http://localhost:$(DEV_PORT)"}}'
+	VITE_PORT=$(DEV_PORT) pnpm tauri dev \
+		--config src-tauri/tauri.dev.conf.json \
+		--config '{"build":{"devUrl":"http://localhost:$(DEV_PORT)"}}'
 
 dev-mock-update:
 	@case "$(DEV_PORT)" in \
 		''|*[!0-9]*) echo "Usage: make dev-mock-update [port] (port must be a number from 1 to 65535)"; exit 2;; \
 		*) if [ "$(DEV_PORT)" -lt 1 ] || [ "$(DEV_PORT)" -gt 65535 ]; then echo "Port must be between 1 and 65535"; exit 2; fi;; \
 	esac
-	VITE_PORT=$(DEV_PORT) VITE_MOCK_APP_UPDATE=1 pnpm tauri dev --config '{"build":{"devUrl":"http://localhost:$(DEV_PORT)"}}'
+	VITE_PORT=$(DEV_PORT) VITE_MOCK_APP_UPDATE=1 pnpm tauri dev \
+		--config src-tauri/tauri.dev.conf.json \
+		--config '{"build":{"devUrl":"http://localhost:$(DEV_PORT)"}}'
 
 # Build application (frontend + backend)
 build:
