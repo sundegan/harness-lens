@@ -22,7 +22,7 @@ e2e = ["dep:tauri-plugin-wdio-webdriver"]
 tauri-build = { version = "=2.5.5", features = [] }
 
 [dependencies]
-tauri = { version = "=2.10.2", features = ["macos-private-api"] }
+tauri = { version = "=2.10.2", features = ["image-png", "macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "=2.5.0"
 tauri-plugin-single-instance = "=2.4.2"
 tauri-plugin-updater = "=2.9.0"

@@ -1,4 +1,4 @@
-export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de';
+export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'
 
 const dictionaries = {
   en: {
@@ -27,6 +27,11 @@ const dictionaries = {
     'control.settings': 'Settings',
     'control.pin': 'Pin Window',
     'control.unpin': 'Unpin Window',
+
+    // Tray Menu
+    'tray.show_main': 'Show HarnessLens',
+    'tray.settings': 'Settings',
+    'tray.quit': 'Quit',
 
     // Settings General
     'settings.general.title': 'General Settings',
@@ -104,6 +109,11 @@ const dictionaries = {
     'control.pin': '置顶窗口',
     'control.unpin': '取消置顶窗口',
 
+    // Tray Menu
+    'tray.show_main': '显示窗口',
+    'tray.settings': '设置',
+    'tray.quit': '退出',
+
     // Settings General
     'settings.general.title': '通用设置',
     'settings.general.auto_check': '自动检查更新',
@@ -179,6 +189,11 @@ const dictionaries = {
     'control.settings': '設定',
     'control.pin': '置頂視窗',
     'control.unpin': '取消置頂視窗',
+
+    // Tray Menu
+    'tray.show_main': '顯示 HarnessLens',
+    'tray.settings': '設定...',
+    'tray.quit': '結束 HarnessLens',
 
     // Settings General
     'settings.general.title': '通用設定',
@@ -256,6 +271,11 @@ const dictionaries = {
     'control.pin': 'ウィンドウを固定',
     'control.unpin': 'ウィンドウの固定を解除',
 
+    // Tray Menu
+    'tray.show_main': 'HarnessLensを表示',
+    'tray.settings': '設定...',
+    'tray.quit': 'HarnessLensを終了',
+
     // Settings General
     'settings.general.title': '一般設定',
     'settings.general.auto_check': 'アップデートを自動的に確認',
@@ -332,6 +352,11 @@ const dictionaries = {
     'control.pin': '창 고정',
     'control.unpin': '창 고정 해제',
 
+    // Tray Menu
+    'tray.show_main': 'HarnessLens 표시',
+    'tray.settings': '설정...',
+    'tray.quit': 'HarnessLens 종료',
+
     // Settings General
     'settings.general.title': '일반 설정',
     'settings.general.auto_check': '업데이트 자동 확인',
@@ -389,7 +414,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens es una herramienta de análisis de la eficacia de uso de los harnesses de programación con IA que aporta datos claros para mejorarlos.',
+    'main.desc':
+      'HarnessLens es una herramienta de análisis de la eficacia de uso de los harnesses de programación con IA que aporta datos claros para mejorarlos.',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -407,6 +433,11 @@ const dictionaries = {
     'control.settings': 'Configuración',
     'control.pin': 'Fijar ventana',
     'control.unpin': 'Desfijar ventana',
+
+    // Tray Menu
+    'tray.show_main': 'Mostrar HarnessLens',
+    'tray.settings': 'Configuración...',
+    'tray.quit': 'Salir de HarnessLens',
 
     // Settings General
     'settings.general.title': 'Configuración General',
@@ -465,11 +496,12 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': "HarnessLens est un outil d'analyse de l'efficacité d'utilisation des harnesses de coding assisté par IA, fournissant des données claires pour les améliorer.",
+    'main.desc':
+      "HarnessLens est un outil d'analyse de l'efficacité d'utilisation des harnesses de coding assisté par IA, fournissant des données claires pour les améliorer.",
 
     // About Dialog
     'about.title': 'HarnessLens',
-    'about.desc': "Mesurez et améliorez les workflows de coding assisté par IA.",
+    'about.desc': 'Mesurez et améliorez les workflows de coding assisté par IA.',
     'about.version': 'Version',
     'about.unknown': 'Inconnu',
     'about.star': 'Ajouter une étoile sur GitHub',
@@ -483,6 +515,11 @@ const dictionaries = {
     'control.settings': 'Paramètres',
     'control.pin': 'Épingler la fenêtre',
     'control.unpin': 'Désélectionner la fenêtre',
+
+    // Tray Menu
+    'tray.show_main': 'Afficher HarnessLens',
+    'tray.settings': 'Paramètres...',
+    'tray.quit': 'Quitter HarnessLens',
 
     // Settings General
     'settings.general.title': 'Paramètres généraux',
@@ -541,7 +578,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens ist ein Werkzeug zur Analyse der Nutzungseffizienz von AI-Coding-Harnesses und liefert anschauliche Daten für deren Verbesserung.',
+    'main.desc':
+      'HarnessLens ist ein Werkzeug zur Analyse der Nutzungseffizienz von AI-Coding-Harnesses und liefert anschauliche Daten für deren Verbesserung.',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -559,6 +597,11 @@ const dictionaries = {
     'control.settings': 'Einstellungen',
     'control.pin': 'Fenster anheften',
     'control.unpin': 'Fenster lösen',
+
+    // Tray Menu
+    'tray.show_main': 'HarnessLens anzeigen',
+    'tray.settings': 'Einstellungen...',
+    'tray.quit': 'HarnessLens beenden',
 
     // Settings General
     'settings.general.title': 'Allgemeine Einstellungen',
@@ -608,64 +651,64 @@ const dictionaries = {
     'modal.restart.desc': 'Die Anwendung wurde erfolgreich aktualisiert. Jetzt neu starten, um die Änderungen zu übernehmen?',
     'modal.restart.later': 'Später neu starten',
     'modal.restart.now': 'Jetzt neu starten',
-  }
-};
+  },
+}
 
 function getSystemLanguage(): 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de' {
   if (typeof navigator === 'undefined') {
-    return 'en';
+    return 'en'
   }
-  const lang = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase();
+  const lang = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase()
   if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk') || lang.startsWith('zh-mo')) {
-    return 'zh_tw';
+    return 'zh_tw'
   }
   if (lang.startsWith('zh')) {
-    return 'zh';
+    return 'zh'
   }
   if (lang.startsWith('ja')) {
-    return 'ja';
+    return 'ja'
   }
   if (lang.startsWith('ko')) {
-    return 'ko';
+    return 'ko'
   }
   if (lang.startsWith('es')) {
-    return 'es';
+    return 'es'
   }
   if (lang.startsWith('fr')) {
-    return 'fr';
+    return 'fr'
   }
   if (lang.startsWith('de')) {
-    return 'de';
+    return 'de'
   }
-  return 'en';
+  return 'en'
 }
 
 class I18nManager {
-  #language = $state<Language>('system');
+  #language = $state<Language>('system')
 
   get language() {
-    return this.#language;
+    return this.#language
   }
 
   set language(value: Language) {
-    this.#language = value;
+    this.#language = value
     if (typeof window !== 'undefined') {
-      localStorage.setItem('language', value);
+      localStorage.setItem('language', value)
     }
   }
 
   resolvedLanguage = $derived.by<'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'>(() => {
     if (this.language === 'system') {
-      return getSystemLanguage();
+      return getSystemLanguage()
     }
-    return this.language;
-  });
+    return this.language
+  })
 
   constructor() {
     if (typeof window === 'undefined') {
-      return;
+      return
     }
-    const savedLang = localStorage.getItem('language') as Language;
+    const savedLang = localStorage.getItem('language') as Language
     if (
       savedLang === 'en' ||
       savedLang === 'zh' ||
@@ -677,26 +720,26 @@ class I18nManager {
       savedLang === 'de' ||
       savedLang === 'system'
     ) {
-      this.#language = savedLang;
+      this.#language = savedLang
     }
   }
 
   setLanguage(lang: Language) {
-    this.language = lang;
+    this.language = lang
   }
 
   t(key: string, data?: Record<string, string | number>): string {
-    const lang = this.resolvedLanguage;
-    const dict = dictionaries[lang] || dictionaries.en;
-    let text = (dict as any)[key] || (dictionaries.en as any)[key] || key;
+    const lang = this.resolvedLanguage
+    const dict = dictionaries[lang] || dictionaries.en
+    let text = (dict as any)[key] || (dictionaries.en as any)[key] || key
 
     if (data) {
       Object.entries(data).forEach(([k, v]) => {
-        text = text.replace(`{${k}}`, String(v));
-      });
+        text = text.replace(`{${k}}`, String(v))
+      })
     }
-    return text;
+    return text
   }
 }
 
-export const i18nManager = new I18nManager();
+export const i18nManager = new I18nManager()

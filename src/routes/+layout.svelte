@@ -2,8 +2,33 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import TitleBar from '$lib/menu/TitleBar.svelte';
+  import { i18nManager } from '$lib/i18n.svelte';
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
+
+  const syncTrayMenuLabels = async (labels: {
+    showMain: string;
+    settings: string;
+    quit: string;
+  }) => {
+    const { isTauri } = await import('@tauri-apps/api/core');
+    if (!isTauri()) return;
+
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      await invoke('set_tray_menu_labels', { labels });
+    } catch (error) {
+      console.warn('Failed to update tray menu labels:', error);
+    }
+  };
+
+  $effect(() => {
+    void syncTrayMenuLabels({
+      showMain: i18nManager.t('tray.show_main'),
+      settings: i18nManager.t('tray.settings'),
+      quit: i18nManager.t('tray.quit')
+    });
+  });
 
   // Reactively track theme manager theme state to ensure native integration updates
   $effect(() => {

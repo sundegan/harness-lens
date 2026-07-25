@@ -64,13 +64,12 @@
   </button>
 
   {#if isOpen}
-    <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <div
       class="custom-select-options"
       role="listbox"
       aria-label={ariaLabel}
     >
-      {#each options as option}
+      {#each options as option (option.value)}
         <button
           class="custom-select-option"
           class:is-selected={value === option.value}

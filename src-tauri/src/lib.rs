@@ -3,6 +3,7 @@ mod commands;
 mod linux_fix;
 #[cfg(target_os = "macos")]
 mod menu;
+mod tray;
 mod window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,10 +34,25 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::restart_app,
             commands::set_window_theme,
-            commands::desktop_platform
+            commands::desktop_platform,
+            commands::set_tray_menu_labels
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+
+                if let Err(error) = window.hide() {
+                    eprintln!("failed to hide main window on close: {error}");
+                }
+            }
+        })
         .setup(|app| {
             let app_handle = app.handle();
+            tray::setup(app_handle)?;
             window::schedule_main_window_bounds_clamp(app_handle);
             #[cfg(not(feature = "e2e"))]
             window::focus_main_window(app_handle);

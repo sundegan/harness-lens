@@ -31,7 +31,6 @@
   });
 
   const handleRestart = async () => {
-    // @ts-ignore
     if (import.meta.env.DEV) {
       window.location.reload();
     } else {
@@ -163,20 +162,7 @@
                   id="check-update-btn"
                   class="primary-action install-btn"
                   type="button"
-                  onclick={async () => {
-                    // @ts-ignore
-                    if (import.meta.env.DEV) {
-                      window.location.reload();
-                    } else {
-                      const { invoke } = await import('@tauri-apps/api/core');
-                      try {
-                        await invoke('restart_app');
-                      } catch (e) {
-                        console.warn('Failed to restart app:', e);
-                        window.location.reload();
-                      }
-                    }
-                  }}
+                  onclick={handleRestart}
                 >
                   {i18nManager.t('update.action.restart')}
                 </button>
@@ -227,7 +213,6 @@
 </main>
 
 {#if showRestartModal}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
   <div class="modal-backdrop" role="presentation" onclick={() => showRestartModal = false}>
     <dialog
       class="modal-dialog"
@@ -257,14 +242,12 @@
   :global(:root) {
     --panel-bg: #ffffff;
     --border: #e2e8f0;
-    --drop-bg: #f8fafc;
     --drop-hover-bg: #f1f5f9;
   }
 
   :global(html.dark) {
     --panel-bg: #1e293b;
     --border: #334155;
-    --drop-bg: #0f172a;
     --drop-hover-bg: #1e293b;
   }
 

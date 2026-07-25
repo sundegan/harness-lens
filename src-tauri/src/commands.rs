@@ -27,3 +27,11 @@ pub fn set_window_theme(window: tauri::WebviewWindow, is_dark: bool) -> Result<(
 pub fn desktop_platform() -> &'static str {
     std::env::consts::OS
 }
+
+#[tauri::command]
+pub fn set_tray_menu_labels(
+    app: tauri::AppHandle,
+    labels: crate::tray::TrayMenuLabels,
+) -> Result<(), String> {
+    crate::tray::update_menu(&app, labels)
+}
