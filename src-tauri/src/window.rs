@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use tauri::{LogicalSize, Manager, PhysicalPosition, WebviewWindow};
+use serde::{Deserialize, Serialize};
+use tauri::{LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,6 +27,76 @@ use dispatch2::DispatchQueue;
 
 #[cfg(target_os = "macos")]
 static MACOS_THEME_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedWindowState {
+    position_x: i32,
+    position_y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+pub fn restore_main_window(app: &tauri::AppHandle) {
+    let path = crate::data_paths::window_state_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(state) = serde_json::from_str::<SavedWindowState>(&contents) else {
+        log::warn!("failed to parse saved window state at {}", path.display());
+        return;
+    };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    if let Err(error) = window.set_size(PhysicalSize::new(state.width, state.height)) {
+        log::warn!("failed to restore window size: {error}");
+    }
+    if let Err(error) =
+        window.set_position(PhysicalPosition::new(state.position_x, state.position_y))
+    {
+        log::warn!("failed to restore window position: {error}");
+    }
+    if state.maximized {
+        if let Err(error) = window.maximize() {
+            log::warn!("failed to restore maximized window state: {error}");
+        }
+    }
+}
+
+pub fn persist_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let (Ok(position), Ok(size), Ok(maximized)) = (
+        window.outer_position(),
+        window.inner_size(),
+        window.is_maximized(),
+    ) else {
+        return;
+    };
+    let state = SavedWindowState {
+        position_x: position.x,
+        position_y: position.y,
+        width: size.width,
+        height: size.height,
+        maximized,
+    };
+    let path = crate::data_paths::window_state_path();
+    let Some(parent) = path.parent() else {
+        return;
+    };
+
+    if let Err(error) = (|| -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(parent)?;
+        std::fs::write(&path, serde_json::to_string(&state)?)?;
+        Ok(())
+    })() {
+        log::warn!("failed to save window state: {error}");
+    }
+}
 
 pub fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {

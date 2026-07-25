@@ -1,5 +1,7 @@
 export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'
 
+import { loadSettings, saveSetting } from '$lib/settings'
+
 const dictionaries = {
   en: {
     // Shared / Navigation
@@ -692,9 +694,7 @@ class I18nManager {
 
   set language(value: Language) {
     this.#language = value
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('language', value)
-    }
+    saveSetting('language', value)
   }
 
   resolvedLanguage = $derived.by<'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'>(() => {
@@ -704,11 +704,8 @@ class I18nManager {
     return this.language
   })
 
-  constructor() {
-    if (typeof window === 'undefined') {
-      return
-    }
-    const savedLang = localStorage.getItem('language') as Language
+  async init() {
+    const savedLang = (await loadSettings()).language as Language | undefined
     if (
       savedLang === 'en' ||
       savedLang === 'zh' ||

@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import { logError } from '$lib/logger';
+import { loadSettings, saveSetting } from '$lib/settings';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -12,20 +14,13 @@ class ThemeManager {
 
   set theme(value: Theme) {
     this.#theme = value;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('theme', value);
-    }
+    saveSetting('theme', value);
     void this.updateTheme();
   }
 
   constructor() {
     if (typeof window === 'undefined') {
       return;
-    }
-
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
-      this.#theme = savedTheme;
     }
 
     void this.updateTheme();
@@ -36,6 +31,15 @@ class ThemeManager {
         void this.updateTheme();
       }
     });
+  }
+
+  async init() {
+    const savedTheme = (await loadSettings()).theme as Theme | undefined;
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+      this.#theme = savedTheme;
+    }
+
+    void this.updateTheme();
   }
 
   toggleTheme() {
@@ -68,7 +72,7 @@ class ThemeManager {
     try {
       await invoke('set_window_theme', { isDark: dark });
     } catch (err) {
-      console.error('Failed to sync native window theme:', err);
+      logError('Failed to sync native window theme', err);
     }
   }
 }

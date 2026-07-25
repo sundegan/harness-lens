@@ -3,6 +3,7 @@
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
   import { i18nManager } from '$lib/i18n.svelte';
+  import { logWarn } from '$lib/logger';
   import Select from '$lib/components/Select.svelte';
 
   type SettingsTab = 'general' | 'appearance';
@@ -38,7 +39,7 @@
       try {
         await invoke('restart_app');
       } catch (e) {
-        console.warn('Failed to restart app:', e);
+        logWarn('Failed to restart app', e);
         window.location.reload();
       }
     }

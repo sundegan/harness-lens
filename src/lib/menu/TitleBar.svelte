@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import ControlBar from '$lib/menu/ControlBar.svelte';
+  import { logWarn } from '$lib/logger';
 
   type TitlebarPlatform = 'macos' | 'windows' | 'linux';
 
@@ -44,7 +45,7 @@
         const value = await invoke<string>('desktop_platform');
         platform = normalizePlatform(value);
       } catch (err) {
-        console.warn('Failed to detect desktop platform:', err);
+        logWarn('Failed to detect desktop platform', err);
       }
 
       if (!isTauri()) return;

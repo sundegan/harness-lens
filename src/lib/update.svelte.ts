@@ -1,4 +1,5 @@
 import { getVersion } from '@tauri-apps/api/app';
+import { loadSettings, saveSetting } from '$lib/settings';
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'installing' | 'ready' | 'latest' | 'error';
 
@@ -11,8 +12,6 @@ type AppUpdate = {
 };
 
 const AUTO_CHECK_DELAY_MS = 1200;
-const AUTO_CHECK_UPDATES_KEY = 'harness-lens:auto-check-updates';
-const LEGACY_AUTO_CHECK_UPDATES_KEY = 'codex-timeline:auto-check-updates';
 const DEFAULT_AUTO_CHECK_UPDATES = true;
 
 function isMockAppUpdateEnabled() {
@@ -44,12 +43,8 @@ class AppUpdateManager {
     }
 
     this.#initialized = true;
-    const storedPreference = localStorage.getItem(AUTO_CHECK_UPDATES_KEY) ?? localStorage.getItem(LEGACY_AUTO_CHECK_UPDATES_KEY);
-    this.autoCheckUpdates = (storedPreference ?? String(DEFAULT_AUTO_CHECK_UPDATES)) !== 'false';
-
-    if (storedPreference !== null && localStorage.getItem(AUTO_CHECK_UPDATES_KEY) === null) {
-      localStorage.setItem(AUTO_CHECK_UPDATES_KEY, storedPreference);
-    }
+    const storedPreference = (await loadSettings()).autoCheckUpdates;
+    this.autoCheckUpdates = storedPreference ?? DEFAULT_AUTO_CHECK_UPDATES;
 
     try {
       this.currentVersion = await getVersion();
@@ -66,7 +61,7 @@ class AppUpdateManager {
 
   setAutoCheckUpdates(enabled: boolean) {
     this.autoCheckUpdates = enabled;
-    localStorage.setItem(AUTO_CHECK_UPDATES_KEY, String(enabled));
+    saveSetting('autoCheckUpdates', enabled);
   }
 
   async checkForUpdates(options: { quiet?: boolean } = {}) {

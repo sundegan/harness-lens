@@ -4,6 +4,7 @@
   import TitleBar from '$lib/menu/TitleBar.svelte';
   import { i18nManager } from '$lib/i18n.svelte';
   import { appUpdateManager } from '$lib/update.svelte';
+  import { installFrontendErrorLogging, logWarn } from '$lib/logger';
   import { themeManager } from '$lib/theme.svelte';
 
   const syncTrayMenuLabels = async (labels: {
@@ -18,7 +19,7 @@
     try {
       await invoke('set_tray_menu_labels', { labels });
     } catch (error) {
-      console.warn('Failed to update tray menu labels:', error);
+      logWarn('Failed to update tray menu labels', error);
     }
   };
 
@@ -40,7 +41,10 @@
   onMount(() => {
     const unlisteners: Array<() => void> = [];
 
+    void themeManager.init();
+    void i18nManager.init();
     void appUpdateManager.init();
+    void installFrontendErrorLogging().then((unlisten) => unlisteners.push(unlisten));
 
     void (async () => {
       if (import.meta.env.VITE_WDIO_TAURI === '1') {

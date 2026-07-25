@@ -4,6 +4,7 @@
   import { appUpdateManager } from '$lib/update.svelte';
   import { themeManager } from '$lib/theme.svelte';
   import { i18nManager } from '$lib/i18n.svelte';
+  import { logError } from '$lib/logger';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   let isAlwaysOnTop = $state(false);
@@ -12,7 +13,7 @@
     try {
       isAlwaysOnTop = await getCurrentWindow().isAlwaysOnTop();
     } catch (err) {
-      console.error('Failed to get always on top status:', err);
+      logError('Failed to get always on top status', err);
     }
   });
 
@@ -23,7 +24,7 @@
       await win.setAlwaysOnTop(newValue);
       isAlwaysOnTop = newValue;
     } catch (err) {
-      console.error('Failed to toggle always on top status:', err);
+      logError('Failed to toggle always on top status', err);
     }
   };
 
