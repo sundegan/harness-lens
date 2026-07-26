@@ -54,30 +54,31 @@ build:
 # Type check (frontend + backend)
 check:
 	pnpm check
-	cd src-tauri && cargo check
+	cargo check --workspace --all-targets
 
 # Run tests
 test:
 	pnpm test
-	cd src-tauri && cargo test
+	cargo test --workspace
 
 # Format code (frontend + backend)
 fmt:
-	cd src-tauri && cargo fmt
+	cargo fmt --all
 
 # Lint code (frontend + backend)
 lint:
-	cd src-tauri && cargo clippy
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	pnpm check
 
 # Clean build artifacts
 clean:
 	rm -rf build
 	rm -rf .svelte-kit
-	rm -rf src-tauri/target
+	cargo clean
 	rm -rf node_modules/.vite
 
 # Install dependencies
 install:
 	pnpm install
-	cd src-tauri && cargo fetch
+	cargo fetch

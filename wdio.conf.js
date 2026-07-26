@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const appName = process.platform === 'win32' ? 'harness-lens.exe' : 'harness-lens';
-const appBinaryPath = path.join(rootDir, 'src-tauri', 'target', 'debug', appName);
+const appBinaryPath = path.join(rootDir, 'target', 'debug', appName);
 
 export const config = {
   runner: 'local',
@@ -14,6 +14,11 @@ export const config = {
   waitforTimeout: 10000,
   connectionRetryTimeout: 120000,
   connectionRetryCount: 1,
+  transformRequest: (requestOptions) => {
+    // Let fetch calculate this header; Node 26 rejects WebdriverIO's manual value.
+    requestOptions.headers.delete('Content-Length');
+    return requestOptions;
+  },
   framework: 'mocha',
   reporters: ['spec'],
   mochaOpts: {

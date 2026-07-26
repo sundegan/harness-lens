@@ -1,3 +1,5 @@
+#[cfg(not(feature = "e2e"))]
+mod agent_data;
 mod commands;
 mod data_paths;
 pub mod database;
@@ -16,7 +18,24 @@ use tauri::Manager;
 pub fn run() {
     panic_hook::install();
 
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(
+        tauri_plugin_log::Builder::new()
+            .level(if cfg!(debug_assertions) {
+                log::LevelFilter::Debug
+            } else {
+                log::LevelFilter::Info
+            })
+            .max_file_size(5 * 1024 * 1024)
+            .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+            .targets([
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
+                    path: data_paths::logs_dir(),
+                    file_name: Some("harness-lens".into()),
+                }),
+            ])
+            .build(),
+    );
 
     #[cfg(feature = "e2e")]
     let builder = builder
@@ -34,24 +53,6 @@ pub fn run() {
     }));
 
     let app = builder
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(if cfg!(debug_assertions) {
-                    log::LevelFilter::Debug
-                } else {
-                    log::LevelFilter::Info
-                })
-                .max_file_size(5 * 1024 * 1024)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
-                .targets([
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
-                        path: data_paths::logs_dir(),
-                        file_name: Some("harness-lens".into()),
-                    }),
-                ])
-                .build(),
-        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -80,6 +81,8 @@ pub fn run() {
             let app_handle = app.handle();
             let database = database::Database::initialize(data_paths::database_path())?;
             app.manage(database);
+            #[cfg(not(feature = "e2e"))]
+            app.manage(agent_data::AgentDataMonitor::start()?);
             tray::setup(app_handle)?;
             window::restore_main_window(app_handle);
             window::schedule_main_window_bounds_clamp(app_handle);

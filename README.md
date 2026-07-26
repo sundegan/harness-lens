@@ -39,6 +39,25 @@ Teams are already using skills, MCP tools, project knowledge bases, and developm
 | Workflows | Which development stages show high cost, failure, or repeated execution? How do duration, attempts, and additional human input vary across requirements analysis, technical design, coding, and code review? |
 | Harness versions | Do changes to skills, MCP tools, knowledge bases, or workflows produce verifiable differences? |
 
+## Local Coding-Agent Data Foundation
+
+HarnessLens includes [`coding-agent-data`](./crates/coding-agent-data), a
+reusable, read-only Rust data-access library for desktop applications, CLIs,
+analytics tools, history viewers, and other consumers of local coding-agent
+data. Developers can use it to build local browsing, indexing, synchronization,
+analysis, and visualization features without having to adapt separately to each
+agent's data locations, storage formats, and schemas.
+
+Applications use one consistent API to work with data from different coding
+agents. The library provides source discovery, reading and parsing, a common
+record/change model, checkpoint-based incremental synchronization, and live
+change monitoring. The current implementation supports Codex thread metadata
+and active, archived, or compressed rollout events. Other providers and data
+kinds can be added without exposing their private storage contracts to consumers.
+
+See the [crate documentation](./crates/coding-agent-data/README.md) and
+[architecture](./docs/coding-agent-data.md).
+
 <div align="center">
 
 Making AI coding harness improvements observable and measurable.

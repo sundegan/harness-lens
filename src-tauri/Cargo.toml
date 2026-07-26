@@ -22,6 +22,7 @@ e2e = ["dep:tauri-plugin-wdio-webdriver"]
 tauri-build = { version = "=2.5.5", features = [] }
 
 [dependencies]
+coding-agent-data = { path = "../crates/coding-agent-data" }
 tauri = { version = "=2.10.2", features = ["image-png", "macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "=2.5.0"
 tauri-plugin-single-instance = "=2.4.2"

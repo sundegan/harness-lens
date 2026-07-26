@@ -1,0 +1,30 @@
+[package]
+name = "coding-agent-data"
+version = "0.1.0"
+description = "Unified discovery, parsing, sync, and monitoring of local coding-agent data for desktop apps, CLIs, analytics tools, and history viewers"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version = "1.77"
+readme = "README.md"
+keywords = ["coding-agent", "parser", "monitoring", "incremental", "local-first"]
+categories = ["development-tools", "parser-implementations"]
+
+[features]
+default = ["codex", "watch", "bundled-sqlite"]
+codex = ["dep:dirs", "dep:rusqlite", "dep:toml", "dep:zstd"]
+watch = ["dep:notify"]
+bundled-sqlite = ["rusqlite/bundled"]
+
+[dependencies]
+dirs = { version = "5.0", optional = true }
+notify = { version = "8.2.0", optional = true }
+rusqlite = { version = "0.40.1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.17"
+toml = { version = "0.9.8", optional = true }
+zstd = { version = "0.13.3", optional = true }
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -39,6 +39,22 @@ HarnessLens以原始Agent执行事实为输入，分析团队在真实开发中�
 | Workflow    | 开发流程在哪些环节出现高成本、失败或反复执行？需求分析、TD、编码和Code Review节点的耗时、尝试次数和人工补充信息如何？ |
 | Harness版本 | Skill、MCP、知识库或workflow更新后，相关指标是否出现可验证变化？                                                      |
 
+## 本机 Coding Agent 数据基础层
+
+HarnessLens 内置 [`coding-agent-data`](./crates/coding-agent-data)：一个面向桌面
+应用、CLI、分析工具、历史查看器及其他本机 Coding Agent 数据消费者的只读 Rust
+数据访问库。开发者可以用它构建本机数据浏览、索引、同步、分析和可视化功能，
+无需分别适配每个 Agent 的私有数据目录、存储格式和 schema。
+
+应用可以通过一套统一 API 使用不同 Coding Agent 的数据。该库提供数据源发现、
+读取与解析、统一 record/change 模型、基于 checkpoint 的增量同步，以及实时
+数据变更监听。当前实现支持 Codex 的 thread 元数据，以及活跃、归档和压缩的
+rollout 事件；后续可以在不向消费者暴露私有存储契约的前提下扩展其他 Provider
+和数据类型。
+
+详见 [crate 说明](./crates/coding-agent-data/README.md)和
+[架构设计](./docs/coding-agent-data.md)。
+
 <div align="center">
 
 让AI Coding Harness的改进变得可观测和可衡量。
