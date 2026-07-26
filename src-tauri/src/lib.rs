@@ -1,5 +1,6 @@
-mod data_paths;
 mod commands;
+mod data_paths;
+pub mod database;
 #[cfg(target_os = "linux")]
 mod linux_fix;
 #[cfg(target_os = "macos")]
@@ -77,6 +78,8 @@ pub fn run() {
         })
         .setup(|app| {
             let app_handle = app.handle();
+            let database = database::Database::initialize(data_paths::database_path())?;
+            app.manage(database);
             tray::setup(app_handle)?;
             window::restore_main_window(app_handle);
             window::schedule_main_window_bounds_clamp(app_handle);

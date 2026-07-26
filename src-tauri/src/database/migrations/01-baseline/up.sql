@@ -1,0 +1,4 @@
+-- HarnessLens schema v1 baseline.
+--
+-- This migration intentionally creates no tables. It establishes the database
+-- migration sequence so the first business schema can be added as v2.

@@ -12,6 +12,10 @@ pub fn logs_dir() -> PathBuf {
     root_dir().join("logs")
 }
 
+pub fn database_path() -> PathBuf {
+    root_dir().join("harness-lens.sqlite")
+}
+
 pub fn crash_log_path() -> PathBuf {
     root_dir().join("crash.log")
 }
@@ -33,6 +37,7 @@ mod tests {
         let root = root_dir();
 
         assert_eq!(logs_dir(), root.join("logs"));
+        assert_eq!(database_path(), root.join("harness-lens.sqlite"));
         assert_eq!(crash_log_path(), root.join("crash.log"));
         assert_eq!(settings_path(), root.join("settings.json"));
         assert_eq!(window_state_path(), root.join("window-state.json"));
