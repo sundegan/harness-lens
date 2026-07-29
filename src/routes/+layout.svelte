@@ -6,6 +6,7 @@
   import { appUpdateManager } from '$lib/update.svelte';
   import { installFrontendErrorLogging, logWarn } from '$lib/logger';
   import { themeManager } from '$lib/theme.svelte';
+  import '../app.css';
 
   const syncTrayMenuLabels = async (labels: {
     showMain: string;
