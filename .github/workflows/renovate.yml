@@ -1,0 +1,32 @@
+name: Renovate
+
+on:
+  schedule:
+    # Run every Monday at 3am UTC (11am Beijing time)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v40.3.4
+        with:
+          configurationFile: renovate.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          RENOVATE_PLATFORM: github
+          RENOVATE_REPOSITORY: ${{ github.repository }}
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: 'required'
+          LOG_LEVEL: info

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":disableDependencyDashboard",
+    ":semanticPrefixFixDepsChoreOthers"
+  ],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["before 5am on Monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Group Svelte ecosystem packages",
+      "matchPackagePatterns": ["^@sveltejs/", "^svelte"],
+      "groupName": "Svelte ecosystem"
+    },
+    {
+      "description": "Group Vite ecosystem packages",
+      "matchPackagePatterns": ["^vite", "^@vitejs/", "^vitest"],
+      "groupName": "Vite ecosystem"
+    },
+    {
+      "description": "Group Tauri packages",
+      "matchPackagePatterns": ["^@tauri-apps/"],
+      "groupName": "Tauri packages"
+    },
+    {
+      "description": "Group WebdriverIO packages",
+      "matchPackagePatterns": ["^@wdio/", "^webdriverio"],
+      "groupName": "WebdriverIO packages"
+    },
+    {
+      "description": "Group Tailwind CSS packages",
+      "matchPackagePatterns": ["^@tailwindcss/", "^tailwindcss"],
+      "groupName": "Tailwind CSS packages"
+    },
+    {
+      "description": "Auto-merge patch and minor updates",
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Require approval for major updates",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major-update"]
+    },
+    {
+      "description": "Pin GitHub Actions versions",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    }
+  ],
+  "cargo": {
+    "enabled": true
+  },
+  "rust": {
+    "enabled": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "osvVulnerabilityAlerts": true,
+  "prBodyNotes": ["**Note**: This PR was automatically created by Renovate Bot."]
+}
