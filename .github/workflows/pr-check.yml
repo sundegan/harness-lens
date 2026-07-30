@@ -1,0 +1,175 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. Comprehensive Quality Checks
+  quality-check:
+    name: Quality Checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Biome Lint
+        run: pnpm lint
+
+      - name: Frontend Biome Format Check
+        run: pnpm format
+
+      - name: Frontend Svelte Check
+        run: pnpm run check
+
+      - name: Backend Rust Format Check
+        run: cargo fmt --all -- --check
+
+      - name: Backend Rust Clippy Lint
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  # 2. Full Test Suite
+  test:
+    name: Full Test Suite
+    runs-on: ubuntu-22.04
+    needs: quality-check
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            xvfb
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Unit Tests
+        run: pnpm test
+
+      - name: Frontend Test Coverage
+        run: pnpm test:coverage
+
+      - name: Backend Rust Unit Tests
+        run: |
+          cargo test --workspace
+          cargo test --workspace --all-features
+
+      - name: End-to-End Tests
+        run: xvfb-run -a pnpm test:e2e
+
+  # 3. Multi-platform Build Validation
+  build-validation:
+    name: Build Validation (${{ matrix.os }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            os: macOS
+          - platform: windows-latest
+            os: Windows
+          - platform: ubuntu-22.04
+            os: Linux
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install Linux Dependencies (Ubuntu Only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Build
+        run: pnpm build
+
+      - name: Tauri Build Validation
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
