@@ -24,7 +24,7 @@
     "**/pnpm-lock.yaml": true
   },
 
-  // ========== Front-end（JavaScript/TypeScript/Svelte）==========
+  // ========== Frontend (JavaScript/TypeScript/Svelte) ==========
   "editor.defaultFormatter": "biomejs.biome",
   "[javascript]": {
     "editor.defaultFormatter": "biomejs.biome"

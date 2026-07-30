@@ -1,0 +1,59 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "harness-lens",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "src-tauri/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        }
+      ],
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "🚀 Features"
+        },
+        {
+          "type": "fix",
+          "section": "🐛 Bug Fixes"
+        },
+        {
+          "type": "docs",
+          "section": "📚 Documentation"
+        },
+        {
+          "type": "perf",
+          "section": "⚡ Performance"
+        },
+        {
+          "type": "refactor",
+          "section": "♻️ Refactoring"
+        },
+        {
+          "type": "style",
+          "section": "🎨 Styling"
+        },
+        {
+          "type": "test",
+          "section": "🧪 Testing"
+        },
+        {
+          "type": "chore",
+          "section": "💼 Miscellaneous"
+        }
+      ]
+    }
+  }
+}
