@@ -10,13 +10,8 @@ const CHECK_UPDATES_MENU_ID: &str = "check-updates";
 const CHECK_UPDATES_EVENT: &str = "check-for-updates";
 
 pub fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let about_item = MenuItem::with_id(
-        app,
-        ABOUT_MENU_ID,
-        "About HarnessLens",
-        true,
-        None::<&str>,
-    )?;
+    let about_item =
+        MenuItem::with_id(app, ABOUT_MENU_ID, "About HarnessLens", true, None::<&str>)?;
 
     let check_updates_item = MenuItem::with_id(
         app,

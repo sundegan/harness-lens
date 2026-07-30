@@ -25,7 +25,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Set up Rust
@@ -43,14 +43,16 @@ jobs:
             librsvg2-dev \
             libxdo-dev
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Frontend Biome Lint
+      - name: Frontend Biome Check
         run: pnpm lint
-
-      - name: Frontend Biome Format Check
-        run: pnpm format
 
       - name: Frontend Svelte Check
         run: pnpm run check
@@ -59,9 +61,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Backend Rust Clippy Lint
-        run: |
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   # 2. Full Test Suite
   test:
@@ -80,7 +80,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Set up Rust
@@ -97,13 +97,15 @@ jobs:
             libxdo-dev \
             xvfb
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Frontend Unit Tests
-        run: pnpm test
-
-      - name: Frontend Test Coverage
+      - name: Frontend Tests with Coverage
         run: pnpm test:coverage
 
       - name: Backend Rust Unit Tests
@@ -141,7 +143,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Set up Rust
@@ -173,3 +175,4 @@ jobs:
         uses: tauri-apps/tauri-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
