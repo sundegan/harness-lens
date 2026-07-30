@@ -1,0 +1,64 @@
+name: Quick Check
+
+on:
+  push:
+    branches:
+      - '**' # Any branch push
+    tags-ignore:
+      - '**' # Ignore tags
+  workflow_dispatch:
+
+jobs:
+  quick-check:
+    name: Quick Validation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15 # Increased for Rust tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Biome Lint & Format
+        run: |
+          pnpm lint
+          pnpm format
+
+      - name: Frontend TypeScript Check
+        run: pnpm check
+
+      - name: Frontend Unit Tests
+        run: pnpm test
+
+      - name: Frontend Build
+        run: pnpm build
+
+      - name: Backend Rust Format Check
+        run: cargo fmt --all -- --check
+
+      - name: Backend Rust Clippy Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Backend Rust Unit Tests
+        run: cargo test --workspace
