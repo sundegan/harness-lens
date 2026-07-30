@@ -6,13 +6,13 @@ const pinButton = '[data-testid="titlebar-pin-button"]';
 
 async function expectSettingsPage() {
   await browser.waitUntil(async () => (await browser.getUrl()).endsWith('/settings'), {
-    timeoutMsg: 'settings route was not opened'
+    timeoutMsg: 'settings route was not opened',
   });
 
   await browser.waitUntil(
     async () => ['General Settings', '通用设置'].includes(await $('h3').getText()),
     {
-      timeoutMsg: 'settings heading was not shown'
+      timeoutMsg: 'settings heading was not shown',
     }
   );
   await expect($('body')).not.toHaveText(expect.stringContaining('500 Internal Error'));
@@ -53,7 +53,7 @@ describe('titlebar controls', () => {
         return className.includes('is-active') !== wasActive;
       },
       {
-        timeoutMsg: 'pin button did not reflect the updated Tauri window state'
+        timeoutMsg: 'pin button did not reflect the updated Tauri window state',
       }
     );
   });

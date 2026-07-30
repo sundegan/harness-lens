@@ -1,6 +1,6 @@
-export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'
+export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de';
 
-import { loadSettings, saveSetting } from '$lib/settings'
+import { loadSettings, saveSetting } from '$lib/settings';
 
 const dictionaries = {
   en: {
@@ -11,7 +11,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens analyzes the effectiveness of AI coding harness usage, providing clear data to guide harness improvements.',
+    'main.desc':
+      'HarnessLens analyzes the effectiveness of AI coding harness usage, providing clear data to guide harness improvements.',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -80,7 +81,8 @@ const dictionaries = {
 
     // Restart Modal
     'modal.restart.title': 'Restart Required',
-    'modal.restart.desc': 'The application has been successfully updated. Restart now to apply the changes?',
+    'modal.restart.desc':
+      'The application has been successfully updated. Restart now to apply the changes?',
     'modal.restart.later': 'Restart Later',
     'modal.restart.now': 'Restart Now',
   },
@@ -92,7 +94,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens是AI Coding Harness的使用效能分析工具，为Harness改进提供直观的数据依据。',
+    'main.desc':
+      'HarnessLens是AI Coding Harness的使用效能分析工具，为Harness改进提供直观的数据依据。',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -173,7 +176,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens是AI Coding Harness的使用效能分析工具，為Harness改進提供直觀的數據依據。',
+    'main.desc':
+      'HarnessLens是AI Coding Harness的使用效能分析工具，為Harness改進提供直觀的數據依據。',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -254,7 +258,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLensはAI Coding Harnessの利用効率を分析し、Harness改善のための分かりやすいデータ根拠を提供するツールです。',
+    'main.desc':
+      'HarnessLensはAI Coding Harnessの利用効率を分析し、Harness改善のための分かりやすいデータ根拠を提供するツールです。',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -335,7 +340,8 @@ const dictionaries = {
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc': 'HarnessLens는 AI 코딩 하니스의 사용 효율을 분석하고 하니스 개선을 위한 직관적인 데이터 근거를 제공하는 도구입니다.',
+    'main.desc':
+      'HarnessLens는 AI 코딩 하니스의 사용 효율을 분석하고 하니스 개선을 위한 직관적인 데이터 근거를 제공하는 도구입니다.',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -404,7 +410,8 @@ const dictionaries = {
 
     // Restart Modal
     'modal.restart.title': '재시작 필요',
-    'modal.restart.desc': '애플리케이션이 성공적으로 업데이트되었습니다. 지금 재시작하여 변경 사항을 적용하시겠습니까?',
+    'modal.restart.desc':
+      '애플리케이션이 성공적으로 업데이트되었습니다. 지금 재시작하여 변경 사항을 적용하시겠습니까?',
     'modal.restart.later': '나중에 재시작',
     'modal.restart.now': '지금 재시작',
   },
@@ -458,7 +465,8 @@ const dictionaries = {
     // Settings Language
     'settings.language.title': 'Idioma de la aplicación',
     'settings.language.select': 'Selección de idioma',
-    'settings.language.desc': 'Elegir entre predeterminado del sistema, inglés, español u otros idiomas',
+    'settings.language.desc':
+      'Elegir entre predeterminado del sistema, inglés, español u otros idiomas',
     'settings.language.lang_system': 'Sistema predeterminado',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
@@ -486,7 +494,8 @@ const dictionaries = {
 
     // Restart Modal
     'modal.restart.title': 'Reinicio requerido',
-    'modal.restart.desc': 'La aplicación se ha actualizado correctamente. ¿Reiniciar ahora para aplicar los cambios?',
+    'modal.restart.desc':
+      'La aplicación se ha actualizado correctamente. ¿Reiniciar ahora para aplicar los cambios?',
     'modal.restart.later': 'Reiniciar más tarde',
     'modal.restart.now': 'Reiniciar ahora',
   },
@@ -532,7 +541,8 @@ const dictionaries = {
     // Settings Appearance
     'settings.appearance.title': "Thème de l'application",
     'settings.appearance.select': 'Sélection du thème',
-    'settings.appearance.desc': 'Choisir entre le thème système par défaut, le mode clair ou sombre',
+    'settings.appearance.desc':
+      'Choisir entre le thème système par défaut, le mode clair ou sombre',
     'settings.appearance.theme_system': 'Système par défaut',
     'settings.appearance.theme_light': 'Mode clair',
     'settings.appearance.theme_dark': 'Mode sombre',
@@ -540,7 +550,8 @@ const dictionaries = {
     // Settings Language
     'settings.language.title': "Langue de l'application",
     'settings.language.select': 'Sélection de la langue',
-    'settings.language.desc': "Choisir entre la langue système par défaut, l'anglais, le français ou d'autres langues",
+    'settings.language.desc':
+      "Choisir entre la langue système par défaut, l'anglais, le français ou d'autres langues",
     'settings.language.lang_system': 'Système par défaut',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
@@ -568,7 +579,8 @@ const dictionaries = {
 
     // Restart Modal
     'modal.restart.title': 'Redémarrage requis',
-    'modal.restart.desc': "L'application a été mise à jour avec succès. Redémarrer maintenant pour appliquer les changements ?",
+    'modal.restart.desc':
+      "L'application a été mise à jour avec succès. Redémarrer maintenant pour appliquer les changements ?",
     'modal.restart.later': 'Plus tard',
     'modal.restart.now': 'Redémarrer maintenant',
   },
@@ -614,7 +626,8 @@ const dictionaries = {
     // Settings Appearance
     'settings.appearance.title': 'Design der Anwendung',
     'settings.appearance.select': 'Design-Auswahl',
-    'settings.appearance.desc': 'Wählen Sie zwischen Systemstandard, hellem Modus oder dunklem Modus',
+    'settings.appearance.desc':
+      'Wählen Sie zwischen Systemstandard, hellem Modus oder dunklem Modus',
     'settings.appearance.theme_system': 'Systemstandard',
     'settings.appearance.theme_light': 'Heller Modus',
     'settings.appearance.theme_dark': 'Dunkler Modus',
@@ -622,7 +635,8 @@ const dictionaries = {
     // Settings Language
     'settings.language.title': 'Sprache der Anwendung',
     'settings.language.select': 'Sprachauswahl',
-    'settings.language.desc': 'Wählen Sie zwischen Systemstandard, Englisch, Deutsch oder anderen Sprachen',
+    'settings.language.desc':
+      'Wählen Sie zwischen Systemstandard, Englisch, Deutsch oder anderen Sprachen',
     'settings.language.lang_system': 'Systemstandard',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
@@ -650,62 +664,67 @@ const dictionaries = {
 
     // Restart Modal
     'modal.restart.title': 'Neustart erforderlich',
-    'modal.restart.desc': 'Die Anwendung wurde erfolgreich aktualisiert. Jetzt neu starten, um die Änderungen zu übernehmen?',
+    'modal.restart.desc':
+      'Die Anwendung wurde erfolgreich aktualisiert. Jetzt neu starten, um die Änderungen zu übernehmen?',
     'modal.restart.later': 'Später neu starten',
     'modal.restart.now': 'Jetzt neu starten',
   },
-}
+};
 
 function getSystemLanguage(): 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de' {
   if (typeof navigator === 'undefined') {
-    return 'en'
+    return 'en';
   }
-  const lang = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase()
+  const lang = (
+    navigator.language ||
+    (navigator.languages && navigator.languages[0]) ||
+    'en'
+  ).toLowerCase();
   if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk') || lang.startsWith('zh-mo')) {
-    return 'zh_tw'
+    return 'zh_tw';
   }
   if (lang.startsWith('zh')) {
-    return 'zh'
+    return 'zh';
   }
   if (lang.startsWith('ja')) {
-    return 'ja'
+    return 'ja';
   }
   if (lang.startsWith('ko')) {
-    return 'ko'
+    return 'ko';
   }
   if (lang.startsWith('es')) {
-    return 'es'
+    return 'es';
   }
   if (lang.startsWith('fr')) {
-    return 'fr'
+    return 'fr';
   }
   if (lang.startsWith('de')) {
-    return 'de'
+    return 'de';
   }
-  return 'en'
+  return 'en';
 }
 
 class I18nManager {
-  #language = $state<Language>('system')
+  #language = $state<Language>('system');
 
   get language() {
-    return this.#language
+    return this.#language;
   }
 
   set language(value: Language) {
-    this.#language = value
-    saveSetting('language', value)
+    this.#language = value;
+    saveSetting('language', value);
   }
 
   resolvedLanguage = $derived.by<'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'>(() => {
     if (this.language === 'system') {
-      return getSystemLanguage()
+      return getSystemLanguage();
     }
-    return this.language
-  })
+    return this.language;
+  });
 
   async init() {
-    const savedLang = (await loadSettings()).language as Language | undefined
+    const savedLang = (await loadSettings()).language as Language | undefined;
     if (
       savedLang === 'en' ||
       savedLang === 'zh' ||
@@ -717,26 +736,26 @@ class I18nManager {
       savedLang === 'de' ||
       savedLang === 'system'
     ) {
-      this.#language = savedLang
+      this.#language = savedLang;
     }
   }
 
   setLanguage(lang: Language) {
-    this.language = lang
+    this.language = lang;
   }
 
   t(key: string, data?: Record<string, string | number>): string {
-    const lang = this.resolvedLanguage
-    const dict = dictionaries[lang] || dictionaries.en
-    let text = (dict as any)[key] || (dictionaries.en as any)[key] || key
+    const lang = this.resolvedLanguage;
+    const dict = dictionaries[lang] || dictionaries.en;
+    let text = (dict as any)[key] || (dictionaries.en as any)[key] || key;
 
     if (data) {
       Object.entries(data).forEach(([k, v]) => {
-        text = text.replace(`{${k}}`, String(v))
-      })
+        text = text.replace(`{${k}}`, String(v));
+      });
     }
-    return text
+    return text;
   }
 }
 
-export const i18nManager = new I18nManager()
+export const i18nManager = new I18nManager();

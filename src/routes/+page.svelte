@@ -1,6 +1,6 @@
 <script lang="ts">
-  import AboutDialog from '$lib/menu/AboutDialog.svelte';
-  import { i18nManager } from '$lib/i18n.svelte';
+import { i18nManager } from '$lib/i18n.svelte';
+import AboutDialog from '$lib/menu/AboutDialog.svelte';
 </script>
 
 <main>

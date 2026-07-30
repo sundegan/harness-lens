@@ -1,49 +1,49 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+import { onMount } from 'svelte';
 
-  interface Option {
-    value: string;
-    label: string;
-  }
+interface Option {
+  value: string;
+  label: string;
+}
 
-  let {
-    value = $bindable(),
-    options = [],
-    id = '',
-    ariaLabel = 'Select option'
-  }: {
-    value: string;
-    options: Option[];
-    id?: string;
-    ariaLabel?: string;
-  } = $props();
+let {
+  value = $bindable(),
+  options = [],
+  id = '',
+  ariaLabel = 'Select option',
+}: {
+  value: string;
+  options: Option[];
+  id?: string;
+  ariaLabel?: string;
+} = $props();
 
-  let isOpen = $state(false);
+let isOpen = $state(false);
 
-  const toggleDropdown = (event: MouseEvent) => {
-    event.stopPropagation();
-    isOpen = !isOpen;
-  };
+const toggleDropdown = (event: MouseEvent) => {
+  event.stopPropagation();
+  isOpen = !isOpen;
+};
 
-  const selectOption = (val: string) => {
-    value = val;
+const selectOption = (val: string) => {
+  value = val;
+  isOpen = false;
+};
+
+const getSelectedLabel = () => {
+  const selected = options.find((opt) => opt.value === value);
+  return selected ? selected.label : '';
+};
+
+onMount(() => {
+  const handleGlobalClick = () => {
     isOpen = false;
   };
-
-  const getSelectedLabel = () => {
-    const selected = options.find(opt => opt.value === value);
-    return selected ? selected.label : '';
+  window.addEventListener('click', handleGlobalClick);
+  return () => {
+    window.removeEventListener('click', handleGlobalClick);
   };
-
-  onMount(() => {
-    const handleGlobalClick = () => {
-      isOpen = false;
-    };
-    window.addEventListener('click', handleGlobalClick);
-    return () => {
-      window.removeEventListener('click', handleGlobalClick);
-    };
-  });
+});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->

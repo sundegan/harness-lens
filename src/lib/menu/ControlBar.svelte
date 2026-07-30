@@ -1,44 +1,44 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { appUpdateManager } from '$lib/update.svelte';
-  import { themeManager } from '$lib/theme.svelte';
-  import { i18nManager } from '$lib/i18n.svelte';
-  import { logError } from '$lib/logger';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { onMount } from 'svelte';
+import { goto } from '$app/navigation';
+import { i18nManager } from '$lib/i18n.svelte';
+import { logError } from '$lib/logger';
+import { themeManager } from '$lib/theme.svelte';
+import { appUpdateManager } from '$lib/update.svelte';
 
-  let isAlwaysOnTop = $state(false);
+let isAlwaysOnTop = $state(false);
 
-  onMount(async () => {
-    try {
-      isAlwaysOnTop = await getCurrentWindow().isAlwaysOnTop();
-    } catch (err) {
-      logError('Failed to get always on top status', err);
-    }
-  });
+onMount(async () => {
+  try {
+    isAlwaysOnTop = await getCurrentWindow().isAlwaysOnTop();
+  } catch (err) {
+    logError('Failed to get always on top status', err);
+  }
+});
 
-  const toggleAlwaysOnTop = async () => {
-    try {
-      const win = getCurrentWindow();
-      const newValue = !isAlwaysOnTop;
-      await win.setAlwaysOnTop(newValue);
-      isAlwaysOnTop = newValue;
-    } catch (err) {
-      logError('Failed to toggle always on top status', err);
-    }
-  };
+const toggleAlwaysOnTop = async () => {
+  try {
+    const win = getCurrentWindow();
+    const newValue = !isAlwaysOnTop;
+    await win.setAlwaysOnTop(newValue);
+    isAlwaysOnTop = newValue;
+  } catch (err) {
+    logError('Failed to toggle always on top status', err);
+  }
+};
 
-  const toggleThemeMain = () => {
-    if (themeManager.isDarkMode) {
-      themeManager.setTheme('light');
-    } else {
-      themeManager.setTheme('dark');
-    }
-  };
+const toggleThemeMain = () => {
+  if (themeManager.isDarkMode) {
+    themeManager.setTheme('light');
+  } else {
+    themeManager.setTheme('dark');
+  }
+};
 
-  const openSettings = () => {
-    void goto('/settings');
-  };
+const openSettings = () => {
+  void goto('/settings');
+};
 </script>
 
 <div class="control-bar">

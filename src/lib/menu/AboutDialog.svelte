@@ -1,50 +1,50 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { getVersion } from '@tauri-apps/api/app';
-  import { listen } from '@tauri-apps/api/event';
-  import { openUrl } from '@tauri-apps/plugin-opener';
-  import { i18nManager } from '$lib/i18n.svelte';
+import { getVersion } from '@tauri-apps/api/app';
+import { listen } from '@tauri-apps/api/event';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { onMount } from 'svelte';
+import { i18nManager } from '$lib/i18n.svelte';
 
-  // Keep the in-app link aligned with the canonical GitHub repository URL.
-  const GITHUB_URL = 'https://github.com/sundegan/harness-lens';
+// Keep the in-app link aligned with the canonical GitHub repository URL.
+const GITHUB_URL = 'https://github.com/sundegan/harness-lens';
 
-  let appVersion = $state('');
-  let isOpen = $state(false);
+let appVersion = $state('');
+let isOpen = $state(false);
 
-  const close = () => {
-    isOpen = false;
+const close = () => {
+  isOpen = false;
+};
+
+const openGitHub = async () => {
+  await openUrl(GITHUB_URL);
+};
+
+onMount(() => {
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      close();
+    }
   };
 
-  const openGitHub = async () => {
-    await openUrl(GITHUB_URL);
-  };
+  window.addEventListener('keydown', handleKeydown);
 
-  onMount(() => {
-    const handleKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeydown);
-
-    void getVersion()
-      .then((version) => {
-        appVersion = version;
-      })
-      .catch(() => {
-        appVersion = '';
-      });
-
-    const unlisten = listen('show-about', () => {
-      isOpen = true;
+  void getVersion()
+    .then((version) => {
+      appVersion = version;
+    })
+    .catch(() => {
+      appVersion = '';
     });
 
-    return () => {
-      window.removeEventListener('keydown', handleKeydown);
-      void unlisten.then((dispose) => dispose());
-    };
+  const unlisten = listen('show-about', () => {
+    isOpen = true;
   });
+
+  return () => {
+    window.removeEventListener('keydown', handleKeydown);
+    void unlisten.then((dispose) => dispose());
+  };
+});
 </script>
 
 {#if isOpen}

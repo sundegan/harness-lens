@@ -15,13 +15,14 @@ function legacyLocalSettings(): Settings {
 
   const theme = window.localStorage.getItem('theme') ?? undefined;
   const language = window.localStorage.getItem('language') ?? undefined;
-  const autoCheckUpdates = window.localStorage.getItem('harness-lens:auto-check-updates')
-    ?? window.localStorage.getItem('codex-timeline:auto-check-updates');
+  const autoCheckUpdates =
+    window.localStorage.getItem('harness-lens:auto-check-updates') ??
+    window.localStorage.getItem('codex-timeline:auto-check-updates');
 
   return {
     theme,
     language,
-    autoCheckUpdates: autoCheckUpdates === null ? undefined : autoCheckUpdates !== 'false'
+    autoCheckUpdates: autoCheckUpdates === null ? undefined : autoCheckUpdates !== 'false',
   };
 }
 

@@ -1,127 +1,130 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import TitleBar from '$lib/menu/TitleBar.svelte';
-  import { i18nManager } from '$lib/i18n.svelte';
-  import { appUpdateManager } from '$lib/update.svelte';
-  import { installFrontendErrorLogging, logWarn } from '$lib/logger';
-  import { themeManager } from '$lib/theme.svelte';
-  import '../app.css';
+import { onMount } from 'svelte';
+import { goto } from '$app/navigation';
+import { i18nManager } from '$lib/i18n.svelte';
+import { installFrontendErrorLogging, logWarn } from '$lib/logger';
+import TitleBar from '$lib/menu/TitleBar.svelte';
+import { themeManager } from '$lib/theme.svelte';
+import { appUpdateManager } from '$lib/update.svelte';
+import '../app.css';
 
-  const syncTrayMenuLabels = async (labels: {
-    showMain: string;
-    settings: string;
-    quit: string;
-  }) => {
+const syncTrayMenuLabels = async (labels: { showMain: string; settings: string; quit: string }) => {
+  const { isTauri } = await import('@tauri-apps/api/core');
+  if (!isTauri()) return;
+
+  const { invoke } = await import('@tauri-apps/api/core');
+  try {
+    await invoke('set_tray_menu_labels', { labels });
+  } catch (error) {
+    logWarn('Failed to update tray menu labels', error);
+  }
+};
+
+$effect(() => {
+  void syncTrayMenuLabels({
+    showMain: i18nManager.t('tray.show_main'),
+    settings: i18nManager.t('tray.settings'),
+    quit: i18nManager.t('tray.quit'),
+  });
+});
+
+// Reactively track theme manager theme state to ensure native integration updates
+$effect(() => {
+  // Explicitly read the theme state to establish reactive tracking in Svelte 5
+  const _ = themeManager.theme;
+  void themeManager.updateTheme();
+});
+
+onMount(() => {
+  const unlisteners: Array<() => void> = [];
+
+  void themeManager.init();
+  void i18nManager.init();
+  void appUpdateManager.init();
+  void installFrontendErrorLogging().then((unlisten) => unlisteners.push(unlisten));
+
+  void (async () => {
+    if (import.meta.env.VITE_WDIO_TAURI === '1') {
+      await import('@wdio/tauri-plugin');
+    }
+
     const { isTauri } = await import('@tauri-apps/api/core');
     if (!isTauri()) return;
 
-    const { invoke } = await import('@tauri-apps/api/core');
-    try {
-      await invoke('set_tray_menu_labels', { labels });
-    } catch (error) {
-      logWarn('Failed to update tray menu labels', error);
+    const { listen } = await import('@tauri-apps/api/event');
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const appWindow = getCurrentWindow();
+
+    isWindowInactive = !(await appWindow.isFocused());
+    const unlistenFocus = await appWindow.onFocusChanged(({ payload: focused }) => {
+      isWindowInactive = !focused;
+    });
+    unlisteners.push(unlistenFocus);
+
+    const unlistenUpdate = await listen('check-for-updates', () => {
+      void goto('/settings');
+      void appUpdateManager.checkForUpdates();
+    });
+    unlisteners.push(unlistenUpdate);
+
+    const unlistenSettings = await listen('open-settings', () => {
+      void goto('/settings');
+    });
+    unlisteners.push(unlistenSettings);
+  })();
+
+  // Prevent default browser context menu globally to eliminate web feeling
+  const handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+  };
+
+  // Prevent wheel zoom (Ctrl + Mouse Wheel / Pinch gesture on trackpad)
+  const handleWheel = (e: WheelEvent) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
     }
   };
 
-  $effect(() => {
-    void syncTrayMenuLabels({
-      showMain: i18nManager.t('tray.show_main'),
-      settings: i18nManager.t('tray.settings'),
-      quit: i18nManager.t('tray.quit')
-    });
-  });
-
-  // Reactively track theme manager theme state to ensure native integration updates
-  $effect(() => {
-    // Explicitly read the theme state to establish reactive tracking in Svelte 5
-    const _ = themeManager.theme;
-    void themeManager.updateTheme();
-  });
-
-  onMount(() => {
-    const unlisteners: Array<() => void> = [];
-
-    void themeManager.init();
-    void i18nManager.init();
-    void appUpdateManager.init();
-    void installFrontendErrorLogging().then((unlisten) => unlisteners.push(unlisten));
-
-    void (async () => {
-      if (import.meta.env.VITE_WDIO_TAURI === '1') {
-        await import('@wdio/tauri-plugin');
-      }
-
-      const { isTauri } = await import('@tauri-apps/api/core');
-      if (!isTauri()) return;
-
-      const { listen } = await import('@tauri-apps/api/event');
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const appWindow = getCurrentWindow();
-
-      isWindowInactive = !(await appWindow.isFocused());
-      const unlistenFocus = await appWindow.onFocusChanged(({ payload: focused }) => {
-        isWindowInactive = !focused;
-      });
-      unlisteners.push(unlistenFocus);
-
-      const unlistenUpdate = await listen('check-for-updates', () => {
-        void goto('/settings');
-        void appUpdateManager.checkForUpdates();
-      });
-      unlisteners.push(unlistenUpdate);
-
-      const unlistenSettings = await listen('open-settings', () => {
-        void goto('/settings');
-      });
-      unlisteners.push(unlistenSettings);
-    })();
-
-    // Prevent default browser context menu globally to eliminate web feeling
-    const handleContextMenu = (e: MouseEvent) => {
+  // Prevent keyboard zoom shortcuts: Cmd/Ctrl + = / - / 0
+  const handleKeydown = (e: KeyboardEvent) => {
+    const isZoomKey =
+      e.key === '=' ||
+      e.key === '-' ||
+      e.key === '0' ||
+      e.key === '+' ||
+      e.code === 'Minus' ||
+      e.code === 'Equal' ||
+      e.code === 'Digit0' ||
+      e.code === 'NumpadAdd' ||
+      e.code === 'NumpadSubtract';
+    if ((e.ctrlKey || e.metaKey) && isZoomKey) {
       e.preventDefault();
-    };
+    }
+  };
 
-    // Prevent wheel zoom (Ctrl + Mouse Wheel / Pinch gesture on trackpad)
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-      }
-    };
+  // Prevent Safari/WebKit gesture zoom (pinch gesture on macOS/iOS)
+  const handleGesture = (e: Event) => {
+    e.preventDefault();
+  };
 
-    // Prevent keyboard zoom shortcuts: Cmd/Ctrl + = / - / 0
-    const handleKeydown = (e: KeyboardEvent) => {
-      const isZoomKey = e.key === '=' || e.key === '-' || e.key === '0' || e.key === '+' ||
-                        e.code === 'Minus' || e.code === 'Equal' || e.code === 'Digit0' ||
-                        e.code === 'NumpadAdd' || e.code === 'NumpadSubtract';
-      if ((e.ctrlKey || e.metaKey) && isZoomKey) {
-        e.preventDefault();
-      }
-    };
+  document.addEventListener('contextmenu', handleContextMenu);
+  document.addEventListener('wheel', handleWheel, { passive: false });
+  document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('gesturestart', handleGesture);
+  document.addEventListener('gesturechange', handleGesture);
 
-    // Prevent Safari/WebKit gesture zoom (pinch gesture on macOS/iOS)
-    const handleGesture = (e: Event) => {
-      e.preventDefault();
-    };
+  return () => {
+    document.removeEventListener('contextmenu', handleContextMenu);
+    document.removeEventListener('wheel', handleWheel);
+    document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('gesturestart', handleGesture);
+    document.removeEventListener('gesturechange', handleGesture);
+    for (const unlisten of unlisteners) unlisten();
+  };
+});
 
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('wheel', handleWheel, { passive: false });
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('gesturestart', handleGesture);
-    document.addEventListener('gesturechange', handleGesture);
-
-    return () => {
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('wheel', handleWheel);
-      document.removeEventListener('keydown', handleKeydown);
-      document.removeEventListener('gesturestart', handleGesture);
-      document.removeEventListener('gesturechange', handleGesture);
-      for (const unlisten of unlisteners) unlisten();
-    };
-  });
-
-  let { children } = $props();
-  let isWindowInactive = $state(false);
+let { children } = $props();
+let isWindowInactive = $state(false);
 </script>
 
 <div class={`macos-window-frame ${isWindowInactive ? 'is-inactive' : ''}`}>

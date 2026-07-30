@@ -1,6 +1,6 @@
-import { defineConfig } from "vite";
-import { sveltekit } from "@sveltejs/kit/vite";
-import tailwindcss from "@tailwindcss/vite";
+import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
+import { defineConfig } from 'vite';
 
 const host = process.env.TAURI_DEV_HOST;
 const port = Number(process.env.VITE_PORT || 1420);
@@ -20,14 +20,14 @@ export default defineConfig(async () => ({
     host: host || false,
     hmr: host
       ? {
-          protocol: "ws",
+          protocol: 'ws',
           host,
           port: port + 1,
         }
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: ['**/src-tauri/**'],
     },
   },
 }));

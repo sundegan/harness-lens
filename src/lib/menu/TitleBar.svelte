@@ -1,72 +1,72 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { Window as TauriWindow } from '@tauri-apps/api/window';
-  import ControlBar from '$lib/menu/ControlBar.svelte';
-  import { logWarn } from '$lib/logger';
+import type { Window as TauriWindow } from '@tauri-apps/api/window';
+import { onMount } from 'svelte';
+import { logWarn } from '$lib/logger';
+import ControlBar from '$lib/menu/ControlBar.svelte';
 
-  type TitlebarPlatform = 'macos' | 'windows' | 'linux';
+type TitlebarPlatform = 'macos' | 'windows' | 'linux';
 
-  let appWindow: TauriWindow | null = null;
-  let platform = $state<TitlebarPlatform>('macos');
-  let isWindowExpanded = $state(false);
+let appWindow: TauriWindow | null = null;
+let platform = $state<TitlebarPlatform>('macos');
+let isWindowExpanded = $state(false);
 
-  const normalizePlatform = (value: string): TitlebarPlatform => {
-    if (value === 'macos') return 'macos';
-    if (value === 'windows') return 'windows';
-    return 'linux';
-  };
+const normalizePlatform = (value: string): TitlebarPlatform => {
+  if (value === 'macos') return 'macos';
+  if (value === 'windows') return 'windows';
+  return 'linux';
+};
 
-  const closeWindow = () => {
-    void appWindow?.close();
-  };
+const closeWindow = () => {
+  void appWindow?.close();
+};
 
-  const minimizeWindow = () => {
-    void appWindow?.minimize();
-  };
+const minimizeWindow = () => {
+  void appWindow?.minimize();
+};
 
-  const updateWindowState = async () => {
-    if (!appWindow || platform === 'macos') return;
-    isWindowExpanded = (await appWindow.isFullscreen()) || (await appWindow.isMaximized());
-  };
+const updateWindowState = async () => {
+  if (!appWindow || platform === 'macos') return;
+  isWindowExpanded = (await appWindow.isFullscreen()) || (await appWindow.isMaximized());
+};
 
-  const toggleMaximizeWindow = async () => {
-    if (!appWindow) return;
-    await appWindow.toggleMaximize();
+const toggleMaximizeWindow = async () => {
+  if (!appWindow) return;
+  await appWindow.toggleMaximize();
+  await updateWindowState();
+};
+
+onMount(() => {
+  const unlisteners: Array<() => void> = [];
+
+  void (async () => {
+    const { invoke, isTauri } = await import('@tauri-apps/api/core');
+
+    try {
+      const value = await invoke<string>('desktop_platform');
+      platform = normalizePlatform(value);
+    } catch (err) {
+      logWarn('Failed to detect desktop platform', err);
+    }
+
+    if (!isTauri()) return;
+
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    appWindow = getCurrentWindow();
+
+    if (platform === 'macos') return;
+
     await updateWindowState();
+
+    const unlisten = await appWindow.onResized(() => {
+      void updateWindowState();
+    });
+    unlisteners.push(unlisten);
+  })();
+
+  return () => {
+    for (const unlisten of unlisteners) unlisten();
   };
-
-  onMount(() => {
-    const unlisteners: Array<() => void> = [];
-
-    void (async () => {
-      const { invoke, isTauri } = await import('@tauri-apps/api/core');
-
-      try {
-        const value = await invoke<string>('desktop_platform');
-        platform = normalizePlatform(value);
-      } catch (err) {
-        logWarn('Failed to detect desktop platform', err);
-      }
-
-      if (!isTauri()) return;
-
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      appWindow = getCurrentWindow();
-
-      if (platform === 'macos') return;
-
-      await updateWindowState();
-
-      const unlisten = await appWindow.onResized(() => {
-        void updateWindowState();
-      });
-      unlisteners.push(unlisten);
-    })();
-
-    return () => {
-      for (const unlisten of unlisteners) unlisten();
-    };
-  });
+});
 </script>
 
 <header class={`titlebar titlebar-${platform}`} data-tauri-drag-region>

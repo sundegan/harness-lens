@@ -1,49 +1,49 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { appUpdateManager } from '$lib/update.svelte';
-  import { themeManager } from '$lib/theme.svelte';
-  import { i18nManager } from '$lib/i18n.svelte';
-  import { logWarn } from '$lib/logger';
-  import Select from '$lib/components/Select.svelte';
+import { onMount } from 'svelte';
+import Select from '$lib/components/Select.svelte';
+import { i18nManager } from '$lib/i18n.svelte';
+import { logWarn } from '$lib/logger';
+import { themeManager } from '$lib/theme.svelte';
+import { appUpdateManager } from '$lib/update.svelte';
 
-  type SettingsTab = 'general' | 'appearance';
+type SettingsTab = 'general' | 'appearance';
 
-  let activeTab = $state<SettingsTab>('general');
+let activeTab = $state<SettingsTab>('general');
 
-  onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
+onMount(() => {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
 
-    if (tab === 'appearance') {
-      activeTab = tab;
-    }
-  });
-
-  const setActiveTab = (tab: SettingsTab) => {
+  if (tab === 'appearance') {
     activeTab = tab;
-  };
+  }
+});
 
-  let showRestartModal = $state(false);
+const setActiveTab = (tab: SettingsTab) => {
+  activeTab = tab;
+};
 
-  $effect(() => {
-    if (appUpdateManager.status === 'ready') {
-      showRestartModal = true;
-    }
-  });
+let showRestartModal = $state(false);
 
-  const handleRestart = async () => {
-    if (import.meta.env.DEV) {
+$effect(() => {
+  if (appUpdateManager.status === 'ready') {
+    showRestartModal = true;
+  }
+});
+
+const handleRestart = async () => {
+  if (import.meta.env.DEV) {
+    window.location.reload();
+  } else {
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      await invoke('restart_app');
+    } catch (e) {
+      logWarn('Failed to restart app', e);
       window.location.reload();
-    } else {
-      const { invoke } = await import('@tauri-apps/api/core');
-      try {
-        await invoke('restart_app');
-      } catch (e) {
-        logWarn('Failed to restart app', e);
-        window.location.reload();
-      }
     }
-  };
+  }
+};
 </script>
 
 <main class="settings-container">

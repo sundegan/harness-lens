@@ -23,7 +23,7 @@ export const config = {
   reporters: ['spec'],
   mochaOpts: {
     ui: 'bdd',
-    timeout: 60000
+    timeout: 60000,
   },
   services: [
     [
@@ -34,16 +34,16 @@ export const config = {
         embeddedPort: Number(process.env.TAURI_WEBDRIVER_PORT ?? 4445),
         startTimeout: 120000,
         captureFrontendLogs: true,
-        captureBackendLogs: true
-      }
-    ]
+        captureBackendLogs: true,
+      },
+    ],
   ],
   capabilities: [
     {
       browserName: 'tauri',
       'tauri:options': {
-        application: appBinaryPath
-      }
-    }
-  ]
+        application: appBinaryPath,
+      },
+    },
+  ],
 };
