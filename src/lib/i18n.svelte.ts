@@ -18,9 +18,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Analytics Dashboard
     'dashboard.eyebrow': 'Local Codex analytics',
-    'dashboard.title': 'Coding agent activity',
-    'dashboard.subtitle':
-      'Read-only analysis of local sessions, turns, token usage, and skill calls.',
+    'dashboard.title': 'Coding Agent analytics',
+    'dashboard.subtitle': 'Analyze local sessions, turns, token usage, and skill calls.',
     'dashboard.refresh': 'Refresh analytics',
     'dashboard.loading': 'Loading local analytics…',
     'dashboard.summary.label': 'Analytics summary',
@@ -43,6 +42,10 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.search.label': 'Search analytics',
     'dashboard.search.sessions': 'Search sessions or projects',
     'dashboard.search.skills': 'Search skills',
+    'dashboard.pagination.label': 'Analytics pagination',
+    'dashboard.pagination.previous': 'Previous page',
+    'dashboard.pagination.next': 'Next page',
+    'dashboard.pagination.page': 'Page {page} of {total}',
     'dashboard.session.name': 'Session',
     'dashboard.session.updated': 'Last activity',
     'dashboard.session.duration': 'Active time',
@@ -170,8 +173,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Analytics Dashboard
     'dashboard.eyebrow': '本机 Codex 分析',
-    'dashboard.title': 'Coding Agent 活动',
-    'dashboard.subtitle': '以只读方式分析本机会话、轮次、Token 用量和 Skill 调用。',
+    'dashboard.title': 'Coding Agent 分析',
+    'dashboard.subtitle': '分析本机会话、轮次、Token 用量和 Skill 调用。',
     'dashboard.refresh': '刷新分析数据',
     'dashboard.loading': '正在加载本机分析数据…',
     'dashboard.summary.label': '分析概览',
@@ -194,6 +197,10 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.search.label': '搜索分析数据',
     'dashboard.search.sessions': '搜索会话或项目',
     'dashboard.search.skills': '搜索 Skill',
+    'dashboard.pagination.label': '分析数据分页',
+    'dashboard.pagination.previous': '上一页',
+    'dashboard.pagination.next': '下一页',
+    'dashboard.pagination.page': '第 {page} / {total} 页',
     'dashboard.session.name': '会话',
     'dashboard.session.updated': '最后活动',
     'dashboard.session.duration': '执行时间',
@@ -320,8 +327,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Analytics Dashboard
     'dashboard.eyebrow': '本機 Codex 分析',
-    'dashboard.title': 'Coding Agent 活動',
-    'dashboard.subtitle': '以唯讀方式分析本機工作階段、輪次、Token 用量和 Skill 呼叫。',
+    'dashboard.title': 'Coding Agent 分析',
+    'dashboard.subtitle': '分析本機工作階段、輪次、Token 用量和 Skill 呼叫。',
     'dashboard.refresh': '重新整理分析資料',
     'dashboard.loading': '正在載入本機分析資料…',
     'dashboard.summary.label': '分析概覽',
@@ -344,6 +351,10 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.search.label': '搜尋分析資料',
     'dashboard.search.sessions': '搜尋工作階段或專案',
     'dashboard.search.skills': '搜尋 Skill',
+    'dashboard.pagination.label': '分析資料分頁',
+    'dashboard.pagination.previous': '上一頁',
+    'dashboard.pagination.next': '下一頁',
+    'dashboard.pagination.page': '第 {page} / {total} 頁',
     'dashboard.session.name': '工作階段',
     'dashboard.session.updated': '最後活動',
     'dashboard.session.duration': '執行時間',

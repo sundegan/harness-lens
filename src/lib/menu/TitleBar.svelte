@@ -5,10 +5,12 @@ import { logWarn } from '$lib/logger';
 import ControlBar from '$lib/menu/ControlBar.svelte';
 
 type TitlebarPlatform = 'macos' | 'windows' | 'linux';
+const RESIZE_STATE_UPDATE_DELAY_MS = 120;
 
 let appWindow: TauriWindow | null = null;
 let platform = $state<TitlebarPlatform>('macos');
 let isWindowExpanded = $state(false);
+let resizeStateUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 
 const normalizePlatform = (value: string): TitlebarPlatform => {
   if (value === 'macos') return 'macos';
@@ -35,6 +37,17 @@ const toggleMaximizeWindow = async () => {
   await updateWindowState();
 };
 
+const scheduleWindowStateUpdate = () => {
+  if (!appWindow || platform === 'macos') return;
+  if (resizeStateUpdateTimer !== undefined) {
+    clearTimeout(resizeStateUpdateTimer);
+  }
+  resizeStateUpdateTimer = setTimeout(() => {
+    resizeStateUpdateTimer = undefined;
+    void updateWindowState();
+  }, RESIZE_STATE_UPDATE_DELAY_MS);
+};
+
 onMount(() => {
   const unlisteners: Array<() => void> = [];
 
@@ -58,12 +71,15 @@ onMount(() => {
     await updateWindowState();
 
     const unlisten = await appWindow.onResized(() => {
-      void updateWindowState();
+      scheduleWindowStateUpdate();
     });
     unlisteners.push(unlisten);
   })();
 
   return () => {
+    if (resizeStateUpdateTimer !== undefined) {
+      clearTimeout(resizeStateUpdateTimer);
+    }
     for (const unlisten of unlisteners) unlisten();
   };
 });

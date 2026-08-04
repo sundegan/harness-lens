@@ -1,4 +1,4 @@
-.PHONY: help dev dev-mock-update build check test fmt lint clean install
+.PHONY: help dev dev-mock-update build build-dev check test fmt lint clean install
 
 DEV_PORT ?= 1420
 DEV_PORT_ARG := $(word 2,$(MAKECMDGOALS))
@@ -20,7 +20,8 @@ help:
 	@echo ""
 	@echo "  make dev [port] - Run the Tauri desktop app (default port: 1420)"
 	@echo "  make dev-mock-update [port] - Run the Tauri desktop app with mock update enabled"
-	@echo "  make build    - Build the Tauri desktop app"
+	@echo "  make build    - Build the release Tauri desktop app (requires updater signing key)"
+	@echo "  make build-dev - Build the local Tauri desktop app without updater artifacts"
 	@echo "  make check    - Type check frontend and Rust backend"
 	@echo "  make test     - Run end-to-end and Rust tests"
 	@echo "  make fmt      - Format frontend and Rust code"
@@ -47,9 +48,13 @@ dev-mock-update:
 		--config src-tauri/tauri.dev.conf.json \
 		--config '{"build":{"devUrl":"http://localhost:$(DEV_PORT)"}}'
 
-# Build application (frontend + backend)
+# Build release application (frontend + backend, including updater artifacts)
 build:
 	pnpm tauri build
+
+# Build local application (frontend + backend, without updater artifacts)
+build-dev:
+	pnpm tauri build --config src-tauri/tauri.dev.conf.json
 
 # Type check (frontend + backend)
 check:

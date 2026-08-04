@@ -14,11 +14,14 @@ import AboutDialog from '$lib/menu/AboutDialog.svelte';
 
 type DashboardView = 'sessions' | 'skills';
 type SessionFilter = 'all' | 'current' | 'archived';
+const DASHBOARD_PAGE_SIZE = 50;
 
 let snapshot = $state.raw<AnalyticsSnapshot | null>(null);
 let activeView = $state<DashboardView>('sessions');
 let sessionFilter = $state<SessionFilter>('all');
 let query = $state('');
+let sessionPage = $state(1);
+let skillPage = $state(1);
 let isLoading = $state(true);
 let loadError = $state('');
 let requestSequence = 0;
@@ -44,6 +47,22 @@ const visibleSkills = $derived.by(() => {
   return snapshot.skills.filter((skill) =>
     skill.name.toLocaleLowerCase().includes(normalizedQuery)
   );
+});
+const sessionPageCount = $derived(
+  Math.max(1, Math.ceil(visibleSessions.length / DASHBOARD_PAGE_SIZE))
+);
+const skillPageCount = $derived(Math.max(1, Math.ceil(visibleSkills.length / DASHBOARD_PAGE_SIZE)));
+const activeSessionPage = $derived(Math.min(sessionPage, sessionPageCount));
+const activeSkillPage = $derived(Math.min(skillPage, skillPageCount));
+const activePage = $derived(activeView === 'sessions' ? activeSessionPage : activeSkillPage);
+const activePageCount = $derived(activeView === 'sessions' ? sessionPageCount : skillPageCount);
+const pagedSessions = $derived.by(() => {
+  const start = (activeSessionPage - 1) * DASHBOARD_PAGE_SIZE;
+  return visibleSessions.slice(start, start + DASHBOARD_PAGE_SIZE);
+});
+const pagedSkills = $derived.by(() => {
+  const start = (activeSkillPage - 1) * DASHBOARD_PAGE_SIZE;
+  return visibleSkills.slice(start, start + DASHBOARD_PAGE_SIZE);
 });
 const dashboardLocale = $derived.by(() => {
   const language = i18nManager.resolvedLanguage;
@@ -172,6 +191,29 @@ onMount(() => {
 const setView = (view: DashboardView) => {
   activeView = view;
   query = '';
+  sessionPage = 1;
+  skillPage = 1;
+};
+
+const setSessionFilter = (filter: SessionFilter) => {
+  sessionFilter = filter;
+  sessionPage = 1;
+};
+
+const handleQueryInput = (event: Event) => {
+  const input = event.currentTarget;
+  if (!(input instanceof HTMLInputElement)) return;
+  query = input.value;
+  sessionPage = 1;
+  skillPage = 1;
+};
+
+const goToPage = (view: DashboardView, page: number) => {
+  if (view === 'sessions') {
+    sessionPage = Math.min(Math.max(page, 1), sessionPageCount);
+  } else {
+    skillPage = Math.min(Math.max(page, 1), skillPageCount);
+  }
 };
 
 const handleViewKeydown = (event: KeyboardEvent) => {
@@ -240,7 +282,7 @@ const outcomeLabel = (skill: SkillSummary) =>
 </script>
 
 <svelte:head>
-  <title>HarnessLens Analytics</title>
+  <title>{i18nManager.t('dashboard.title')} | HarnessLens</title>
 </svelte:head>
 
 <main class="dashboard" data-testid="analytics-dashboard">
@@ -405,7 +447,7 @@ const outcomeLabel = (skill: SkillSummary) =>
                   type="button"
                   aria-pressed={sessionFilter === filter}
                   class={{ active: sessionFilter === filter }}
-                  onclick={() => (sessionFilter = filter as SessionFilter)}
+                  onclick={() => setSessionFilter(filter as SessionFilter)}
                 >
                   {i18nManager.t(`dashboard.filter.${filter}`)}
                 </button>
@@ -420,7 +462,8 @@ const outcomeLabel = (skill: SkillSummary) =>
             <span class="sr-only">{i18nManager.t('dashboard.search.label')}</span>
             <input
               type="search"
-              bind:value={query}
+              value={query}
+              oninput={handleQueryInput}
               aria-label={i18nManager.t('dashboard.search.label')}
               placeholder={activeView === 'sessions'
                 ? i18nManager.t('dashboard.search.sessions')
@@ -452,7 +495,7 @@ const outcomeLabel = (skill: SkillSummary) =>
                 </tr>
               </thead>
               <tbody>
-                {#each visibleSessions as session (session.id)}
+                {#each pagedSessions as session (session.id)}
                   <tr>
                     <td class="primary-cell">
                       <span class="session-title selectable-text" title={session.title}>{sessionName(session)}</span>
@@ -496,7 +539,7 @@ const outcomeLabel = (skill: SkillSummary) =>
               </tr>
             </thead>
             <tbody>
-              {#each visibleSkills as skill (skill.name)}
+              {#each pagedSkills as skill (skill.name)}
                 <tr>
                   <td class="skill-name selectable-text">{skill.name}</td>
                   <td class="numeric mono"><strong>{formatInteger(skill.invocationCount)}</strong></td>
@@ -540,6 +583,34 @@ const outcomeLabel = (skill: SkillSummary) =>
             <span>{i18nManager.t('dashboard.sync.processed', { count: formatInteger(snapshot.sync.processedRecords) })}</span>
           {:else if snapshot.sync.updatedAtMs}
             <span>{i18nManager.t('dashboard.sync.updated', { date: formatDate(snapshot.sync.updatedAtMs) })}</span>
+          {/if}
+          {#if activePageCount > 1}
+            <nav class="pagination" aria-label={i18nManager.t('dashboard.pagination.label')}>
+              <button
+                class="page-button"
+                type="button"
+                aria-label={i18nManager.t('dashboard.pagination.previous')}
+                disabled={activePage === 1}
+                onclick={() => goToPage(activeView, activePage - 1)}
+              >
+                <span aria-hidden="true">‹</span>
+              </button>
+              <span class="page-number" aria-live="polite">
+                {i18nManager.t('dashboard.pagination.page', {
+                  page: formatInteger(activePage),
+                  total: formatInteger(activePageCount)
+                })}
+              </span>
+              <button
+                class="page-button"
+                type="button"
+                aria-label={i18nManager.t('dashboard.pagination.next')}
+                disabled={activePage === activePageCount}
+                onclick={() => goToPage(activeView, activePage + 1)}
+              >
+                <span aria-hidden="true">›</span>
+              </button>
+            </nav>
           {/if}
         </div>
       </footer>
@@ -1116,6 +1187,7 @@ const outcomeLabel = (skill: SkillSummary) =>
 
   table {
     width: 100%;
+    table-layout: fixed;
     border-spacing: 0;
     border-collapse: collapse;
     color: var(--dash-text);
@@ -1304,7 +1376,54 @@ const outcomeLabel = (skill: SkillSummary) =>
   .footer-status {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 12px;
+  }
+
+  .pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .page-button {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--dash-border);
+    border-radius: 5px;
+    color: var(--dash-text-muted);
+    background: var(--dash-surface);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .page-button:hover:not(:disabled) {
+    color: var(--dash-accent);
+    border-color: color-mix(in srgb, var(--dash-accent) 48%, var(--dash-border));
+    background: var(--dash-accent-soft);
+  }
+
+  .page-button:focus-visible {
+    outline: 2px solid var(--dash-focus);
+    outline-offset: 1px;
+  }
+
+  .page-button:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .page-number {
+    min-width: 68px;
+    color: var(--dash-text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
   }
 
   .result-count {

@@ -1,4 +1,7 @@
 {
   "productName": "HarnessLens Dev",
-  "identifier": "com.harnesslens.desktop.dev"
+  "identifier": "com.harnesslens.desktop.dev",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
 }

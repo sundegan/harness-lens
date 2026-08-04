@@ -3,11 +3,7 @@
     "biome check --write --no-errors-on-unmatched",
     "biome format --write --no-errors-on-unmatched"
   ],
-  "*.{json,css,md}": [
-    "biome format --write --no-errors-on-unmatched"
-  ],
-  "*.rs": [
-    "cargo fmt --all --"
-  ],
+  "*.{json,css,md}": ["biome format --write --no-errors-on-unmatched"],
+  "*.rs": ["cargo fmt --all --"],
   "*.{toml,lock}": []
 }

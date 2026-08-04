@@ -11,9 +11,5 @@
     "strict": true,
     "moduleResolution": "bundler"
   },
-  "exclude": [
-    "node_modules",
-    ".svelte-kit",
-    "build"
-  ]
+  "exclude": ["node_modules", ".svelte-kit", "build"]
 }
