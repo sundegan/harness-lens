@@ -1,8 +1,10 @@
 export type Language = 'system' | 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de';
+type ResolvedLanguage = Exclude<Language, 'system'>;
+type Dictionary = Record<string, string>;
 
 import { loadSettings, saveSetting } from '$lib/settings';
 
-const dictionaries = {
+const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   en: {
     // Shared / Navigation
     'nav.back': 'Back to Analytics',
@@ -13,6 +15,75 @@ const dictionaries = {
     'main.title': 'HarnessLens',
     'main.desc':
       'HarnessLens analyzes the effectiveness of AI coding harness usage, providing clear data to guide harness improvements.',
+
+    // Analytics Dashboard
+    'dashboard.eyebrow': 'Local Codex analytics',
+    'dashboard.title': 'Coding agent activity',
+    'dashboard.subtitle':
+      'Read-only analysis of local sessions, turns, token usage, and skill calls.',
+    'dashboard.refresh': 'Refresh analytics',
+    'dashboard.loading': 'Loading local analytics…',
+    'dashboard.summary.label': 'Analytics summary',
+    'dashboard.summary.sessions': 'Sessions',
+    'dashboard.summary.tokens': 'Session tokens',
+    'dashboard.summary.skills': 'Skill calls',
+    'dashboard.turns.label': 'Turn outcomes',
+    'dashboard.turns.succeeded': '{count} succeeded',
+    'dashboard.turns.failed': '{count} failed',
+    'dashboard.turns.cancelled': '{count} cancelled',
+    'dashboard.turns.active': '{count} active',
+    'dashboard.turns.unknown': '{count} unknown',
+    'dashboard.views.label': 'Analytics views',
+    'dashboard.views.sessions': 'Sessions',
+    'dashboard.views.skills': 'Skills',
+    'dashboard.filter.label': 'Session scope',
+    'dashboard.filter.all': 'All',
+    'dashboard.filter.current': 'Current',
+    'dashboard.filter.archived': 'Archived',
+    'dashboard.search.label': 'Search analytics',
+    'dashboard.search.sessions': 'Search sessions or projects',
+    'dashboard.search.skills': 'Search skills',
+    'dashboard.session.name': 'Session',
+    'dashboard.session.updated': 'Last activity',
+    'dashboard.session.duration': 'Active time',
+    'dashboard.session.tokens': 'Tokens',
+    'dashboard.session.turns': 'Turns',
+    'dashboard.session.skills': 'Skills',
+    'dashboard.session.status': 'Latest outcome',
+    'dashboard.session.untitled': 'Untitled session',
+    'dashboard.session.unknown_project': 'Unknown project',
+    'dashboard.session.wall_duration': 'Elapsed from creation to last activity: {duration}',
+    'dashboard.skill.name': 'Skill',
+    'dashboard.skill.invocations': 'Runs',
+    'dashboard.skill.outcomes': 'Success / fail / cancel / other',
+    'dashboard.skill.outcome_values':
+      '{succeeded} succeeded, {failed} failed, {cancelled} cancelled, {unknown} active or unknown',
+    'dashboard.skill.success_rate': 'Success',
+    'dashboard.skill.average_duration': 'Avg time',
+    'dashboard.skill.max_duration': 'Max time',
+    'dashboard.skill.average_tokens': 'Avg tokens',
+    'dashboard.skill.max_tokens': 'Max tokens',
+    'dashboard.empty.sessions': 'No Codex sessions have been imported yet.',
+    'dashboard.empty.skills': 'No Skill calls were detected.',
+    'dashboard.empty.filtered': 'No results match the current filters.',
+    'dashboard.method':
+      'A Skill call is counted when a tool successfully reads its SKILL.md; repeated reads in the same turn count once. Status, time, and tokens use the containing turn.',
+    'dashboard.sync.not_started': 'Waiting to scan',
+    'dashboard.sync.syncing': 'Scanning local data',
+    'dashboard.sync.ready': 'Watching for changes',
+    'dashboard.sync.error': 'Sync error',
+    'dashboard.sync.unavailable': 'Codex data unavailable',
+    'dashboard.sync.processed': '{count} records processed',
+    'dashboard.sync.updated': 'Updated {date}',
+    'dashboard.status.succeeded': 'Succeeded',
+    'dashboard.status.failed': 'Failed',
+    'dashboard.status.cancelled': 'Cancelled',
+    'dashboard.status.active': 'Active',
+    'dashboard.status.unknown': 'Unknown',
+    'dashboard.duration.seconds': '{value}s',
+    'dashboard.duration.minutes': '{value}m',
+    'dashboard.duration.hours': '{value}h',
+    'dashboard.duration.days': '{value}d',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -97,6 +168,74 @@ const dictionaries = {
     'main.desc':
       'HarnessLens是AI Coding Harness的使用效能分析工具，为Harness改进提供直观的数据依据。',
 
+    // Analytics Dashboard
+    'dashboard.eyebrow': '本机 Codex 分析',
+    'dashboard.title': 'Coding Agent 活动',
+    'dashboard.subtitle': '以只读方式分析本机会话、轮次、Token 用量和 Skill 调用。',
+    'dashboard.refresh': '刷新分析数据',
+    'dashboard.loading': '正在加载本机分析数据…',
+    'dashboard.summary.label': '分析概览',
+    'dashboard.summary.sessions': '会话数',
+    'dashboard.summary.tokens': '会话 Token',
+    'dashboard.summary.skills': 'Skill 调用',
+    'dashboard.turns.label': '轮次结果',
+    'dashboard.turns.succeeded': '成功 {count}',
+    'dashboard.turns.failed': '失败 {count}',
+    'dashboard.turns.cancelled': '取消 {count}',
+    'dashboard.turns.active': '执行中 {count}',
+    'dashboard.turns.unknown': '未知 {count}',
+    'dashboard.views.label': '分析视图',
+    'dashboard.views.sessions': '会话',
+    'dashboard.views.skills': 'Skills',
+    'dashboard.filter.label': '会话范围',
+    'dashboard.filter.all': '全部',
+    'dashboard.filter.current': '当前',
+    'dashboard.filter.archived': '已归档',
+    'dashboard.search.label': '搜索分析数据',
+    'dashboard.search.sessions': '搜索会话或项目',
+    'dashboard.search.skills': '搜索 Skill',
+    'dashboard.session.name': '会话',
+    'dashboard.session.updated': '最后活动',
+    'dashboard.session.duration': '执行时间',
+    'dashboard.session.tokens': 'Token',
+    'dashboard.session.turns': '轮次',
+    'dashboard.session.skills': 'Skill',
+    'dashboard.session.status': '最近结果',
+    'dashboard.session.untitled': '未命名会话',
+    'dashboard.session.unknown_project': '未知项目',
+    'dashboard.session.wall_duration': '从创建到最后活动的跨度：{duration}',
+    'dashboard.skill.name': 'Skill',
+    'dashboard.skill.invocations': '调用次数',
+    'dashboard.skill.outcomes': '成功 / 失败 / 取消 / 其他',
+    'dashboard.skill.outcome_values':
+      '成功 {succeeded}，失败 {failed}，取消 {cancelled}，执行中或未知 {unknown}',
+    'dashboard.skill.success_rate': '成功率',
+    'dashboard.skill.average_duration': '平均耗时',
+    'dashboard.skill.max_duration': '最长耗时',
+    'dashboard.skill.average_tokens': '平均 Token',
+    'dashboard.skill.max_tokens': '最大 Token',
+    'dashboard.empty.sessions': '尚未导入 Codex 会话。',
+    'dashboard.empty.skills': '未检测到 Skill 调用。',
+    'dashboard.empty.filtered': '没有符合当前筛选条件的结果。',
+    'dashboard.method':
+      '工具成功读取 SKILL.md 时记为一次 Skill 调用，同一轮重复读取只统计一次。状态、耗时和 Token 使用所在轮次的数据。',
+    'dashboard.sync.not_started': '等待扫描',
+    'dashboard.sync.syncing': '正在扫描本机数据',
+    'dashboard.sync.ready': '正在监听数据变化',
+    'dashboard.sync.error': '同步失败',
+    'dashboard.sync.unavailable': 'Codex 数据不可用',
+    'dashboard.sync.processed': '已处理 {count} 条记录',
+    'dashboard.sync.updated': '更新于 {date}',
+    'dashboard.status.succeeded': '成功',
+    'dashboard.status.failed': '失败',
+    'dashboard.status.cancelled': '已取消',
+    'dashboard.status.active': '执行中',
+    'dashboard.status.unknown': '未知',
+    'dashboard.duration.seconds': '{value} 秒',
+    'dashboard.duration.minutes': '{value} 分钟',
+    'dashboard.duration.hours': '{value} 小时',
+    'dashboard.duration.days': '{value} 天',
+
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': '度量并改进 AI Coding 工作流。',
@@ -178,6 +317,74 @@ const dictionaries = {
     'main.title': 'HarnessLens',
     'main.desc':
       'HarnessLens是AI Coding Harness的使用效能分析工具，為Harness改進提供直觀的數據依據。',
+
+    // Analytics Dashboard
+    'dashboard.eyebrow': '本機 Codex 分析',
+    'dashboard.title': 'Coding Agent 活動',
+    'dashboard.subtitle': '以唯讀方式分析本機工作階段、輪次、Token 用量和 Skill 呼叫。',
+    'dashboard.refresh': '重新整理分析資料',
+    'dashboard.loading': '正在載入本機分析資料…',
+    'dashboard.summary.label': '分析概覽',
+    'dashboard.summary.sessions': '工作階段數',
+    'dashboard.summary.tokens': '工作階段 Token',
+    'dashboard.summary.skills': 'Skill 呼叫',
+    'dashboard.turns.label': '輪次結果',
+    'dashboard.turns.succeeded': '成功 {count}',
+    'dashboard.turns.failed': '失敗 {count}',
+    'dashboard.turns.cancelled': '取消 {count}',
+    'dashboard.turns.active': '執行中 {count}',
+    'dashboard.turns.unknown': '未知 {count}',
+    'dashboard.views.label': '分析檢視',
+    'dashboard.views.sessions': '工作階段',
+    'dashboard.views.skills': 'Skills',
+    'dashboard.filter.label': '工作階段範圍',
+    'dashboard.filter.all': '全部',
+    'dashboard.filter.current': '目前',
+    'dashboard.filter.archived': '已封存',
+    'dashboard.search.label': '搜尋分析資料',
+    'dashboard.search.sessions': '搜尋工作階段或專案',
+    'dashboard.search.skills': '搜尋 Skill',
+    'dashboard.session.name': '工作階段',
+    'dashboard.session.updated': '最後活動',
+    'dashboard.session.duration': '執行時間',
+    'dashboard.session.tokens': 'Token',
+    'dashboard.session.turns': '輪次',
+    'dashboard.session.skills': 'Skill',
+    'dashboard.session.status': '最近結果',
+    'dashboard.session.untitled': '未命名工作階段',
+    'dashboard.session.unknown_project': '未知專案',
+    'dashboard.session.wall_duration': '從建立到最後活動的跨度：{duration}',
+    'dashboard.skill.name': 'Skill',
+    'dashboard.skill.invocations': '呼叫次數',
+    'dashboard.skill.outcomes': '成功 / 失敗 / 取消 / 其他',
+    'dashboard.skill.outcome_values':
+      '成功 {succeeded}，失敗 {failed}，取消 {cancelled}，執行中或未知 {unknown}',
+    'dashboard.skill.success_rate': '成功率',
+    'dashboard.skill.average_duration': '平均耗時',
+    'dashboard.skill.max_duration': '最長耗時',
+    'dashboard.skill.average_tokens': '平均 Token',
+    'dashboard.skill.max_tokens': '最大 Token',
+    'dashboard.empty.sessions': '尚未匯入 Codex 工作階段。',
+    'dashboard.empty.skills': '未偵測到 Skill 呼叫。',
+    'dashboard.empty.filtered': '沒有符合目前篩選條件的結果。',
+    'dashboard.method':
+      '工具成功讀取 SKILL.md 時記為一次 Skill 呼叫，同一輪重複讀取只統計一次。狀態、耗時和 Token 使用所在輪次的資料。',
+    'dashboard.sync.not_started': '等待掃描',
+    'dashboard.sync.syncing': '正在掃描本機資料',
+    'dashboard.sync.ready': '正在監聽資料變更',
+    'dashboard.sync.error': '同步失敗',
+    'dashboard.sync.unavailable': 'Codex 資料不可用',
+    'dashboard.sync.processed': '已處理 {count} 筆記錄',
+    'dashboard.sync.updated': '更新於 {date}',
+    'dashboard.status.succeeded': '成功',
+    'dashboard.status.failed': '失敗',
+    'dashboard.status.cancelled': '已取消',
+    'dashboard.status.active': '執行中',
+    'dashboard.status.unknown': '未知',
+    'dashboard.duration.seconds': '{value} 秒',
+    'dashboard.duration.minutes': '{value} 分鐘',
+    'dashboard.duration.hours': '{value} 小時',
+    'dashboard.duration.days': '{value} 天',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -671,15 +878,11 @@ const dictionaries = {
   },
 };
 
-function getSystemLanguage(): 'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de' {
+function getSystemLanguage(): ResolvedLanguage {
   if (typeof navigator === 'undefined') {
     return 'en';
   }
-  const lang = (
-    navigator.language ||
-    (navigator.languages && navigator.languages[0]) ||
-    'en'
-  ).toLowerCase();
+  const lang = (navigator.language || navigator.languages?.[0] || 'en').toLowerCase();
   if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk') || lang.startsWith('zh-mo')) {
     return 'zh_tw';
   }
@@ -716,7 +919,7 @@ class I18nManager {
     saveSetting('language', value);
   }
 
-  resolvedLanguage = $derived.by<'en' | 'zh' | 'zh_tw' | 'ja' | 'ko' | 'es' | 'fr' | 'de'>(() => {
+  resolvedLanguage = $derived.by<ResolvedLanguage>(() => {
     if (this.language === 'system') {
       return getSystemLanguage();
     }
@@ -746,8 +949,8 @@ class I18nManager {
 
   t(key: string, data?: Record<string, string | number>): string {
     const lang = this.resolvedLanguage;
-    const dict = dictionaries[lang] || dictionaries.en;
-    let text = (dict as any)[key] || (dictionaries.en as any)[key] || key;
+    const dict = dictionaries[lang];
+    let text = dict[key] ?? dictionaries.en[key] ?? key;
 
     if (data) {
       Object.entries(data).forEach(([k, v]) => {

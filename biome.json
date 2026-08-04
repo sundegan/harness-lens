@@ -71,6 +71,7 @@
             "useImportType": "off"
           },
           "correctness": {
+            "noUnusedImports": "off",
             "noUnusedVariables": "off"
           }
         }

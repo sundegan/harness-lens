@@ -28,18 +28,25 @@ fn cleanup(path: &std::path::Path) {
 }
 
 #[test]
-fn initialize_creates_versioned_database_without_business_tables() {
+fn initialize_creates_versioned_analytics_database() {
     let path = test_database_path("empty");
     let database = Database::initialize(&path).unwrap();
     let connection = database.connect().unwrap();
 
-    let application_table_count: i64 = connection
+    let analytics_table_count: i64 = connection
         .query_row(
             "
             SELECT COUNT(*)
             FROM sqlite_schema
             WHERE type = 'table'
-              AND name NOT LIKE 'sqlite_%'
+              AND name IN (
+                'analytics_sync_state',
+                'agent_sessions',
+                'rollout_sources',
+                'session_turns',
+                'skill_invocations',
+                'token_usage_records'
+              )
             ",
             [],
             |row| row.get(0),
@@ -54,16 +61,36 @@ fn initialize_creates_versioned_database_without_business_tables() {
     let application_id: u32 = connection
         .query_row("PRAGMA application_id", [], |row| row.get(0))
         .unwrap();
+    let sync_state_columns: Vec<String> = connection
+        .prepare("SELECT name FROM pragma_table_info('analytics_sync_state') ORDER BY cid")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
     let auto_vacuum: u32 = connection
         .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
         .unwrap();
 
     assert!(path.is_file());
     assert_eq!(database.schema_version().unwrap(), current_schema_version());
-    assert_eq!(application_table_count, 0);
+    assert_eq!(analytics_table_count, 6);
     assert_eq!(foreign_keys, 1);
     assert_eq!(journal_mode, "wal");
     assert_eq!(application_id, APPLICATION_ID);
+    assert_eq!(
+        sync_state_columns,
+        [
+            "provider",
+            "checkpoint_json",
+            "status",
+            "phase",
+            "processed_records",
+            "diagnostic_count",
+            "last_error",
+            "updated_at_ms"
+        ]
+    );
     assert_eq!(auto_vacuum, 2);
 
     drop(connection);
@@ -73,7 +100,50 @@ fn initialize_creates_versioned_database_without_business_tables() {
 #[test]
 fn embedded_migration_directory_is_valid() {
     validate_embedded_migrations().unwrap();
-    assert_eq!(current_schema_version(), 1);
+    assert_eq!(current_schema_version(), 6);
+}
+
+#[test]
+fn analytics_rebuild_migration_clears_the_saved_checkpoint() {
+    let path = test_database_path("analytics-rebuild");
+    let database = Database::initialize(&path).unwrap();
+    let connection = database.connect().unwrap();
+    connection
+        .execute(
+            "
+            INSERT INTO analytics_sync_state (
+                provider,
+                checkpoint_json,
+                status,
+                phase,
+                processed_records,
+                diagnostic_count,
+                last_error,
+                updated_at_ms
+            ) VALUES ('codex', '{\"state\":{}}', 'error', 'initial_scan', 42, 1, 'stale', 1)
+            ",
+            [],
+        )
+        .unwrap();
+    connection
+        .pragma_update(None, "user_version", current_schema_version() - 1)
+        .unwrap();
+    drop(connection);
+    drop(database);
+
+    let database = Database::initialize(&path).unwrap();
+    let sync_state_count: i64 = database
+        .connect()
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM analytics_sync_state", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+
+    assert_eq!(database.schema_version().unwrap(), current_schema_version());
+    assert_eq!(sync_state_count, 0);
+
+    cleanup(&path);
 }
 
 #[test]
@@ -148,7 +218,10 @@ fn existing_unversioned_data_is_backed_up_before_baseline_migration() {
 
     assert_eq!(value, "preserved");
     assert_eq!(backups.len(), 1);
-    assert!(backups[0].file_name.contains("pre-migration-v0-to-v1"));
+    assert!(backups[0].file_name.contains(&format!(
+        "pre-migration-v0-to-v{}",
+        current_schema_version()
+    )));
 
     database
         .connect()
@@ -207,19 +280,17 @@ fn backup_and_restore_preserve_data_and_create_safety_backup() {
 fn newer_database_version_is_rejected() {
     let path = test_database_path("newer");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let mut connection = Connection::open(&path).unwrap();
-    let future_migrations = Migrations::new(vec![
-        M::up("CREATE TABLE future_v1 (id INTEGER PRIMARY KEY);"),
-        M::up("CREATE TABLE future_v2 (id INTEGER PRIMARY KEY);"),
-    ]);
-    future_migrations.to_latest(&mut connection).unwrap();
+    let connection = Connection::open(&path).unwrap();
+    let supported_version = current_schema_version();
     connection
         .pragma_update(None, "application_id", APPLICATION_ID)
+        .unwrap();
+    connection
+        .pragma_update(None, "user_version", supported_version + 1)
         .unwrap();
     drop(connection);
 
     let error = Database::initialize(&path).unwrap_err();
-    let supported_version = current_schema_version();
     assert!(matches!(
         error,
         DatabaseError::UnsupportedSchemaVersion {

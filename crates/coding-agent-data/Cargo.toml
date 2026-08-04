@@ -1,20 +1,36 @@
 [package]
 name = "coding-agent-data"
 version = "0.1.0"
-description = "Unified discovery, parsing, sync, and monitoring of local coding-agent data for desktop apps, CLIs, analytics tools, and history viewers"
+description = "Unified Rust API and data model to access local coding-agent data"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-rust-version = "1.77"
+rust-version = "1.85"
 readme = "README.md"
 keywords = ["coding-agent", "parser", "monitoring", "incremental", "local-first"]
 categories = ["development-tools", "parser-implementations"]
 
 [features]
-default = ["codex", "watch", "bundled-sqlite"]
-codex = ["dep:dirs", "dep:rusqlite", "dep:toml", "dep:zstd"]
-watch = ["dep:notify"]
-bundled-sqlite = ["rusqlite/bundled"]
+default = [
+    "codex",
+    "codex-watch",
+    "claude-code",
+    "claude-code-watch",
+    "sqlite-bundled",
+]
+codex = [
+    "dep:dirs",
+    "sqlite",
+    "dep:sha2",
+    "dep:time",
+    "dep:toml",
+    "dep:zstd",
+]
+claude-code = ["dep:dirs", "dep:time"]
+codex-watch = ["codex", "dep:notify"]
+claude-code-watch = ["claude-code", "dep:notify"]
+sqlite = ["dep:rusqlite"]
+sqlite-bundled = ["codex", "rusqlite/bundled"]
 
 [dependencies]
 dirs = { version = "5.0", optional = true }
@@ -22,9 +38,17 @@ notify = { version = "8.2.0", optional = true }
 rusqlite = { version = "0.40.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = { version = "0.10", optional = true }
 thiserror = "2.0.17"
+# Newer time releases require Rust newer than this crate's MSRV.
+time = { version = "=0.3.44", features = ["parsing"], optional = true }
 toml = { version = "0.9.8", optional = true }
 zstd = { version = "0.13.3", optional = true }
 
 [dev-dependencies]
+indicatif = "0.17.11"
 tempfile = "3.27.0"
+
+[[example]]
+name = "local_data_report"
+required-features = ["codex", "claude-code"]

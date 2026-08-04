@@ -33,11 +33,11 @@ pub enum DatabaseError {
 }
 
 impl DatabaseError {
-    pub(super) fn io(operation: &'static str, source: std::io::Error) -> Self {
+    pub(crate) fn io(operation: &'static str, source: std::io::Error) -> Self {
         Self::Io { operation, source }
     }
 
-    pub(super) fn sqlite(operation: &'static str, source: rusqlite::Error) -> Self {
+    pub(crate) fn sqlite(operation: &'static str, source: rusqlite::Error) -> Self {
         Self::Sqlite { operation, source }
     }
 

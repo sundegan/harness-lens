@@ -1,122 +1,214 @@
-mod discovery;
-mod scanner;
-#[cfg(feature = "watch")]
-mod watcher;
+mod checkpoint;
+mod inheritance;
+mod lineage;
+mod normalize;
+mod replay;
+mod rollout;
+mod source;
+mod state_db;
+mod token_usage;
+mod usage_attribution;
+#[cfg(feature = "codex-watch")]
+mod watch;
 
-use std::path::{Path, PathBuf};
-
+use crate::providers::shared::identity::source_id_for_paths;
 use crate::{
-    AgentDataProvider, ChangeBatch, Checkpoint, ProviderCapability, ProviderDescriptor, ProviderId,
-    Result,
+    AdapterCoverage, Batch, CapabilityCoverage, Checkpoint, Provider, ProviderId, ProviderInfo,
+    Result, SourceCoverage,
 };
-#[cfg(feature = "watch")]
-use crate::{DataWatcher, WatchOptions, WatchableAgentDataProvider};
+#[cfg(feature = "codex-watch")]
+use crate::{Subscription, WatchProvider};
 
+pub use source::CodexSource;
+#[cfg(feature = "codex-watch")]
+pub use watch::CodexWatchOptions;
+
+/// Stable identifier for the Codex provider.
 pub const PROVIDER_ID: &str = "codex";
 
-const CAPABILITIES: &[ProviderCapability] = &[
-    ProviderCapability::Discover,
-    ProviderCapability::Snapshot,
-    ProviderCapability::Incremental,
-    #[cfg(feature = "watch")]
-    ProviderCapability::Watch,
+const COVERAGE: &[CapabilityCoverage] = &[
+    CapabilityCoverage::new(
+        "session",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "turn",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "message",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "reasoning",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "tool_execution",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "agent_invocation",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "model_invocation",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "usage",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "rate_limit",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "compaction",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "input_queue",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "hooks",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "world_state",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "goals",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "approval",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "streaming_delta",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "os_file_audit",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "unknown_provider_data",
+        SourceCoverage::Persisted,
+        AdapterCoverage::RawOnly,
+    ),
 ];
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexSource {
-    codex_home: PathBuf,
-    sqlite_home: PathBuf,
-}
-
-impl CodexSource {
-    pub fn discover() -> Result<Self> {
-        discovery::discover()
-    }
-
-    pub fn from_paths(codex_home: impl Into<PathBuf>, sqlite_home: impl Into<PathBuf>) -> Self {
-        Self {
-            codex_home: normalize_source_path(codex_home.into()),
-            sqlite_home: normalize_source_path(sqlite_home.into()),
-        }
-    }
-
-    pub fn codex_home(&self) -> &Path {
-        &self.codex_home
-    }
-
-    pub fn sqlite_home(&self) -> &Path {
-        &self.sqlite_home
-    }
-
-    pub fn state_database_path(&self) -> PathBuf {
-        self.sqlite_home.join("state_5.sqlite")
-    }
-}
-
-fn normalize_source_path(path: PathBuf) -> PathBuf {
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()
-            .map(|current| current.join(&path))
-            .unwrap_or(path)
-    };
-    absolute.canonicalize().unwrap_or(absolute)
-}
-
+/// Read-only access to one local Codex data source.
 #[derive(Clone, Debug)]
 pub struct CodexProvider {
     source: CodexSource,
-    limits: scanner::ScanLimits,
+    info: ProviderInfo,
+    limits: rollout::ScanLimits,
+    #[cfg(feature = "codex-watch")]
+    watch_options: CodexWatchOptions,
 }
 
 impl CodexProvider {
+    /// Discovers Codex from `CODEX_HOME`, `CODEX_SQLITE_HOME`, and Codex
+    /// configuration, falling back to `~/.codex`.
     pub fn discover() -> Result<Self> {
         Ok(Self::new(CodexSource::discover()?))
     }
 
+    /// Creates a provider for explicit Codex paths.
     pub fn new(source: CodexSource) -> Self {
+        let source_id =
+            source_id_for_paths(PROVIDER_ID, &[source.codex_home(), source.sqlite_home()]);
         Self {
             source,
-            limits: scanner::ScanLimits::default(),
+            info: ProviderInfo {
+                id: ProviderId::new(PROVIDER_ID),
+                name: "Codex",
+                source: source_id,
+            },
+            limits: rollout::ScanLimits::default(),
+            #[cfg(feature = "codex-watch")]
+            watch_options: CodexWatchOptions::default(),
         }
     }
 
+    /// Returns the resolved Codex source paths.
     pub fn source(&self) -> &CodexSource {
         &self.source
     }
-}
 
-impl AgentDataProvider for CodexProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor {
-            id: ProviderId::new(PROVIDER_ID),
-            name: "Codex",
-            capabilities: CAPABILITIES,
-        }
-    }
-
-    fn scan(&self, checkpoint: Option<&Checkpoint>) -> Result<ChangeBatch> {
-        scanner::scan(&self.source, &self.limits, checkpoint)
+    #[cfg(feature = "codex-watch")]
+    /// Replaces filesystem debounce and reconciliation timing.
+    pub fn with_watch_options(mut self, options: CodexWatchOptions) -> Self {
+        self.watch_options = options;
+        self
     }
 }
 
-#[cfg(feature = "watch")]
-impl WatchableAgentDataProvider for CodexProvider {
-    fn watch(&self, checkpoint: Checkpoint, options: WatchOptions) -> Result<DataWatcher> {
-        watcher::watch(self.clone(), checkpoint, options)
+impl Provider for CodexProvider {
+    fn info(&self) -> &ProviderInfo {
+        &self.info
+    }
+
+    fn coverage(&self) -> &'static [CapabilityCoverage] {
+        COVERAGE
+    }
+
+    fn scan(&self, checkpoint: Option<&Checkpoint>) -> Result<Batch> {
+        let mut diagnostics = Vec::new();
+        let mut state = checkpoint::decode(&self.info, checkpoint)?;
+        let mut changes = Vec::new();
+        let index = state_db::scan(
+            &self.source,
+            &self.info,
+            &mut state,
+            &mut changes,
+            &mut diagnostics,
+        )?;
+        let has_more = rollout::scan(
+            &self.source,
+            &self.info,
+            &self.limits,
+            &index,
+            &mut state,
+            &mut changes,
+            &mut diagnostics,
+        )?;
+        let batch = Batch::new(
+            changes,
+            checkpoint::encode(&self.info, state)?,
+            diagnostics,
+            has_more,
+        );
+        batch.validate_for(&self.info)?;
+        Ok(batch)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::CodexSource;
-
-    #[test]
-    fn explicit_source_paths_are_normalized_to_absolute_paths() {
-        let source = CodexSource::from_paths(".", ".");
-
-        assert!(source.codex_home().is_absolute());
-        assert!(source.sqlite_home().is_absolute());
+#[cfg(feature = "codex-watch")]
+impl WatchProvider for CodexProvider {
+    fn watch(&self, checkpoint: Checkpoint) -> Result<Subscription> {
+        watch::subscribe(self.clone(), checkpoint)
     }
 }

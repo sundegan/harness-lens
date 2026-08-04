@@ -1,28 +1,65 @@
-//! Consistent, read-only access to local coding-agent data for desktop
-//! applications, CLIs, analytics tools, history viewers, and other Rust
-//! consumers.
+//! Read and normalize local coding-agent data without depending on
+//! provider-private storage formats.
 //!
-//! The crate lets consumers build local browsing, indexing, synchronization,
-//! analysis, and visualization features without having to adapt separately to
-//! each agent's data locations, storage formats, and schemas. It discovers local
-//! data sources and exposes their records through a common change model, opaque
-//! incremental checkpoints, and optional live watchers.
+//! Provider adapters discover supported sources and emit ordered [`Batch`]
+//! values containing source-scoped [`Record`] changes, recoverable diagnostics,
+//! and an opaque [`Checkpoint`]. Consumers own persistence, aggregation,
+//! search, redaction, and presentation.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use coding_agent_data::{Checkpoint, Provider, Result};
+//!
+//! fn scan_all(provider: &impl Provider) -> Result<Checkpoint> {
+//!     let mut checkpoint = None;
+//!     loop {
+//!         let batch = provider.scan(checkpoint.as_ref())?;
+//!         for change in &batch.changes {
+//!             println!("{change:?}");
+//!         }
+//!
+//!         let has_more = batch.has_more;
+//!         let next = batch.checkpoint;
+//!         if !has_more {
+//!             return Ok(next);
+//!         }
+//!         checkpoint = Some(next);
+//!     }
+//! # }
+//! ```
+//!
+//! Pass the returned checkpoint to the next [`Provider::scan`] call. Continue
+//! while [`Batch::has_more`] is true. Providers that implement
+//! [`WatchProvider`] reconcile live source changes through the same scan
+//! contract.
+
+#![warn(missing_docs)]
 
 mod error;
 mod model;
 mod provider;
-#[cfg(feature = "watch")]
-mod watch;
+mod subscription;
 
+/// Built-in coding-agent providers.
 pub mod providers;
 
 pub use error::{Error, Result};
 pub use model::{
-    ChangeBatch, Checkpoint, DataChange, DataKind, DataRecord, DataTimestamp, Diagnostic,
-    DiagnosticSeverity, ProviderId, RecordKey, SourceLocation, SourceRef,
+    Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, ApprovalDecision,
+    ApprovalOption, ApprovalOptionKind, ApprovalOutcome, ApprovalPolicy, ApprovalRequest, Batch,
+    Change, Checkpoint, ContentAnnotations, ContentAudience, ContentBlock, ContentIcon,
+    ContentIconTheme, ContentPriority, ContextCompaction, Cost, CreditBalance, DataQuality,
+    Diagnostic, DiagnosticSeverity, ExecutionContext, FileChange, FileChangeKind, ForkTurnBoundary,
+    Goal, GoalStatus, HistoryMode, HistoryPosition, HistorySegment, HookResult, HookStatus,
+    InputQueue, Item, ItemData, ItemSequence, Message, MessagePhase, MessageRole, ModeChange,
+    ModeChangeKind, ModelInvocation, ModelInvocationStatus, Notice, NoticeLevel, OriginalData,
+    Plan, PlanStep, PlanStepPriority, PlanStepStatus, ProviderId, ProviderInfo, QueueOperation,
+    RateLimit, RateLimitReason, RateLimitScope, RateLimitWindow, Reasoning, ReasoningVisibility,
+    Record, RecordData, RecordId, Retry, Rollback, SandboxPolicy, Session, SessionHistory,
+    SessionRelation, SessionRelationKind, SourceId, SourceLocation, SourceRef, SpendLimit,
+    StopReason, TaskArtifact, Timestamp, TokenUsage, ToolCall, ToolKind, ToolLocation, ToolResult,
+    ToolStatus, Turn, TurnStatus, UnknownItem, UnknownRecord, Usage, WorldState,
 };
-#[cfg(feature = "watch")]
-pub use provider::WatchableAgentDataProvider;
-pub use provider::{AgentDataProvider, ProviderCapability, ProviderDescriptor};
-#[cfg(feature = "watch")]
-pub use watch::{DataWatcher, WatchOptions};
+pub use provider::{AdapterCoverage, CapabilityCoverage, Provider, SourceCoverage, WatchProvider};
+pub use subscription::Subscription;

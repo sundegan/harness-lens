@@ -28,11 +28,6 @@ pub fn window_state_path() -> PathBuf {
     root_dir().join("window-state.json")
 }
 
-#[cfg(not(feature = "e2e"))]
-pub fn agent_data_checkpoint_path() -> PathBuf {
-    root_dir().join("agent-data-checkpoint.json")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,10 +41,5 @@ mod tests {
         assert_eq!(crash_log_path(), root.join("crash.log"));
         assert_eq!(settings_path(), root.join("settings.json"));
         assert_eq!(window_state_path(), root.join("window-state.json"));
-        #[cfg(not(feature = "e2e"))]
-        assert_eq!(
-            agent_data_checkpoint_path(),
-            root.join("agent-data-checkpoint.json")
-        );
     }
 }

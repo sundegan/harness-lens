@@ -54,6 +54,9 @@ importers:
       '@tauri-apps/cli':
         specifier: 2.10.1
         version: 2.10.1
+      '@types/mocha':
+        specifier: ^10.0.10
+        version: 10.0.10
       '@vitest/coverage-v8':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)

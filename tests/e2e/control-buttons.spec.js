@@ -1,4 +1,7 @@
-import { expect } from '@wdio/globals';
+/// <reference types="mocha" />
+/// <reference types="webdriverio" />
+
+import { $, browser, expect } from '@wdio/globals';
 
 const settingsButton = '[data-testid="titlebar-settings-button"]';
 const updateButton = '[data-testid="titlebar-update-button"]';
@@ -43,18 +46,39 @@ describe('titlebar controls', () => {
 
   it('toggles the real Tauri always-on-top window state', async () => {
     const button = await $(pinButton);
-    const wasActive = (await button.getAttribute('class')).includes('is-active');
+    const wasActive = (await button.getAttribute('class'))?.includes('is-active') ?? false;
 
     await button.click();
 
     await browser.waitUntil(
       async () => {
-        const className = await button.getAttribute('class');
+        const className = (await button.getAttribute('class')) ?? '';
         return className.includes('is-active') !== wasActive;
       },
       {
         timeoutMsg: 'pin button did not reflect the updated Tauri window state',
       }
     );
+  });
+});
+
+describe('analytics dashboard', () => {
+  beforeEach(async () => {
+    await openRootPage();
+  });
+
+  it('loads the analytics snapshot and switches between session and skill views', async () => {
+    const dashboard = await $('[data-testid="analytics-dashboard"]');
+    const sessionsTab = await $('[data-testid="analytics-sessions-tab"]');
+    const skillsTab = await $('[data-testid="analytics-skills-tab"]');
+
+    await dashboard.waitForDisplayed();
+    await sessionsTab.waitForDisplayed();
+    await expect(sessionsTab).toHaveAttribute('aria-selected', 'true');
+
+    await skillsTab.click();
+
+    await expect(skillsTab).toHaveAttribute('aria-selected', 'true');
+    await expect($('body')).not.toHaveText(expect.stringContaining('500 Internal Error'));
   });
 });

@@ -6,9 +6,9 @@
 
 # HarnessLens
 
-### AI Coding Harness 的使用效能分析工具
+### Agent的可观测性和效能分析工具
 
-HarnessLens以原始Agent执行事实为输入，分析团队在真实开发中如何使用既有的workflow、Skill、MCP Tool与Agent，识别高成本、低成功率、高人工介入和重复返工等问题，为Harness改进提供直观的数据依据。
+如果它对你有帮助，欢迎点个 Star [⭐](https://github.com/sundegan/harness-lens)。
 
 <p>
   <img src="https://img.shields.io/badge/Focus-Harness%20Observability-0ea5e9?style=flat-square" alt="定位：Harness 可观测性">
@@ -29,6 +29,8 @@ HarnessLens以原始Agent执行事实为输入，分析团队在真实开发中�
 - 出现异常时究竟对应哪些原始session、工具调用和错误证据？
 - 改动Skill、MCP Tool、项目知识库或workflow后，实际使用数据是否改善？
 
+HarnessLens以原始Agent执行事实为输入，分析团队在真实开发中如何使用既有的workflow、Skill、MCP Tool与Agent，识别高成本、低成功率、高人工介入和重复返工等问题，为Harness改进提供直观的数据依据。
+
 ## 分析对象
 
 | 对象        | HarnessLens关注的问题                                                                                                 |
@@ -42,18 +44,17 @@ HarnessLens以原始Agent执行事实为输入，分析团队在真实开发中�
 ## 本机 Coding Agent 数据基础层
 
 HarnessLens 内置 [`coding-agent-data`](./crates/coding-agent-data)：一个面向桌面
-应用、CLI、分析工具、历史查看器及其他本机 Coding Agent 数据消费者的只读 Rust
-数据访问库。开发者可以用它构建本机数据浏览、索引、同步、分析和可视化功能，
-无需分别适配每个 Agent 的私有数据目录、存储格式和 schema。
+应用、CLI、分析工具和历史查看器的 Rust 数据访问库。它将不同 Coding Agent 的
+本机数据映射为统一的 API 和数据模型，使应用能够浏览、索引、同步、分析和可视化
+这些数据，而无需理解每个 Agent 的私有数据目录、存储格式或 schema。
 
-应用可以通过一套统一 API 使用不同 Coding Agent 的数据。该库提供数据源发现、
-读取与解析、统一 record/change 模型、基于 checkpoint 的增量同步，以及实时
-数据变更监听。当前实现支持 Codex 的 thread 元数据，以及活跃、归档和压缩的
-rollout 事件；后续可以在不向消费者暴露私有存储契约的前提下扩展其他 Provider
-和数据类型。
+每个 Provider 负责发现和解析其对应 Agent 的本机数据源，应用则基于标准化记录
+构建自己的存储、索引、同步、脱敏和展示能力。该库支持数据源发现与解析、基于
+checkpoint 的增量扫描，以及带防抖和定期校验的文件变更监听。当前支持 Codex 的
+`state_5.sqlite`、活跃和归档 rollout `.jsonl` 及压缩 `.jsonl.zst`，以及 Claude
+Code 的主会话和 subagent transcript `.jsonl`。
 
-详见 [crate 说明](./crates/coding-agent-data/README.md)和
-[架构设计](./docs/coding-agent-data.md)。
+详见 crate 的[概览与 API 说明](./crates/coding-agent-data/README.md)。
 
 <div align="center">
 

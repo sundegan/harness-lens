@@ -1,5 +1,4 @@
-#[cfg(not(feature = "e2e"))]
-mod agent_data;
+mod analytics;
 mod commands;
 mod data_paths;
 pub mod database;
@@ -60,6 +59,7 @@ pub fn run() {
             commands::set_window_theme,
             commands::desktop_platform,
             commands::set_tray_menu_labels,
+            analytics::get_analytics_snapshot,
             settings::load_settings,
             settings::save_setting
         ])
@@ -79,10 +79,14 @@ pub fn run() {
         })
         .setup(|app| {
             let app_handle = app.handle();
-            let database = database::Database::initialize(data_paths::database_path())?;
+            let database_path = data_paths::database_path();
+            let database = database::Database::initialize(&database_path)?;
             app.manage(database);
             #[cfg(not(feature = "e2e"))]
-            app.manage(agent_data::AgentDataMonitor::start()?);
+            app.manage(analytics::AgentDataMonitor::start(
+                database_path,
+                app_handle.clone(),
+            )?);
             tray::setup(app_handle)?;
             window::restore_main_window(app_handle);
             window::schedule_main_window_bounds_clamp(app_handle);

@@ -6,9 +6,9 @@
 
 # HarnessLens
 
-### Usage effectiveness analytics for AI coding harnesses
+### Agent observability and effectiveness analytics
 
-HarnessLens analyzes how teams use existing workflows, skills, MCP tools, and agents in real development. It identifies high-cost, low-success, high-intervention, and rework patterns, providing clear data to guide harness improvements.
+If this project helps you, please consider giving it a Star [⭐](https://github.com/sundegan/harness-lens).
 
 <p>
   <img src="https://img.shields.io/badge/Focus-Harness%20Observability-0ea5e9?style=flat-square" alt="Focus: Harness Observability">
@@ -20,7 +20,10 @@ HarnessLens analyzes how teams use existing workflows, skills, MCP tools, and ag
 
 ## Why HarnessLens
 
-Teams are already using skills, MCP tools, project knowledge bases, and development workflows, but lack observability tooling to surface problems and improvement opportunities in their harness engineering. This makes it difficult to answer:
+Teams are already using skills, MCP tools, project knowledge bases, and
+development workflows, but lack observability tooling to surface problems and
+improvement opportunities in their harness engineering. This makes it difficult
+to answer:
 
 - Which capabilities are used frequently, and which remain unused?
 - Which skills or MCP tools are slow, token-intensive, failure-prone, or repeatedly retried?
@@ -28,6 +31,11 @@ Teams are already using skills, MCP tools, project knowledge bases, and developm
 - How long does a requirement spend in requirements analysis, technical design, coding, or code review, and how many attempts and instances of additional human input does it require?
 - When an anomaly occurs, which sessions, tool calls, and errors form the evidence trail?
 - After changing a skill, MCP tool, project knowledge base, or workflow, does real usage improve?
+
+HarnessLens uses raw agent execution facts to analyze how teams use existing
+workflows, skills, MCP tools, and agents in real development. It identifies
+high-cost, low-success, high-intervention, and rework patterns, providing clear
+data to guide harness improvements.
 
 ## What It Analyzes
 
@@ -41,22 +49,23 @@ Teams are already using skills, MCP tools, project knowledge bases, and developm
 
 ## Local Coding-Agent Data Foundation
 
-HarnessLens includes [`coding-agent-data`](./crates/coding-agent-data), a
-reusable, read-only Rust data-access library for desktop applications, CLIs,
-analytics tools, history viewers, and other consumers of local coding-agent
-data. Developers can use it to build local browsing, indexing, synchronization,
-analysis, and visualization features without having to adapt separately to each
-agent's data locations, storage formats, and schemas.
+HarnessLens includes [`coding-agent-data`](./crates/coding-agent-data), a Rust
+data-access library for desktop applications, CLIs, analytics tools, and
+history viewers. It maps local data from different coding agents into a unified
+API and data model, allowing applications to browse, index, synchronize,
+analyze, and visualize that data without understanding each agent's private
+data locations, storage formats, or schemas.
 
-Applications use one consistent API to work with data from different coding
-agents. The library provides source discovery, reading and parsing, a common
-record/change model, checkpoint-based incremental synchronization, and live
-change monitoring. The current implementation supports Codex thread metadata
-and active, archived, or compressed rollout events. Other providers and data
-kinds can be added without exposing their private storage contracts to consumers.
+Each provider discovers and parses the local data sources for its agent, while
+applications use normalized records to build their own storage, indexing,
+synchronization, redaction, and presentation capabilities. The library
+supports source discovery and parsing, checkpoint-based incremental scans, and
+filesystem change monitoring with debounce and periodic reconciliation. It
+currently supports Codex `state_5.sqlite`, active and archived rollout
+`.jsonl`, compressed `.jsonl.zst`, and Claude Code main and subagent transcript
+`.jsonl` files.
 
-See the [crate documentation](./crates/coding-agent-data/README.md) and
-[architecture](./docs/coding-agent-data.md).
+See the crate's [overview and API documentation](./crates/coding-agent-data/README.md).
 
 <div align="center">
 
