@@ -14,8 +14,8 @@ use std::time::Duration;
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::providers::codex::CodexProvider;
 use coding_agent_data::{
-    Batch, Change, DataQuality, ItemData, Record, RecordData, Session, ToolCall, ToolResult,
-    ToolStatus, Turn, TurnStatus, Usage,
+    AgentInvocation, AgentInvocationStatus, Batch, Change, DataQuality, EventData, Record,
+    RecordData, Session, ToolCall, ToolResult, ToolStatus, UsageReport,
 };
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::{Checkpoint, Provider, WatchProvider};
@@ -267,9 +267,9 @@ fn apply_batch(
         match change {
             Change::Upsert(record) => import_record(&transaction, record)?,
             Change::Delete(id) => {
-                let usage_turn_id = transaction
+                let usage_invocation_id = transaction
                     .query_row(
-                        "SELECT turn_id FROM token_usage_records WHERE id = ?1",
+                        "SELECT invocation_id FROM token_usage_records WHERE id = ?1",
                         [id.as_str()],
                         |row| row.get::<_, Option<String>>(0),
                     )
@@ -285,16 +285,18 @@ fn apply_batch(
                     )
                     .map_err(|error| format!("failed to delete a usage record: {error}"))?;
                 transaction
-                    .execute("DELETE FROM session_turns WHERE id = ?1", [id.as_str()])
-                    .map_err(|error| format!("failed to delete a turn record: {error}"))?;
+                    .execute("DELETE FROM agent_invocations WHERE id = ?1", [id.as_str()])
+                    .map_err(|error| {
+                        format!("failed to delete an agent invocation record: {error}")
+                    })?;
                 transaction
                     .execute(
                         "DELETE FROM agent_sessions WHERE provider = ?1 AND id = ?2",
                         params![repository::PROVIDER, id.as_str()],
                     )
                     .map_err(|error| format!("failed to delete a session record: {error}"))?;
-                if let Some(turn_id) = usage_turn_id {
-                    refresh_turn_tokens(&transaction, &turn_id)?;
+                if let Some(invocation_id) = usage_invocation_id {
+                    refresh_invocation_tokens(&transaction, &invocation_id)?;
                 }
             }
             Change::Reset(source) => {
@@ -328,11 +330,13 @@ fn apply_batch(
 fn import_record(transaction: &Transaction<'_>, record: &Record) -> Result<(), String> {
     match &record.data {
         RecordData::Session(session) => import_session(transaction, record, session),
-        RecordData::Turn(turn) => import_turn(transaction, record, turn),
-        RecordData::Usage(usage) => import_usage(transaction, record, usage),
-        RecordData::Item(item) => match &item.data {
-            ItemData::ToolCall(call) => remember_skill_read_call(transaction, record, call),
-            ItemData::ToolResult(result) => complete_skill_read_call(transaction, record, result),
+        RecordData::AgentInvocation(invocation) => {
+            import_agent_invocation(transaction, record, invocation)
+        }
+        RecordData::UsageReport(usage) => import_usage(transaction, record, usage),
+        RecordData::Event(item) => match &item.data {
+            EventData::ToolCall(call) => remember_skill_read_call(transaction, record, call),
+            EventData::ToolResult(result) => complete_skill_read_call(transaction, record, result),
             _ => Ok(()),
         },
         RecordData::Unknown(_) => Ok(()),
@@ -436,50 +440,58 @@ fn import_session(
     Ok(())
 }
 
-fn import_turn(transaction: &Transaction<'_>, record: &Record, turn: &Turn) -> Result<(), String> {
-    match turn.status {
-        TurnStatus::InProgress => import_running_turn(transaction, record, turn),
-        TurnStatus::Completed
-        | TurnStatus::Failed
-        | TurnStatus::Cancelled
-        | TurnStatus::Interrupted => import_terminal_turn(transaction, record, turn),
+fn import_agent_invocation(
+    transaction: &Transaction<'_>,
+    record: &Record,
+    invocation: &AgentInvocation,
+) -> Result<(), String> {
+    match invocation.status {
+        AgentInvocationStatus::InProgress => {
+            import_running_invocation(transaction, record, invocation)
+        }
+        AgentInvocationStatus::Completed
+        | AgentInvocationStatus::Failed
+        | AgentInvocationStatus::Cancelled
+        | AgentInvocationStatus::Interrupted => {
+            import_terminal_invocation(transaction, record, invocation)
+        }
         _ => Ok(()),
     }
 }
 
-fn import_running_turn(
+fn import_running_invocation(
     transaction: &Transaction<'_>,
     record: &Record,
-    turn: &Turn,
+    invocation: &AgentInvocation,
 ) -> Result<(), String> {
     let Some(session_id) = record.session.as_ref().map(|id| id.as_str()) else {
         return Ok(());
     };
     let path = record.origin.path.to_string_lossy();
-    let turn_id = record.id.as_str();
-    let started_at_ms = turn.started_at.map(|timestamp| timestamp.as_millis());
+    let invocation_id = record.id.as_str();
+    let started_at_ms = invocation.started_at.map(|timestamp| timestamp.as_millis());
     upsert_rollout_source(transaction, &path, Some(session_id), false)?;
 
     transaction
         .execute(
             "
-            UPDATE session_turns
+            UPDATE agent_invocations
             SET status = 'unknown'
             WHERE source_path = ?1
               AND status = 'in_progress'
               AND id <> ?2
             ",
-            params![path, turn_id],
+            params![path, invocation_id],
         )
-        .map_err(|error| format!("failed to close the previous incomplete turn: {error}"))?;
+        .map_err(|error| format!("failed to close the previous incomplete invocation: {error}"))?;
     transaction
         .execute(
             "
             UPDATE skill_invocations
             SET status = 'unknown'
-            WHERE turn_id IN (
+            WHERE invocation_id IN (
                 SELECT id
-                FROM session_turns
+                FROM agent_invocations
                 WHERE source_path = ?1 AND status = 'unknown'
             ) AND status = 'in_progress'
             ",
@@ -489,7 +501,7 @@ fn import_running_turn(
     transaction
         .execute(
             "
-            INSERT INTO session_turns (
+            INSERT INTO agent_invocations (
                 id,
                 session_id,
                 source_path,
@@ -499,21 +511,21 @@ fn import_running_turn(
             ON CONFLICT(id) DO UPDATE SET
                 session_id = excluded.session_id,
                 source_path = excluded.source_path,
-                started_at_ms = COALESCE(session_turns.started_at_ms, excluded.started_at_ms)
+                started_at_ms = COALESCE(agent_invocations.started_at_ms, excluded.started_at_ms)
             ",
-            params![turn_id, session_id, path, started_at_ms],
+            params![invocation_id, session_id, path, started_at_ms],
         )
         .map_err(|error| format!("failed to import a task start: {error}"))?;
     transaction
         .execute(
             "
             UPDATE rollout_sources
-            SET current_turn_id = ?2, updated_at_ms = ?3
+            SET current_invocation_id = ?2, updated_at_ms = ?3
             WHERE path = ?1
             ",
-            params![path, turn_id, repository::now_ms()],
+            params![path, invocation_id, repository::now_ms()],
         )
-        .map_err(|error| format!("failed to track the current turn: {error}"))?;
+        .map_err(|error| format!("failed to track the current invocation: {error}"))?;
     Ok(())
 }
 
@@ -526,26 +538,26 @@ fn remember_skill_read_call(
         return Ok(());
     }
     let path = record.origin.path.to_string_lossy();
-    let turn_id = if let Some(turn_id) = &record.turn {
-        turn_id.as_str().to_owned()
+    let invocation_id = if let Some(invocation_id) = &record.invocation {
+        invocation_id.as_str().to_owned()
     } else {
-        let Some((turn_id, _, _)) = current_turn(transaction, &path)? else {
+        let Some((invocation_id, _, _)) = current_invocation(transaction, &path)? else {
             return Ok(());
         };
-        turn_id
+        invocation_id
     };
-    if !turn_exists(transaction, &turn_id)? {
+    if !invocation_exists(transaction, &invocation_id)? {
         return Ok(());
     }
     transaction
         .execute(
             "
-            INSERT INTO pending_skill_reads (source_path, call_id, turn_id)
+            INSERT INTO pending_skill_reads (source_path, call_id, invocation_id)
             VALUES (?1, ?2, ?3)
             ON CONFLICT(source_path, call_id) DO UPDATE SET
-                turn_id = excluded.turn_id
+                invocation_id = excluded.invocation_id
             ",
-            params![path, call.call_id, turn_id],
+            params![path, call.call_id, invocation_id],
         )
         .map_err(|error| format!("failed to remember a possible Skill file read: {error}"))?;
     Ok(())
@@ -557,10 +569,10 @@ fn complete_skill_read_call(
     result: &ToolResult,
 ) -> Result<(), String> {
     let path = record.origin.path.to_string_lossy();
-    let turn_id: Option<String> = transaction
+    let invocation_id: Option<String> = transaction
         .query_row(
             "
-            SELECT turn_id
+            SELECT invocation_id
             FROM pending_skill_reads
             WHERE source_path = ?1 AND call_id = ?2
             ",
@@ -569,7 +581,7 @@ fn complete_skill_read_call(
         )
         .optional()
         .map_err(|error| format!("failed to find a pending Skill file read: {error}"))?;
-    let Some(turn_id) = turn_id else {
+    let Some(invocation_id) = invocation_id else {
         return Ok(());
     };
     transaction
@@ -591,23 +603,23 @@ fn complete_skill_read_call(
     }
     let Some((session_id, started_at_ms)) = transaction
         .query_row(
-            "SELECT session_id, started_at_ms FROM session_turns WHERE id = ?1",
-            [&turn_id],
+            "SELECT session_id, started_at_ms FROM agent_invocations WHERE id = ?1",
+            [&invocation_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
         )
         .optional()
-        .map_err(|error| format!("failed to resolve the Skill invocation turn: {error}"))?
+        .map_err(|error| format!("failed to resolve the Skill invocation invocation: {error}"))?
     else {
         return Ok(());
     };
     for skill_name in skill_names {
-        let invocation_id = format!("{turn_id}:{skill_name}");
+        let skill_invocation_id = format!("{invocation_id}:{skill_name}");
         transaction
             .execute(
                 "
                 INSERT INTO skill_invocations (
                     id,
-                    turn_id,
+                    invocation_id,
                     session_id,
                     skill_name,
                     started_at_ms
@@ -615,8 +627,8 @@ fn complete_skill_read_call(
                 ON CONFLICT(id) DO NOTHING
                 ",
                 params![
+                    skill_invocation_id,
                     invocation_id,
-                    turn_id,
                     session_id,
                     skill_name,
                     started_at_ms
@@ -624,14 +636,14 @@ fn complete_skill_read_call(
             )
             .map_err(|error| format!("failed to import a skill invocation: {error}"))?;
     }
-    update_skill_metrics(transaction, &turn_id)?;
+    update_skill_metrics(transaction, &invocation_id)?;
     Ok(())
 }
 
 fn import_usage(
     transaction: &Transaction<'_>,
     record: &Record,
-    usage: &Usage,
+    usage: &UsageReport,
 ) -> Result<(), String> {
     let path = record.origin.path.to_string_lossy();
     let session_id = if let Some(session_id) = &record.session {
@@ -650,26 +662,28 @@ fn import_usage(
     let Some(session_id) = session_id else {
         return Ok(());
     };
-    let turn_id = if let Some(turn_id) = &record.turn {
-        Some(turn_id.as_str().to_owned())
+    let invocation_id = if let Some(invocation_id) = &record.invocation {
+        Some(invocation_id.as_str().to_owned())
     } else {
         transaction
             .query_row(
-                "SELECT current_turn_id FROM rollout_sources WHERE path = ?1",
+                "SELECT current_invocation_id FROM rollout_sources WHERE path = ?1",
                 [&path],
                 |row| row.get(0),
             )
             .optional()
-            .map_err(|error| format!("failed to find the token usage turn: {error}"))?
+            .map_err(|error| format!("failed to find the token usage invocation: {error}"))?
             .flatten()
     };
-    let turn_id = match turn_id {
-        Some(turn_id) if turn_exists(transaction, &turn_id)? => Some(turn_id),
+    let invocation_id = match invocation_id {
+        Some(invocation_id) if invocation_exists(transaction, &invocation_id)? => {
+            Some(invocation_id)
+        }
         _ => None,
     };
-    let previous_turn_id = transaction
+    let previous_invocation_id = transaction
         .query_row(
-            "SELECT turn_id FROM token_usage_records WHERE id = ?1",
+            "SELECT invocation_id FROM token_usage_records WHERE id = ?1",
             [record.id.as_str()],
             |row| row.get::<_, Option<String>>(0),
         )
@@ -682,7 +696,7 @@ fn import_usage(
             INSERT INTO token_usage_records (
                 id,
                 session_id,
-                turn_id,
+                invocation_id,
                 source_path,
                 timestamp_ms,
                 cumulative_tokens,
@@ -690,7 +704,7 @@ fn import_usage(
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             ON CONFLICT(id) DO UPDATE SET
                 session_id = excluded.session_id,
-                turn_id = excluded.turn_id,
+                invocation_id = excluded.invocation_id,
                 source_path = excluded.source_path,
                 timestamp_ms = excluded.timestamp_ms,
                 cumulative_tokens = excluded.cumulative_tokens,
@@ -699,7 +713,7 @@ fn import_usage(
             params![
                 record.id.as_str(),
                 session_id,
-                turn_id,
+                invocation_id,
                 path,
                 record.timestamp.map(|timestamp| timestamp.as_millis()),
                 usage.cumulative.as_ref().map(|usage| usage.total),
@@ -708,40 +722,42 @@ fn import_usage(
         )
         .map_err(|error| format!("failed to import token usage: {error}"))?;
 
-    if let Some(previous_turn_id) = previous_turn_id.as_deref() {
-        if Some(previous_turn_id) != turn_id.as_deref() {
-            refresh_turn_tokens(transaction, previous_turn_id)?;
+    if let Some(previous_invocation_id) = previous_invocation_id.as_deref() {
+        if Some(previous_invocation_id) != invocation_id.as_deref() {
+            refresh_invocation_tokens(transaction, previous_invocation_id)?;
         }
     }
-    if let Some(turn_id) = turn_id.as_deref() {
-        refresh_turn_tokens(transaction, turn_id)?;
+    if let Some(invocation_id) = invocation_id.as_deref() {
+        refresh_invocation_tokens(transaction, invocation_id)?;
     }
     Ok(())
 }
 
-fn import_terminal_turn(
+fn import_terminal_invocation(
     transaction: &Transaction<'_>,
     record: &Record,
-    turn: &Turn,
+    invocation: &AgentInvocation,
 ) -> Result<(), String> {
     let path = record.origin.path.to_string_lossy();
-    let turn_id = record.id.as_str();
-    let started_at_ms = turn.started_at.map(|timestamp| timestamp.as_millis());
-    let completed_at_ms = turn.completed_at.map(|timestamp| timestamp.as_millis());
-    let duration_ms = turn
+    let invocation_id = record.id.as_str();
+    let started_at_ms = invocation.started_at.map(|timestamp| timestamp.as_millis());
+    let completed_at_ms = invocation
+        .completed_at
+        .map(|timestamp| timestamp.as_millis());
+    let duration_ms = invocation
         .duration_ms
         .or_else(|| match (started_at_ms, completed_at_ms) {
             (Some(started), Some(completed)) => Some(completed.saturating_sub(started).max(0)),
             _ => None,
         });
-    let status = match turn.status {
-        TurnStatus::Completed => "succeeded",
-        TurnStatus::Failed => "failed",
-        TurnStatus::Cancelled => "cancelled",
+    let status = match invocation.status {
+        AgentInvocationStatus::Completed => "succeeded",
+        AgentInvocationStatus::Failed => "failed",
+        AgentInvocationStatus::Cancelled => "cancelled",
         // Analytics exposes success, failure, cancellation, and unknown. A
         // provider interruption is a terminal cancellation in that contract.
-        TurnStatus::Interrupted => "cancelled",
-        TurnStatus::InProgress => "in_progress",
+        AgentInvocationStatus::Interrupted => "cancelled",
+        AgentInvocationStatus::InProgress => "in_progress",
         _ => "unknown",
     };
 
@@ -750,7 +766,7 @@ fn import_terminal_turn(
         transaction
             .execute(
                 "
-                INSERT INTO session_turns (
+                INSERT INTO agent_invocations (
                     id,
                     session_id,
                     source_path,
@@ -759,14 +775,14 @@ fn import_terminal_turn(
                 ) VALUES (?1, ?2, ?3, ?4, 'in_progress')
                 ON CONFLICT(id) DO NOTHING
                 ",
-                params![turn_id, session_id, path, started_at_ms],
+                params![invocation_id, session_id, path, started_at_ms],
             )
             .map_err(|error| format!("failed to recover a turn without a start event: {error}"))?;
     }
     let updated = transaction
         .execute(
             "
-            UPDATE session_turns
+            UPDATE agent_invocations
             SET
                 started_at_ms = COALESCE(started_at_ms, ?2),
                 completed_at_ms = ?3,
@@ -783,15 +799,15 @@ fn import_terminal_turn(
             WHERE id = ?1
             ",
             params![
-                turn_id,
+                invocation_id,
                 started_at_ms,
                 completed_at_ms,
                 duration_ms,
                 status,
-                turn.error
+                invocation.error
             ],
         )
-        .map_err(|error| format!("failed to finish a turn: {error}"))?;
+        .map_err(|error| format!("failed to finish a invocation: {error}"))?;
     if updated == 0 {
         return Ok(());
     }
@@ -799,16 +815,16 @@ fn import_terminal_turn(
         .execute(
             "
             UPDATE rollout_sources
-            SET current_turn_id = NULL, updated_at_ms = ?3
-            WHERE path = ?1 AND current_turn_id = ?2
+            SET current_invocation_id = NULL, updated_at_ms = ?3
+            WHERE path = ?1 AND current_invocation_id = ?2
             ",
-            params![path, turn_id, repository::now_ms()],
+            params![path, invocation_id, repository::now_ms()],
         )
-        .map_err(|error| format!("failed to clear the completed turn: {error}"))?;
-    update_skill_metrics(transaction, turn_id)
+        .map_err(|error| format!("failed to clear the completed invocation: {error}"))?;
+    update_skill_metrics(transaction, invocation_id)
 }
 
-fn update_skill_metrics(transaction: &Transaction<'_>, turn_id: &str) -> Result<(), String> {
+fn update_skill_metrics(transaction: &Transaction<'_>, invocation_id: &str) -> Result<(), String> {
     let (status, started_at_ms, duration_ms, total_tokens): (
         String,
         Option<i64>,
@@ -818,10 +834,10 @@ fn update_skill_metrics(transaction: &Transaction<'_>, turn_id: &str) -> Result<
         .query_row(
             "
             SELECT status, started_at_ms, duration_ms, total_tokens
-            FROM session_turns
+            FROM agent_invocations
             WHERE id = ?1
             ",
-            [turn_id],
+            [invocation_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .map_err(|error| format!("failed to read turn metrics: {error}"))?;
@@ -834,43 +850,52 @@ fn update_skill_metrics(transaction: &Transaction<'_>, turn_id: &str) -> Result<
                 duration_ms = ?3,
                 total_tokens = ?4,
                 status = ?5
-            WHERE turn_id = ?1
+            WHERE invocation_id = ?1
             ",
-            params![turn_id, started_at_ms, duration_ms, total_tokens, status],
+            params![
+                invocation_id,
+                started_at_ms,
+                duration_ms,
+                total_tokens,
+                status
+            ],
         )
         .map_err(|error| format!("failed to update skill metrics: {error}"))?;
     Ok(())
 }
 
-fn turn_exists(transaction: &Transaction<'_>, turn_id: &str) -> Result<bool, String> {
+fn invocation_exists(transaction: &Transaction<'_>, invocation_id: &str) -> Result<bool, String> {
     transaction
         .query_row(
-            "SELECT 1 FROM session_turns WHERE id = ?1",
-            [turn_id],
+            "SELECT 1 FROM agent_invocations WHERE id = ?1",
+            [invocation_id],
             |_| Ok(()),
         )
         .optional()
         .map(|row| row.is_some())
-        .map_err(|error| format!("failed to resolve the token usage turn: {error}"))
+        .map_err(|error| format!("failed to resolve the token usage invocation: {error}"))
 }
 
-fn refresh_turn_tokens(transaction: &Transaction<'_>, turn_id: &str) -> Result<(), String> {
+fn refresh_invocation_tokens(
+    transaction: &Transaction<'_>,
+    invocation_id: &str,
+) -> Result<(), String> {
     let updated = transaction
         .execute(
             "
-            UPDATE session_turns
+            UPDATE agent_invocations
             SET total_tokens = (
                 SELECT SUM(delta_tokens)
                 FROM token_usage_records
-                WHERE turn_id = ?1
+                WHERE invocation_id = ?1
             )
             WHERE id = ?1
             ",
-            [turn_id],
+            [invocation_id],
         )
         .map_err(|error| format!("failed to update turn token usage: {error}"))?;
     if updated > 0 {
-        update_skill_metrics(transaction, turn_id)?;
+        update_skill_metrics(transaction, invocation_id)?;
     }
     Ok(())
 }
@@ -891,7 +916,7 @@ fn reset_rollout_source(transaction: &Transaction<'_>, path: &Path) -> Result<()
         .execute(
             "
             UPDATE rollout_sources
-            SET current_turn_id = NULL, updated_at_ms = ?2
+            SET current_invocation_id = NULL, updated_at_ms = ?2
             WHERE path = ?1
             ",
             params![path, repository::now_ms()],
@@ -908,7 +933,10 @@ fn clear_rollout_records(transaction: &Transaction<'_>, path: &str) -> Result<()
         )
         .map_err(|error| format!("failed to clear rollout token usage: {error}"))?;
     transaction
-        .execute("DELETE FROM session_turns WHERE source_path = ?1", [path])
+        .execute(
+            "DELETE FROM agent_invocations WHERE source_path = ?1",
+            [path],
+        )
         .map_err(|error| format!("failed to clear rollout turns: {error}"))?;
     Ok(())
 }
@@ -958,7 +986,7 @@ fn upsert_rollout_source(
         if let Some(session_id) = session_id {
             transaction
                 .execute(
-                    "UPDATE session_turns SET session_id = ?2 WHERE source_path = ?1",
+                    "UPDATE agent_invocations SET session_id = ?2 WHERE source_path = ?1",
                     params![path, session_id],
                 )
                 .map_err(|error| format!("failed to update rollout turn ownership: {error}"))?;
@@ -973,8 +1001,8 @@ fn upsert_rollout_source(
                     "
                     UPDATE skill_invocations
                     SET session_id = ?2
-                    WHERE turn_id IN (
-                        SELECT id FROM session_turns WHERE source_path = ?1
+                    WHERE invocation_id IN (
+                        SELECT id FROM agent_invocations WHERE source_path = ?1
                     )
                     ",
                     params![path, session_id],
@@ -994,7 +1022,7 @@ fn upsert_rollout_source(
                           SELECT 1 FROM rollout_sources WHERE session_id = ?1
                       )
                       AND NOT EXISTS (
-                          SELECT 1 FROM session_turns WHERE session_id = ?1
+                          SELECT 1 FROM agent_invocations WHERE session_id = ?1
                       )
                       AND NOT EXISTS (
                           SELECT 1 FROM token_usage_records WHERE session_id = ?1
@@ -1008,7 +1036,7 @@ fn upsert_rollout_source(
     Ok(())
 }
 
-fn current_turn(
+fn current_invocation(
     transaction: &Transaction<'_>,
     path: &str,
 ) -> Result<Option<(String, String, Option<i64>)>, String> {
@@ -1017,14 +1045,14 @@ fn current_turn(
             "
             SELECT turns.id, turns.session_id, turns.started_at_ms
             FROM rollout_sources sources
-            JOIN session_turns turns ON turns.id = sources.current_turn_id
+            JOIN agent_invocations turns ON turns.id = sources.current_invocation_id
             WHERE sources.path = ?1
             ",
             [path],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()
-        .map_err(|error| format!("failed to resolve the current turn: {error}"))
+        .map_err(|error| format!("failed to resolve the current invocation: {error}"))
 }
 
 fn skill_names_from_tool_output(output: &Value) -> BTreeSet<String> {

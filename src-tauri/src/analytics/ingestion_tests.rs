@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use coding_agent_data::{
-    Actor, Batch, Change, Checkpoint, DataQuality, Item, ItemData, ItemSequence, Record,
-    RecordData, RecordId, Session, SourceId, SourceLocation, SourceRef, StopReason, Timestamp,
-    TokenUsage, ToolCall, ToolKind, ToolResult, ToolStatus, Turn, TurnStatus, Usage,
+    Actor, AgentInvocation, AgentInvocationStatus, Batch, Change, Checkpoint, DataQuality, Event,
+    EventData, EventSequence, Record, RecordData, RecordId, Session, SourceId, SourceLocation,
+    SourceRef, StopReason, Timestamp, TokenUsage, ToolCall, ToolKind, ToolResult, ToolStatus,
+    UsageReport,
 };
 use serde_json::{json, Value};
 
@@ -42,9 +43,9 @@ fn session_id(external_id: &str) -> RecordId {
     RecordId::new(format!("{SOURCE_ID}:session:{external_id}"))
 }
 
-fn turn_id(path: &Path, external_id: &str) -> RecordId {
+fn invocation_id(path: &Path, external_id: &str) -> RecordId {
     RecordId::new(format!(
-        "{SOURCE_ID}:turn:{}:{external_id}",
+        "{SOURCE_ID}:invocation:{}:{external_id}",
         path.to_string_lossy()
     ))
 }
@@ -87,41 +88,50 @@ fn session_record(external_id: &str, title: &str, transcript: &Path, total_token
     record
 }
 
-fn turn_record(
+fn invocation_record(
     transcript: &Path,
     session: &str,
     external_id: &str,
-    status: TurnStatus,
+    status: AgentInvocationStatus,
     timing: (i64, Option<i64>, Option<i64>),
     error: Option<&str>,
 ) -> Record {
     let (started_at, completed_at, duration_ms) = timing;
-    let id = turn_id(transcript, external_id);
+    let id = invocation_id(transcript, external_id);
     let mut record = Record::new(
         id.clone(),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Turn(Turn {
-            external_id: Some(external_id.to_owned()),
+        RecordData::AgentInvocation(AgentInvocation {
+            invocation_id: external_id.to_owned(),
+            context_id: None,
+            task_id: None,
+            operation: coding_agent_data::AgentOperation::Invoke,
+            sender_id: None,
+            receiver_ids: Vec::new(),
+            child_session: None,
             status,
             started_at: Some(Timestamp::from_seconds(started_at)),
             completed_at: completed_at.map(Timestamp::from_seconds),
             duration_ms,
             error: error.map(str::to_owned),
             stop_reason: match status {
-                TurnStatus::Completed => Some(StopReason::EndTurn),
-                TurnStatus::Failed => Some(StopReason::Failed),
-                TurnStatus::Cancelled => Some(StopReason::Cancelled),
-                TurnStatus::Interrupted => Some(StopReason::Interrupted),
+                AgentInvocationStatus::Completed => Some(StopReason::EndInvocation),
+                AgentInvocationStatus::Failed => Some(StopReason::Failed),
+                AgentInvocationStatus::Cancelled => Some(StopReason::Cancelled),
+                AgentInvocationStatus::Interrupted => Some(StopReason::Interrupted),
                 _ => None,
             },
             trace_id: None,
             model_context_window: None,
             time_to_first_token_ms: None,
+            input: None,
+            output: None,
+            artifacts: Vec::new(),
         }),
     );
     record.session = Some(session_id(session));
-    record.turn = Some(id);
+    record.invocation = Some(id);
     record.timestamp = completed_at
         .or(Some(started_at))
         .map(Timestamp::from_seconds);
@@ -131,11 +141,11 @@ fn turn_record(
 fn usage_record(
     transcript: &Path,
     session: &str,
-    turn: &str,
+    invocation: &str,
     total_tokens: i64,
     delta_tokens: Option<i64>,
 ) -> Record {
-    let turn_id = turn_id(transcript, turn);
+    let invocation_id = invocation_id(transcript, invocation);
     let mut record = Record::new(
         RecordId::new(format!(
             "{SOURCE_ID}:usage:{}:{total_tokens}",
@@ -143,7 +153,7 @@ fn usage_record(
         )),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Usage(Usage {
+        RecordData::UsageReport(UsageReport {
             model_provider: None,
             model: None,
             service_tier: None,
@@ -161,21 +171,21 @@ fn usage_record(
         }),
     );
     record.session = Some(session_id(session));
-    record.turn = Some(turn_id);
+    record.invocation = Some(invocation_id);
     record
 }
 
 fn tool_call_record(
     transcript: &Path,
     session: &str,
-    turn: &str,
+    invocation: &str,
     call_id: &str,
     input: Value,
 ) -> Record {
-    let mut item = Item::new(
-        ItemSequence::new(1, 0),
+    let mut item = Event::new(
+        EventSequence::new(1, 0),
         Actor::Agent,
-        ItemData::ToolCall(ToolCall {
+        EventData::ToolCall(ToolCall {
             call_id: call_id.to_owned(),
             name: "exec_command".to_owned(),
             namespace: None,
@@ -191,25 +201,25 @@ fn tool_call_record(
         RecordId::new(format!("{SOURCE_ID}:tool-call:{call_id}")),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Item(item),
+        RecordData::Event(item),
     );
     record.session = Some(session_id(session));
-    record.turn = Some(turn_id(transcript, turn));
+    record.invocation = Some(invocation_id(transcript, invocation));
     record
 }
 
 fn tool_result_record(
     transcript: &Path,
     session: &str,
-    turn: &str,
+    invocation: &str,
     call_id: &str,
     output: Value,
     success: bool,
 ) -> Record {
-    let mut item = Item::new(
-        ItemSequence::new(2, 0),
+    let mut item = Event::new(
+        EventSequence::new(2, 0),
         Actor::Tool,
-        ItemData::ToolResult(ToolResult {
+        EventData::ToolResult(ToolResult {
             call_id: call_id.to_owned(),
             name: Some("exec_command".to_owned()),
             content: Vec::new(),
@@ -229,10 +239,10 @@ fn tool_result_record(
         RecordId::new(format!("{SOURCE_ID}:tool-result:{call_id}")),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Item(item),
+        RecordData::Event(item),
     );
     record.session = Some(session_id(session));
-    record.turn = Some(turn_id(transcript, turn));
+    record.invocation = Some(invocation_id(transcript, invocation));
     record
 }
 
@@ -255,11 +265,11 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
                 &transcript,
                 260,
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-1",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
             )),
@@ -300,19 +310,19 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
                 150,
                 Some(150),
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-1",
-                TurnStatus::Completed,
+                AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-2",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_020, None, None),
                 None,
             )),
@@ -358,11 +368,11 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
                 260,
                 Some(110),
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-2",
-                TurnStatus::Failed,
+                AgentInvocationStatus::Failed,
                 (1_700_000_020, Some(1_700_000_040), Some(20_000)),
                 Some("tool failed"),
             )),
@@ -420,11 +430,11 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
     let batch = Batch {
         changes: vec![
             Change::upsert(session_record("parent", "Parent", &parent, 150)),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &parent,
                 "parent",
                 "parent-turn",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
             )),
@@ -442,30 +452,30 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
                 150,
                 Some(50),
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &parent,
                 "parent",
                 "parent-turn",
-                TurnStatus::Completed,
+                AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
             )),
             Change::upsert(session_record("child", "Child", &child, 150)),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &child,
                 "child",
                 "child-turn",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_020, None, None),
                 None,
             )),
             Change::upsert(usage_record(&child, "child", "child-turn", 100, None)),
             Change::upsert(usage_record(&child, "child", "child-turn", 150, Some(50))),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &child,
                 "child",
                 "child-turn",
-                TurnStatus::Completed,
+                AgentInvocationStatus::Completed,
                 (1_700_000_020, Some(1_700_000_030), Some(10_000)),
                 None,
             )),
@@ -492,8 +502,8 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
         .connect()
         .unwrap()
         .query_row(
-            "SELECT total_tokens FROM session_turns WHERE id = ?1",
-            [turn_id(&child, "child-turn").as_str()],
+            "SELECT total_tokens FROM agent_invocations WHERE id = ?1",
+            [invocation_id(&child, "child-turn").as_str()],
             |row| row.get(0),
         )
         .unwrap();
@@ -551,19 +561,19 @@ fn source_scoped_turn_ids_keep_provider_reused_ids_separate() {
                 path: transcript.to_path_buf(),
                 location: SourceLocation::WholeFile,
             }),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 transcript,
                 session,
                 "shared-turn-id",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 transcript,
                 session,
                 "shared-turn-id",
-                TurnStatus::Completed,
+                AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_001), Some(1_000)),
                 None,
             )),
@@ -598,26 +608,26 @@ fn terminal_turn_uses_the_stored_start_time_when_the_event_omits_it() {
     let database_path = test_database_path();
     let database = Database::initialize(&database_path).unwrap();
     let transcript = database_path.parent().unwrap().join("rollout.jsonl");
-    let running = turn_record(
+    let running = invocation_record(
         &transcript,
         "session-1",
         "turn-1",
-        TurnStatus::InProgress,
+        AgentInvocationStatus::InProgress,
         (1_700_000_000, None, None),
         None,
     );
-    let mut terminal = turn_record(
+    let mut terminal = invocation_record(
         &transcript,
         "session-1",
         "turn-1",
-        TurnStatus::Completed,
+        AgentInvocationStatus::Completed,
         (1_700_000_000, Some(1_700_000_010), None),
         None,
     );
-    let RecordData::Turn(turn) = &mut terminal.data else {
+    let RecordData::AgentInvocation(invocation) = &mut terminal.data else {
         unreachable!();
     };
-    turn.started_at = None;
+    invocation.started_at = None;
 
     let batch = Batch {
         changes: vec![
@@ -638,16 +648,16 @@ fn terminal_turn_uses_the_stored_start_time_when_the_event_omits_it() {
 
     let snapshot = analytics_snapshot(&database).unwrap();
     assert_eq!(snapshot.sessions[0].observed_duration_ms, 10_000);
-    let current_turn_id: Option<String> = database
+    let current_invocation_id: Option<String> = database
         .connect()
         .unwrap()
         .query_row(
-            "SELECT current_turn_id FROM rollout_sources WHERE path = ?1",
+            "SELECT current_invocation_id FROM rollout_sources WHERE path = ?1",
             [transcript.to_string_lossy().as_ref()],
             |row| row.get(0),
         )
         .unwrap();
-    assert!(current_turn_id.is_none());
+    assert!(current_invocation_id.is_none());
 
     fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
 }
@@ -665,11 +675,11 @@ fn interrupted_turns_are_counted_as_cancelled() {
                 &transcript,
                 10,
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-1",
-                TurnStatus::InProgress,
+                AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
             )),
@@ -688,11 +698,11 @@ fn interrupted_turns_are_counted_as_cancelled() {
                 json!({"output": "---\nname: example\ndescription: Example\n---\n"}),
                 true,
             )),
-            Change::upsert(turn_record(
+            Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
                 "turn-1",
-                TurnStatus::Interrupted,
+                AgentInvocationStatus::Interrupted,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
             )),
@@ -717,22 +727,22 @@ fn orphan_turn_and_usage_records_do_not_abort_the_batch() {
     let database_path = test_database_path();
     let database = Database::initialize(&database_path).unwrap();
     let transcript = database_path.parent().unwrap().join("orphan.jsonl");
-    let mut running = turn_record(
+    let mut running = invocation_record(
         &transcript,
         "missing-session",
         "turn-1",
-        TurnStatus::InProgress,
+        AgentInvocationStatus::InProgress,
         (1_700_000_000, None, None),
         None,
     );
     running.session = None;
     let mut usage = usage_record(&transcript, "missing-session", "turn-1", 100, Some(100));
     usage.session = None;
-    let mut terminal = turn_record(
+    let mut terminal = invocation_record(
         &transcript,
         "missing-session",
         "turn-1",
-        TurnStatus::Completed,
+        AgentInvocationStatus::Completed,
         (1_700_000_000, Some(1_700_000_010), None),
         None,
     );

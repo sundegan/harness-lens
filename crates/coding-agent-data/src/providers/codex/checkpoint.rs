@@ -25,7 +25,7 @@ pub(super) struct CodexCheckpoint {
     /// records once instead of silently retaining duplicated deltas.
     #[serde(default)]
     pub usage_attribution_ready: bool,
-    /// Usage identities retained while a reset rollout is rebuilt in bounded
+    /// UsageReport identities retained while a reset rollout is rebuilt in bounded
     /// batches. Keeping the old index prevents unrelated copies from being
     /// promoted before the canonical rollout reaches them again.
     #[serde(default)]
@@ -60,20 +60,20 @@ pub(super) struct RolloutContext {
     /// duplicate large instruction payloads in every checkpoint.
     #[serde(skip)]
     pub session_snapshot: Option<Session>,
-    pub current_turn: Option<RecordId>,
+    pub current_invocation: Option<RecordId>,
     #[serde(default)]
-    pub current_turn_external_id: Option<String>,
+    pub current_invocation_external_id: Option<String>,
     /// Whether the current turn was inferred from legacy message boundaries.
     #[serde(default)]
-    pub current_turn_inferred: bool,
+    pub current_invocation_inferred: bool,
     #[serde(default)]
-    pub current_turn_started_at: Option<Timestamp>,
+    pub current_invocation_started_at: Option<Timestamp>,
     #[serde(default)]
-    pub current_turn_trace_id: Option<String>,
+    pub current_invocation_trace_id: Option<String>,
     #[serde(default)]
-    pub current_turn_model_context_window: Option<i64>,
+    pub current_invocation_model_context_window: Option<i64>,
     #[serde(default)]
-    pub current_turn_time_to_first_token_ms: Option<i64>,
+    pub current_invocation_time_to_first_token_ms: Option<i64>,
     /// Latest model selected by turn context or thread settings.
     #[serde(default)]
     pub current_model: Option<String>,

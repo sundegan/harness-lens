@@ -381,26 +381,7 @@ impl Session {
     }
 }
 
-/// Current lifecycle state of a turn.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
-#[serde(rename_all = "snake_case")]
-pub enum TurnStatus {
-    /// The turn has started and has no terminal event yet.
-    InProgress,
-    /// The turn completed successfully.
-    Completed,
-    /// The turn completed with an error.
-    Failed,
-    /// The turn was cancelled before normal completion.
-    Cancelled,
-    /// The turn was interrupted and may be resumable.
-    Interrupted,
-    /// The provider reported a state that has no normalized equivalent yet.
-    Unknown,
-}
-
-/// Explains why a turn stopped.
+/// Explains why an agent invocation stopped.
 ///
 /// See [ACP v2 stop reasons](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#stop-reasons).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -408,22 +389,22 @@ pub enum TurnStatus {
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
     /// The agent completed the requested work normally.
-    EndTurn,
+    EndInvocation,
     /// The model reached its token limit.
     MaxTokens,
-    /// The agent reached its turn-request limit.
-    MaxTurnRequests,
+    /// The agent reached its invocation-request limit.
+    MaxInvocationRequests,
     /// The provider-defined stop sequence was generated.
     StopSequence,
     /// The model paused after requesting one or more tools.
     ToolUse,
     /// The model paused and expects the caller to continue the request.
-    PauseTurn,
+    PauseInvocation,
     /// The model reached its context-window limit.
     ContextWindowExceeded,
     /// The model refused the request.
     Refusal,
-    /// The user or client cancelled the turn.
+    /// The user or client cancelled the invocation.
     Cancelled,
     /// Execution was interrupted but was not explicitly cancelled.
     Interrupted,
@@ -431,34 +412,6 @@ pub enum StopReason {
     Failed,
     /// A provider-native reason that has no normalized equivalent yet.
     Other(String),
-}
-
-/// A normalized coding-agent turn.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Turn {
-    /// Provider-native turn identifier, when present.
-    pub external_id: Option<String>,
-    /// Current lifecycle state.
-    pub status: TurnStatus,
-    /// Turn start time.
-    pub started_at: Option<Timestamp>,
-    /// Turn completion time.
-    pub completed_at: Option<Timestamp>,
-    /// Provider-reported or derived duration in milliseconds.
-    pub duration_ms: Option<i64>,
-    /// Terminal error message, when available.
-    pub error: Option<String>,
-    /// Normalized terminal reason, when the provider reports or implies one.
-    pub stop_reason: Option<StopReason>,
-    /// Provider trace identifier, when persisted.
-    #[serde(default)]
-    pub trace_id: Option<String>,
-    /// Model context-window size associated with the turn, when reported.
-    #[serde(default)]
-    pub model_context_window: Option<i64>,
-    /// Time from turn start until the first model token, in milliseconds.
-    #[serde(default)]
-    pub time_to_first_token_ms: Option<i64>,
 }
 
 /// Normalized token counters.
@@ -496,9 +449,9 @@ pub struct Cost {
     pub currency: String,
 }
 
-/// A provider usage observation.
+/// One provider-reported token-usage and cost report.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Usage {
+pub struct UsageReport {
     /// Model service or vendor attributed to this observation.
     #[serde(default)]
     pub model_provider: Option<String>,
@@ -614,11 +567,11 @@ pub struct RateLimit {
     pub reached_scope: Option<RateLimitScope>,
 }
 
-/// Identifies who caused an item to exist.
+/// Identifies who caused an event to occur.
 ///
 /// This is intentionally separate from [`MessageRole`]. For example, a tool
 /// result can be stored inside a provider-native `user` message while still
-/// being an environment-produced item.
+/// being an environment-produced event.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
@@ -639,18 +592,18 @@ pub enum Actor {
 
 /// A stable order within one source artifact.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct ItemSequence {
+pub struct EventSequence {
     /// Monotonic provider or artifact position.
     pub position: u64,
-    /// Order of a derived item at the same position.
+    /// Order of a derived event at the same position.
     pub part: u32,
     /// Provider logical ordinal, distinct from the physical artifact line.
     #[serde(default)]
     pub logical_ordinal: Option<u64>,
 }
 
-impl ItemSequence {
-    /// Creates a source-local item sequence.
+impl EventSequence {
+    /// Creates a source-local event sequence.
     pub const fn new(position: u64, part: u32) -> Self {
         Self {
             position,
@@ -704,7 +657,7 @@ pub enum MessageRole {
 pub enum MessagePhase {
     /// Intermediate progress or commentary.
     Commentary,
-    /// The final answer for a turn.
+    /// The final answer for an agent invocation.
     FinalAnswer,
     /// A provider-native phase that has no normalized equivalent yet.
     Other(String),
@@ -1267,6 +1220,10 @@ pub enum AgentOperation {
 
 /// Current lifecycle state of an agent invocation.
 ///
+/// An invocation is one complete agent processing cycle in a session. It may
+/// be represented by a top-level [`RecordData::AgentInvocation`] or by an
+/// inter-agent invocation carried inside an [`EventData::AgentInvocation`].
+///
 /// See [A2A task lifecycle](https://a2a-protocol.org/latest/topics/life-of-a-task/).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -1326,7 +1283,7 @@ pub enum SandboxPolicy {
     Other(String),
 }
 
-/// Execution settings observed for a session or turn.
+/// Execution settings observed for a session or agent invocation.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ExecutionContext {
@@ -1484,12 +1441,22 @@ pub struct TaskArtifact {
     pub metadata: Option<Value>,
 }
 
-/// One invocation of a child or peer agent.
+/// One complete processing cycle in which an agent accepts input, performs
+/// work, and reaches a reported lifecycle state.
 ///
-/// See [A2A tasks](https://a2a-protocol.org/latest/topics/key-concepts/#task).
+/// This is one agent execution, not one language-model request or tool call.
+/// A top-level invocation is carried by [`RecordData::AgentInvocation`], while
+/// a child or peer-agent invocation is carried by
+/// [`EventData::AgentInvocation`].
+///
+/// Google ADK calls this unit an
+/// [invocation](https://adk.dev/runtime/event-loop/#invocation), Codex calls a
+/// comparable unit a
+/// [`turn`](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/turn.rs),
+/// and other runtimes may call it a `run` or `task`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentInvocation {
-    /// Provider-native invocation identifier.
+    /// Provider-native invocation identifier, or an empty string when absent.
     pub invocation_id: String,
     /// Inter-agent context identifier, when reported.
     pub context_id: Option<String>,
@@ -1505,6 +1472,27 @@ pub struct AgentInvocation {
     pub child_session: Option<RecordId>,
     /// Current lifecycle state.
     pub status: AgentInvocationStatus,
+    /// Time when this invocation started, when reported or inferred.
+    #[serde(default)]
+    pub started_at: Option<Timestamp>,
+    /// Time when this invocation reached a terminal state, when reported.
+    #[serde(default)]
+    pub completed_at: Option<Timestamp>,
+    /// Provider-reported or derived duration in milliseconds.
+    #[serde(default)]
+    pub duration_ms: Option<i64>,
+    /// Normalized reason why this invocation stopped.
+    #[serde(default)]
+    pub stop_reason: Option<StopReason>,
+    /// Provider trace identifier associated with this invocation.
+    #[serde(default)]
+    pub trace_id: Option<String>,
+    /// Model context-window size used by this invocation.
+    #[serde(default)]
+    pub model_context_window: Option<i64>,
+    /// Time from invocation start until the first model token.
+    #[serde(default)]
+    pub time_to_first_token_ms: Option<i64>,
     /// Prompt or input sent to the other agent, when available.
     pub input: Option<Value>,
     /// Result returned by the other agent, when available.
@@ -1598,9 +1586,9 @@ pub struct Goal {
     pub updated_at: Option<Timestamp>,
 }
 
-/// Boundary metadata used when selecting turns inherited by an agent fork.
+/// Boundary metadata used when selecting inputs inherited by an agent fork.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ForkTurnBoundary {
+pub struct ForkInvocationBoundary {
     /// Whether this delivery starts a new logical fork turn.
     pub trigger_turn: bool,
 }
@@ -1624,7 +1612,7 @@ pub enum QueueOperation {
 
 /// One durable mutation of a coding agent's pending-input queue.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct InputQueue {
+pub struct InputQueueMutation {
     /// Queue mutation performed by the provider.
     pub operation: QueueOperation,
     /// Queued text or provider-encoded notification.
@@ -1681,22 +1669,22 @@ pub struct Retry {
 /// A rollback of previously active session context.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Rollback {
-    /// Number of user turns removed from active context, when reported.
-    pub turns_removed: Option<u64>,
+    /// Number of user inputs removed from active context, when reported.
+    pub user_inputs_removed: Option<u64>,
 }
 
-/// An item whose semantics are not yet normalized.
+/// An event whose semantics are not yet normalized.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct UnknownItem {
+pub struct UnknownEvent {
     /// Best available provider-native type name.
     pub kind: Option<String>,
 }
 
-/// Stable item variants ordered inside a session or turn.
+/// Stable event variants ordered inside a session or agent invocation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum ItemData {
+pub enum EventData {
     /// Conversation message.
     Message(Message),
     /// Model reasoning made visible by the provider.
@@ -1722,9 +1710,9 @@ pub enum ItemData {
     /// Durable agent goal and budget state.
     Goal(Goal),
     /// Fork-turn boundary in an inter-agent delivery stream.
-    ForkTurnBoundary(ForkTurnBoundary),
+    ForkInvocationBoundary(ForkInvocationBoundary),
     /// Mutation of pending user input.
-    InputQueue(InputQueue),
+    InputQueue(InputQueueMutation),
     /// Context-window compaction.
     ContextCompaction(ContextCompaction),
     /// Execution settings in effect for subsequent activity.
@@ -1737,36 +1725,36 @@ pub enum ItemData {
     HookResult(HookResult),
     /// Retry observation.
     Retry(Retry),
-    /// Removal of earlier turns from active context.
+    /// Removal of earlier user inputs from active context.
     Rollback(Rollback),
-    /// Provider-native item not yet normalized.
-    Unknown(UnknownItem),
+    /// Provider-native event not yet normalized.
+    Unknown(UnknownEvent),
 }
 
-/// One ordered fact inside a session or turn.
+/// One ordered fact inside a session or agent invocation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct Item {
-    /// Provider-native item identifier, when present.
+pub struct Event {
+    /// Provider-native event identifier, when present.
     pub external_id: Option<String>,
     /// Stable order within the original artifact.
-    pub sequence: ItemSequence,
-    /// Related earlier item, when the provider exposes a causal parent.
+    pub sequence: EventSequence,
+    /// Related earlier event, when the provider exposes a causal parent.
     pub parent: Option<RecordId>,
-    /// Original item in another session when this item was inherited by a fork.
+    /// Original event in another session when this event was inherited by a fork.
     #[serde(default)]
     pub inherited_from: Option<RecordId>,
-    /// Actor that caused this item.
+    /// Actor that caused this event.
     pub actor: Actor,
     /// More specific agent or subagent identifier, when reported.
     pub agent_id: Option<String>,
-    /// Typed item data.
-    pub data: ItemData,
+    /// Typed event data.
+    pub data: EventData,
 }
 
-impl Item {
-    /// Creates an item with no provider-native identity or relationships.
-    pub fn new(sequence: ItemSequence, actor: Actor, data: ItemData) -> Self {
+impl Event {
+    /// Creates an event with no provider-native identity or relationships.
+    pub fn new(sequence: EventSequence, actor: Actor, data: EventData) -> Self {
         Self {
             external_id: None,
             sequence,
@@ -1793,14 +1781,14 @@ pub struct UnknownRecord {
 pub enum RecordData {
     /// Session metadata.
     Session(Session),
-    /// Turn lifecycle state.
-    Turn(Turn),
+    /// AgentInvocation lifecycle state.
+    AgentInvocation(AgentInvocation),
     /// Token usage.
-    Usage(Usage),
+    UsageReport(UsageReport),
     /// Provider usage-limit snapshot.
     RateLimit(RateLimit),
-    /// One ordered session or turn item.
-    Item(Item),
+    /// One ordered session or agent-invocation event.
+    Event(Event),
     /// Provider-native data not yet normalized.
     Unknown(UnknownRecord),
 }
@@ -1815,8 +1803,8 @@ pub struct Record {
     pub source: SourceId,
     /// Related session record, when this is not itself a session.
     pub session: Option<RecordId>,
-    /// Related turn record, when applicable.
-    pub turn: Option<RecordId>,
+    /// Related agent-invocation record, when applicable.
+    pub invocation: Option<RecordId>,
     /// Best normalized timestamp.
     pub timestamp: Option<Timestamp>,
     /// Original artifact location.
@@ -1828,13 +1816,13 @@ pub struct Record {
 }
 
 impl Record {
-    /// Creates a record without session, turn, timestamp, or original-data links.
+    /// Creates a record without session, invocation, timestamp, or original-data links.
     pub fn new(id: RecordId, source: SourceId, origin: SourceRef, data: RecordData) -> Self {
         Self {
             id,
             source,
             session: None,
-            turn: None,
+            invocation: None,
             timestamp: None,
             origin,
             data,
@@ -2084,14 +2072,18 @@ fn validate_record(record: &Record, provider: &ProviderInfo, index: usize) -> Re
             &format!("change {index} record {} session", record.id.as_str()),
         )?;
     }
-    if let Some(turn) = record.turn.as_ref() {
+    if let Some(invocation) = record.invocation.as_ref() {
         validate_scoped_id(
-            turn,
+            invocation,
             &provider.source,
-            &format!("change {index} record {} turn", record.id.as_str()),
+            &format!(
+                "change {index} record {} invocation link",
+                record.id.as_str()
+            ),
         )?;
     }
-    if record.session.as_ref() == Some(&record.id) || record.turn.as_ref() == Some(&record.id) {
+    if record.session.as_ref() == Some(&record.id) || record.invocation.as_ref() == Some(&record.id)
+    {
         return Err(Error::InvalidBatch(format!(
             "change {index} record {} links to itself",
             record.id.as_str()
@@ -2099,27 +2091,29 @@ fn validate_record(record: &Record, provider: &ProviderInfo, index: usize) -> Re
     }
 
     match &record.data {
-        RecordData::Session(_) if record.session.is_some() || record.turn.is_some() => {
+        RecordData::Session(_) if record.session.is_some() || record.invocation.is_some() => {
             Err(Error::InvalidBatch(format!(
-                "change {index} session record {} has session or turn links",
+                "change {index} session record {} has session or invocation links",
                 record.id.as_str()
             )))
         }
         RecordData::Session(session) => validate_session_links(session, record, provider, index),
-        RecordData::Turn(_) if record.turn.is_some() => Err(Error::InvalidBatch(format!(
-            "change {index} turn record {} has an unexpected turn link",
-            record.id.as_str()
-        ))),
-        RecordData::Item(item)
-            if item.parent.as_ref() == Some(&record.id)
-                || item.inherited_from.as_ref() == Some(&record.id) =>
-        {
+        RecordData::AgentInvocation(_) if record.invocation.is_some() => {
             Err(Error::InvalidBatch(format!(
-                "change {index} item record {} has a self-referential item link",
+                "change {index} agent-invocation record {} has an unexpected invocation link",
                 record.id.as_str()
             )))
         }
-        RecordData::Item(item) => validate_item_links(item, record, provider, index),
+        RecordData::Event(event)
+            if event.parent.as_ref() == Some(&record.id)
+                || event.inherited_from.as_ref() == Some(&record.id) =>
+        {
+            Err(Error::InvalidBatch(format!(
+                "change {index} event record {} has a self-referential event link",
+                record.id.as_str()
+            )))
+        }
+        RecordData::Event(event) => validate_event_links(event, record, provider, index),
         _ => Ok(()),
     }
 }
@@ -2165,36 +2159,36 @@ fn validate_session_links(
     Ok(())
 }
 
-fn validate_item_links(
-    item: &Item,
+fn validate_event_links(
+    event: &Event,
     record: &Record,
     provider: &ProviderInfo,
     index: usize,
 ) -> Result<()> {
-    if let Some(parent) = item.parent.as_ref() {
+    if let Some(parent) = event.parent.as_ref() {
         validate_scoped_id(
             parent,
             &provider.source,
-            &format!("change {index} item record {} parent", record.id.as_str()),
+            &format!("change {index} event record {} parent", record.id.as_str()),
         )?;
     }
-    if let Some(inherited_from) = item.inherited_from.as_ref() {
+    if let Some(inherited_from) = event.inherited_from.as_ref() {
         validate_scoped_id(
             inherited_from,
             &provider.source,
             &format!(
-                "change {index} item record {} inherited source",
+                "change {index} event record {} inherited source",
                 record.id.as_str()
             ),
         )?;
     }
-    if let ItemData::AgentInvocation(invocation) = &item.data {
+    if let EventData::AgentInvocation(invocation) = &event.data {
         if let Some(child_session) = invocation.child_session.as_ref() {
             validate_scoped_id(
                 child_session,
                 &provider.source,
                 &format!(
-                    "change {index} item record {} child session",
+                    "change {index} event record {} child session",
                     record.id.as_str()
                 ),
             )?;

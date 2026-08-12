@@ -204,7 +204,7 @@ pub(super) fn scan(
                     id: normalize::session_id(info, removed),
                     source: info.source.clone(),
                     session: None,
-                    turn: None,
+                    invocation: None,
                     timestamp: session.updated_at,
                     origin: crate::SourceRef {
                         source: info.source.clone(),

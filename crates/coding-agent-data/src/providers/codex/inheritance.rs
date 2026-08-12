@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::providers::shared::jsonl::{read_bounded_line, LineRead};
-use crate::{Item, ItemData, ProviderInfo, Record, RecordData, RecordId};
+use crate::{Event, EventData, ProviderInfo, Record, RecordData, RecordId};
 
 use super::checkpoint::RolloutContext;
 use super::normalize::{self, Position};
@@ -14,11 +14,11 @@ use super::CodexSource;
 
 pub(super) struct InheritancePlan {
     parent_by_child: BTreeMap<PathBuf, PathBuf>,
-    items_by_parent: BTreeMap<PathBuf, BTreeMap<ItemKey, RecordId>>,
+    items_by_parent: BTreeMap<PathBuf, BTreeMap<EventKey, RecordId>>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ItemKey {
+struct EventKey {
     kind: &'static str,
     external_id: String,
 }
@@ -86,7 +86,7 @@ impl InheritancePlan {
             else {
                 continue;
             };
-            if let Ok(items) = read_item_index(
+            if let Ok(items) = read_event_index(
                 source,
                 info,
                 parent_path,
@@ -107,30 +107,30 @@ impl InheritancePlan {
         let Some(parent_path) = self.parent_by_child.get(child_path) else {
             return;
         };
-        let Some(parent_items) = self.items_by_parent.get(parent_path) else {
+        let Some(parent_events) = self.items_by_parent.get(parent_path) else {
             return;
         };
         for record in records {
-            let RecordData::Item(item) = &mut record.data else {
+            let RecordData::Event(item) = &mut record.data else {
                 continue;
             };
             if item.inherited_from.is_some() {
                 continue;
             }
-            if let Some(parent) = item_key(item).and_then(|key| parent_items.get(&key)) {
+            if let Some(parent) = event_key(item).and_then(|key| parent_events.get(&key)) {
                 item.inherited_from = Some(parent.clone());
             }
         }
     }
 }
 
-fn read_item_index(
+fn read_event_index(
     source: &CodexSource,
     info: &ProviderInfo,
     path: &Path,
     owner: &str,
     max_line_bytes: usize,
-) -> std::io::Result<BTreeMap<ItemKey, RecordId>> {
+) -> std::io::Result<BTreeMap<EventKey, RecordId>> {
     let compressed = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -180,8 +180,8 @@ fn read_item_index(
             &mut context,
         );
         for record in records.drain(..) {
-            if let RecordData::Item(item) = &record.data {
-                if let Some(key) = item_key(item) {
+            if let RecordData::Event(item) = &record.data {
+                if let Some(key) = event_key(item) {
                     items.insert(key, record.id);
                 }
             }
@@ -190,31 +190,31 @@ fn read_item_index(
     Ok(items)
 }
 
-fn item_key(item: &Item) -> Option<ItemKey> {
+fn event_key(item: &Event) -> Option<EventKey> {
     let external_id = item.external_id.as_ref()?.clone();
     let kind = match &item.data {
-        ItemData::Message(_) => "message",
-        ItemData::Reasoning(_) => "reasoning",
-        ItemData::Plan(_) => "plan",
-        ItemData::ToolCall(_) => "tool_call",
-        ItemData::ToolResult(_) => "tool_result",
-        ItemData::ApprovalRequest(_) => "approval_request",
-        ItemData::ApprovalDecision(_) => "approval_decision",
-        ItemData::ModelInvocation(_) => "model_invocation",
-        ItemData::AgentInvocation(_) => "agent_invocation",
-        ItemData::FileChange(_) => "file_change",
-        ItemData::WorldState(_) => "world_state",
-        ItemData::Goal(_) => "goal",
-        ItemData::ForkTurnBoundary(_) => "fork_turn_boundary",
-        ItemData::InputQueue(_) => "input_queue",
-        ItemData::ContextCompaction(_) => "context_compaction",
-        ItemData::ExecutionContext(_) => "execution_context",
-        ItemData::ModeChange(_) => "mode_change",
-        ItemData::Notice(_) => "notice",
-        ItemData::HookResult(_) => "hook_result",
-        ItemData::Retry(_) => "retry",
-        ItemData::Rollback(_) => "rollback",
-        ItemData::Unknown(_) => "unknown",
+        EventData::Message(_) => "message",
+        EventData::Reasoning(_) => "reasoning",
+        EventData::Plan(_) => "plan",
+        EventData::ToolCall(_) => "tool_call",
+        EventData::ToolResult(_) => "tool_result",
+        EventData::ApprovalRequest(_) => "approval_request",
+        EventData::ApprovalDecision(_) => "approval_decision",
+        EventData::ModelInvocation(_) => "model_invocation",
+        EventData::AgentInvocation(_) => "agent_invocation",
+        EventData::FileChange(_) => "file_change",
+        EventData::WorldState(_) => "world_state",
+        EventData::Goal(_) => "goal",
+        EventData::ForkInvocationBoundary(_) => "fork_turn_boundary",
+        EventData::InputQueue(_) => "input_queue",
+        EventData::ContextCompaction(_) => "context_compaction",
+        EventData::ExecutionContext(_) => "execution_context",
+        EventData::ModeChange(_) => "mode_change",
+        EventData::Notice(_) => "notice",
+        EventData::HookResult(_) => "hook_result",
+        EventData::Retry(_) => "retry",
+        EventData::Rollback(_) => "rollback",
+        EventData::Unknown(_) => "unknown",
     };
-    Some(ItemKey { kind, external_id })
+    Some(EventKey { kind, external_id })
 }

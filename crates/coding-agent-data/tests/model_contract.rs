@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use coding_agent_data::{
     Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, Batch, Change, Checkpoint,
     ContentAnnotations, ContentAudience, ContentBlock, ContentIcon, ContentIconTheme,
-    ContentPriority, Diagnostic, Error, FileChangeKind, HistoryMode, HistoryPosition,
-    HistorySegment, Item, ItemData, ItemSequence, ModeChangeKind, ProviderId, ProviderInfo,
+    ContentPriority, Diagnostic, Error, Event, EventData, EventSequence, FileChangeKind,
+    HistoryMode, HistoryPosition, HistorySegment, ModeChangeKind, ProviderId, ProviderInfo,
     QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId, Session,
     SessionHistory, SessionRelation, SessionRelationKind, SourceId, SourceLocation, SourceRef,
-    StopReason, Timestamp, ToolKind, UnknownRecord,
+    StopReason, Timestamp, ToolKind, UnknownRecord, UsageReport,
 };
 
 fn provider_info() -> ProviderInfo {
@@ -138,7 +138,7 @@ fn batch_validation_rejects_every_cross_source_record_link() {
         origin.clone(),
         RecordData::Unknown(UnknownRecord { kind: None }),
     );
-    record.turn = Some(other.clone());
+    record.invocation = Some(other.clone());
     changes.push(Change::upsert(record));
 
     let mut session = Session::new("session-relation");
@@ -191,36 +191,36 @@ fn batch_validation_rejects_every_cross_source_record_link() {
         RecordData::Session(session),
     )));
 
-    let mut item = Item::new(
-        ItemSequence::new(1, 0),
+    let mut item = Event::new(
+        EventSequence::new(1, 0),
         Actor::Agent,
-        ItemData::Unknown(coding_agent_data::UnknownItem { kind: None }),
+        EventData::Unknown(coding_agent_data::UnknownEvent { kind: None }),
     );
     item.parent = Some(other.clone());
     changes.push(Change::upsert(Record::new(
         RecordId::scoped(&source, "item", "parent"),
         source.clone(),
         origin.clone(),
-        RecordData::Item(item),
+        RecordData::Event(item),
     )));
 
-    let mut item = Item::new(
-        ItemSequence::new(2, 0),
+    let mut item = Event::new(
+        EventSequence::new(2, 0),
         Actor::Agent,
-        ItemData::Unknown(coding_agent_data::UnknownItem { kind: None }),
+        EventData::Unknown(coding_agent_data::UnknownEvent { kind: None }),
     );
     item.inherited_from = Some(other.clone());
     changes.push(Change::upsert(Record::new(
         RecordId::scoped(&source, "item", "inherited"),
         source.clone(),
         origin.clone(),
-        RecordData::Item(item),
+        RecordData::Event(item),
     )));
 
-    let item = Item::new(
-        ItemSequence::new(3, 0),
+    let item = Event::new(
+        EventSequence::new(3, 0),
         Actor::Agent,
-        ItemData::AgentInvocation(AgentInvocation {
+        EventData::AgentInvocation(AgentInvocation {
             invocation_id: "invocation-1".to_owned(),
             context_id: None,
             task_id: None,
@@ -229,6 +229,13 @@ fn batch_validation_rejects_every_cross_source_record_link() {
             receiver_ids: Vec::new(),
             child_session: Some(other.clone()),
             status: AgentInvocationStatus::InProgress,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            stop_reason: None,
+            trace_id: None,
+            model_context_window: None,
+            time_to_first_token_ms: None,
             input: None,
             output: None,
             artifacts: Vec::new(),
@@ -239,7 +246,7 @@ fn batch_validation_rejects_every_cross_source_record_link() {
         RecordId::scoped(&source, "item", "child-session"),
         source,
         origin,
-        RecordData::Item(item),
+        RecordData::Event(item),
     )));
 
     changes.push(Change::Delete(other));
@@ -297,6 +304,26 @@ fn unknown_content_survives_serialization() {
     let decoded: ContentBlock = serde_json::from_str(&serialized).unwrap();
 
     assert_eq!(decoded, block);
+}
+
+#[test]
+fn usage_report_record_data_uses_the_usage_report_variant_name() {
+    let data = RecordData::UsageReport(UsageReport {
+        model_provider: None,
+        model: None,
+        service_tier: None,
+        request_id: None,
+        invocation_id: None,
+        cumulative: None,
+        delta: None,
+        cost: None,
+    });
+
+    let serialized = serde_json::to_value(&data).unwrap();
+    assert_eq!(serialized["type"], "usage_report");
+
+    let decoded: RecordData = serde_json::from_value(serialized).unwrap();
+    assert!(matches!(decoded, RecordData::UsageReport(_)));
 }
 
 #[test]

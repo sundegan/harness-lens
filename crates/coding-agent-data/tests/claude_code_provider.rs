@@ -12,11 +12,10 @@ use coding_agent_data::providers::claude_code::{ClaudeCodeProvider, ClaudeCodeSo
 #[cfg(feature = "claude-code-watch")]
 use coding_agent_data::WatchProvider;
 use coding_agent_data::{
-    Actor, AdapterCoverage, AgentInvocationStatus, ApprovalPolicy, Change, ContentBlock,
-    FileChangeKind, HookStatus, ItemData, MessageRole, ModeChangeKind, ModelInvocationStatus,
-    Provider, QueueOperation, ReasoningVisibility, Record, RecordData, RecordId,
-    SessionRelationKind, SourceCoverage, SourceLocation, StopReason, Timestamp, ToolKind,
-    ToolStatus, TurnStatus,
+    Actor, AdapterCoverage, AgentInvocationStatus, ApprovalPolicy, Change, ContentBlock, EventData,
+    FileChangeKind, HookStatus, MessageRole, ModeChangeKind, ModelInvocationStatus, Provider,
+    QueueOperation, ReasoningVisibility, Record, RecordData, RecordId, SessionRelationKind,
+    SourceCoverage, SourceLocation, StopReason, Timestamp, ToolKind, ToolStatus,
 };
 use tempfile::TempDir;
 
@@ -135,8 +134,8 @@ fn scan_normalizes_session_messages_and_subagent_entries() {
                     Change::Upsert(record)
                         if matches!(
                             record.data,
-                            RecordData::Item(ref item)
-                                if matches!(&item.data, ItemData::Message(_))
+                            RecordData::Event(ref item)
+                                if matches!(&item.data, EventData::Message(_))
                         )
                 )
             })
@@ -167,8 +166,8 @@ fn untyped_and_custom_content_are_preserved_as_unknown() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) => match &item.data {
-                    ItemData::Message(message) if message.content.len() == 2 => {
+                RecordData::Event(item) => match &item.data {
+                    EventData::Message(message) if message.content.len() == 2 => {
                         Some(&message.content)
                     }
                     _ => None,
@@ -209,10 +208,10 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "tool-1" && call.name == "Read"
                         )
                 )
@@ -224,11 +223,11 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.actor == Actor::Agent
                             && matches!(
                                 &item.data,
-                                ItemData::Reasoning(reasoning)
+                                EventData::Reasoning(reasoning)
                                     if reasoning.content
                                         == vec![ContentBlock::text("inspect first")]
                             )
@@ -241,12 +240,12 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.actor == Actor::Tool
                             && item.parent.is_some()
                             && matches!(
                                 &item.data,
-                                ItemData::ToolResult(result)
+                                EventData::ToolResult(result)
                                     if result.status == ToolStatus::Completed
                                         && result.content
                                             == vec![ContentBlock::text("ok")]
@@ -262,10 +261,10 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Message(message)
+                            EventData::Message(message)
                                 if message.role == MessageRole::Assistant
                         )
                 )
@@ -277,10 +276,10 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "tool-1"
                                     && result.status == ToolStatus::Completed
                         )
@@ -293,7 +292,7 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.cumulative.is_none()
                             && usage.delta.as_ref().map(|usage| usage.total) == Some(21)
                             && usage
@@ -330,10 +329,10 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
     let batch = fixture.provider().scan(None).unwrap();
     let mut item_sequences = HashSet::new();
     for record in batch.changes.iter().filter_map(|change| match change {
-        Change::Upsert(record) if matches!(record.data, RecordData::Item(_)) => Some(record),
+        Change::Upsert(record) if matches!(record.data, RecordData::Event(_)) => Some(record),
         _ => None,
     }) {
-        let RecordData::Item(item) = &record.data else {
+        let RecordData::Event(item) = &record.data else {
             unreachable!("filtered to item records");
         };
         assert!(
@@ -350,8 +349,10 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Turn(turn) if turn.status == TurnStatus::Completed => {
-                    Some((record.id.clone(), turn))
+                RecordData::AgentInvocation(invocation)
+                    if invocation.status == AgentInvocationStatus::Completed =>
+                {
+                    Some((record.id.clone(), invocation))
                 }
                 _ => None,
             },
@@ -359,21 +360,24 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         })
         .expect("completed Claude Code turn");
 
-    assert_eq!(completed_turn.1.external_id.as_deref(), Some("prompt-1"));
-    assert_eq!(completed_turn.1.stop_reason, Some(StopReason::EndTurn));
+    assert_eq!(completed_turn.1.invocation_id, "prompt-1");
+    assert_eq!(
+        completed_turn.1.stop_reason,
+        Some(StopReason::EndInvocation)
+    );
     assert_eq!(completed_turn.1.duration_ms, Some(3_000));
 
     assert!(batch.changes.iter().any(|change| {
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.as_ref() == Some(&completed_turn.0)
+                if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::ModelInvocation(invocation)
+                                EventData::ModelInvocation(invocation)
                                     if invocation.provider.as_deref() == Some("anthropic")
                                         && invocation.model.as_deref() == Some("claude-test")
                                         && invocation.status == ModelInvocationStatus::Completed
@@ -386,13 +390,13 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.as_ref() == Some(&completed_turn.0)
+                if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::ToolCall(call)
+                                EventData::ToolCall(call)
                                     if call.name == "edit_file"
                                         && call.namespace.as_deref() == Some("filesystem")
                                         && call.kind == ToolKind::Edit
@@ -407,13 +411,13 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.as_ref() == Some(&completed_turn.0)
+                if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::FileChange(change)
+                                EventData::FileChange(change)
                                     if change.path
                                         == std::path::Path::new("src/lib.rs")
                                         && change.kind == FileChangeKind::Update
@@ -429,10 +433,10 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Reasoning(reasoning)
+                            EventData::Reasoning(reasoning)
                                 if reasoning.visibility == ReasoningVisibility::Redacted
                                     && reasoning.content.is_empty()
                         )
@@ -445,10 +449,10 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ExecutionContext(context)
+                            EventData::ExecutionContext(context)
                                 if context.cwd.as_deref()
                                     == Some(std::path::Path::new("/workspace/project"))
                                     && context.approval_policy
@@ -490,10 +494,10 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ModeChange(change)
+                            EventData::ModeChange(change)
                                 if change.mode == "normal"
                                     && change.kind == ModeChangeKind::Selected
                         )
@@ -506,10 +510,10 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::FileChange(change)
+                            EventData::FileChange(change)
                                 if change.path
                                     == std::path::Path::new("src/lib.rs")
                                     && change.kind == FileChangeKind::Update
@@ -524,10 +528,10 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ExecutionContext(context)
+                            EventData::ExecutionContext(context)
                                 if context.current_date.as_deref() == Some("2026-01-03")
                         )
                 )
@@ -553,10 +557,10 @@ fn stop_hook_summaries_are_normalized_as_hook_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::HookResult(result)
+                            EventData::HookResult(result)
                                 if result.event.as_deref() == Some("stop")
                                     && result.entrypoint.as_deref()
                                         == Some("claude-desktop-3p")
@@ -591,10 +595,10 @@ fn agent_tool_calls_are_also_exposed_as_agent_invocations() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::AgentInvocation(invocation)
+                            EventData::AgentInvocation(invocation)
                                 if invocation.invocation_id == "agent-1"
                                     && invocation.task_id.as_deref() == Some("worker-1")
                                     && invocation.receiver_ids == ["reviewer"]
@@ -622,8 +626,8 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) => match &item.data {
-                    ItemData::AgentInvocation(invocation)
+                RecordData::Event(item) => match &item.data {
+                    EventData::AgentInvocation(invocation)
                         if invocation.status == AgentInvocationStatus::Completed =>
                     {
                         Some((record.id.clone(), item.sequence))
@@ -657,10 +661,10 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::InputQueue(queue)
+                            EventData::InputQueue(queue)
                                 if queue.operation == QueueOperation::Enqueue
                                     && queue.task_id.as_deref() == Some("worker")
                                     && queue.tool_call_id.as_deref() == Some("agent-1")
@@ -676,10 +680,10 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::InputQueue(queue)
+                            EventData::InputQueue(queue)
                                 if queue.operation == QueueOperation::Dequeue
                                     && queue.task_id.as_deref() == Some("worker")
                                     && queue.tool_call_id.as_deref() == Some("agent-1")
@@ -694,11 +698,11 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
                 if record.id == initial_invocation.0
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if item.sequence == initial_invocation.1
                                 && matches!(
                                     &item.data,
-                                    ItemData::AgentInvocation(invocation)
+                                    EventData::AgentInvocation(invocation)
                                         if invocation.status
                                             == AgentInvocationStatus::Completed
                                             && invocation.task_id.as_deref() == Some("worker")
@@ -714,11 +718,11 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.actor == Actor::User
                             && matches!(
                                 &item.data,
-                                ItemData::Message(message)
+                                EventData::Message(message)
                                     if message.role == MessageRole::User
                                         && message.content
                                             == vec![ContentBlock::text("please follow up")]
@@ -736,8 +740,8 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
                     .is_some_and(|original| original.value["type"] == "queue-operation")
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
-                            if matches!(&item.data, ItemData::Message(_))
+                        RecordData::Event(item)
+                            if matches!(&item.data, EventData::Message(_))
                     )
         )
     }));
@@ -756,7 +760,7 @@ fn fragmented_usage_is_upserted_by_request_without_double_counting() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some((
+                RecordData::UsageReport(usage) => Some((
                     record.id.clone(),
                     usage.delta.as_ref().map(|usage| usage.total),
                 )),
@@ -778,7 +782,9 @@ fn fragmented_usage_is_upserted_by_request_without_double_counting() {
         .changes
         .iter()
         .filter_map(|change| match change {
-            Change::Upsert(record) if matches!(record.data, RecordData::Usage(_)) => Some(record),
+            Change::Upsert(record) if matches!(record.data, RecordData::UsageReport(_)) => {
+                Some(record)
+            }
             _ => None,
         })
         .collect();
@@ -790,7 +796,7 @@ fn fragmented_usage_is_upserted_by_request_without_double_counting() {
     assert_eq!(usage_records[0].id, first_usage_id);
     assert!(matches!(
         &usage_records[0].data,
-        RecordData::Usage(usage)
+        RecordData::UsageReport(usage)
             if usage.delta.as_ref().map(|usage| usage.total) == Some(20)
                 && usage
                     .delta
@@ -816,7 +822,7 @@ fn sidechain_usage_replay_is_deduplicated_across_transcripts() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -840,7 +846,7 @@ fn distinct_primary_requests_with_the_same_message_id_are_preserved() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -867,7 +873,7 @@ fn distinct_message_ids_with_the_same_request_id_are_preserved() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -890,7 +896,9 @@ fn nested_agent_progress_emits_usage_with_provider_metadata() {
         .changes
         .iter()
         .find_map(|change| match change {
-            Change::Upsert(record) if matches!(record.data, RecordData::Usage(_)) => Some(record),
+            Change::Upsert(record) if matches!(record.data, RecordData::UsageReport(_)) => {
+                Some(record)
+            }
             _ => None,
         })
         .expect("nested progress usage");
@@ -898,7 +906,7 @@ fn nested_agent_progress_emits_usage_with_provider_metadata() {
     assert_eq!(usage_record.timestamp, Some(Timestamp::from_seconds(1)));
     assert!(matches!(
         &usage_record.data,
-        RecordData::Usage(usage)
+        RecordData::UsageReport(usage)
             if usage.model.as_deref() == Some("claude-test")
                 && usage.service_tier.as_deref() == Some("standard")
                 && usage.request_id.as_deref() == Some("nested-request")
@@ -929,7 +937,7 @@ fn advisor_iterations_emit_independent_usage() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some((
+                RecordData::UsageReport(usage) => Some((
                     usage.model.as_deref(),
                     usage.delta.as_ref().map(|tokens| tokens.total),
                     usage.cost.as_ref().map(|cost| cost.amount.as_str()),
@@ -964,7 +972,7 @@ fn negative_usage_components_do_not_reduce_token_totals() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.delta.as_ref().is_some_and(|tokens|
                             tokens.total == 5
                                 && tokens.input.is_none()
@@ -988,7 +996,7 @@ fn usage_is_rebuilt_after_a_transcript_changes_sidechain_classification() {
         .changes
         .iter()
         .find_map(|change| match change {
-            Change::Upsert(record) if matches!(record.data, RecordData::Usage(_)) => {
+            Change::Upsert(record) if matches!(record.data, RecordData::UsageReport(_)) => {
                 Some(record.id.clone())
             }
             _ => None,
@@ -1007,7 +1015,7 @@ fn usage_is_rebuilt_after_a_transcript_changes_sidechain_classification() {
         |change| matches!(change, Change::Upsert(record) if record.id == replay_id
         && matches!(
             &record.data,
-            RecordData::Usage(usage)
+            RecordData::UsageReport(usage)
                 if usage.delta.as_ref().map(|usage| usage.total) == Some(30)
         ))
     ));
@@ -1029,7 +1037,7 @@ fn nested_sidechain_replay_is_replaced_by_primary_usage_incrementally() {
         .changes
         .iter()
         .find_map(|change| match change {
-            Change::Upsert(record) if matches!(record.data, RecordData::Usage(_)) => {
+            Change::Upsert(record) if matches!(record.data, RecordData::UsageReport(_)) => {
                 Some(record.id.clone())
             }
             _ => None,
@@ -1045,7 +1053,7 @@ fn nested_sidechain_replay_is_replaced_by_primary_usage_incrementally() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.delta.as_ref().map(|tokens| tokens.total) == Some(30)
                 ) =>
             {
@@ -1090,10 +1098,10 @@ fn child_session_linkage_requires_an_explicit_provider_agent_id() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::AgentInvocation(invocation)
+                            EventData::AgentInvocation(invocation)
                                 if invocation.invocation_id == "agent-1"
                                     && invocation.child_session.is_some()
                         )
@@ -1113,7 +1121,7 @@ fn usage_replay_record_is_removed_when_its_transcript_is_deleted() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage)
+                RecordData::UsageReport(usage)
                     if usage.delta.as_ref().map(|usage| usage.total) == Some(530) =>
                 {
                     Some(record.id.clone())
@@ -1151,7 +1159,7 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) if item.external_id.as_deref() == Some("attachment-1") => {
+                RecordData::Event(item) if item.external_id.as_deref() == Some("attachment-1") => {
                     Some((record, item))
                 }
                 _ => None,
@@ -1162,7 +1170,7 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
     assert_eq!(attachment.1.actor, Actor::Environment);
     assert!(matches!(
         attachment.1.data,
-        ItemData::Unknown(ref unknown) if unknown.kind.as_deref() == Some("attachment")
+        EventData::Unknown(ref unknown) if unknown.kind.as_deref() == Some("attachment")
     ));
 
     assert!(batch.changes.iter().any(|change| {
@@ -1171,7 +1179,7 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("reply-1")
                             && item.parent.as_ref() == Some(&attachment.0.id)
                 )
@@ -1183,12 +1191,12 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("system-1")
                             && item.parent.is_some()
                             && matches!(
                                 &item.data,
-                                ItemData::HookResult(result)
+                                EventData::HookResult(result)
                                     if result.status == HookStatus::Completed
                             )
                 )
@@ -1200,12 +1208,12 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("compact-1")
                             && item.parent.is_some()
                             && matches!(
                                 &item.data,
-                                ItemData::ContextCompaction(compaction)
+                                EventData::ContextCompaction(compaction)
                                     if compaction.summary.as_deref() == Some("summary")
                             )
                 )
@@ -1217,7 +1225,7 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("inherited-1")
                             && item.inherited_from.is_some()
                 )
@@ -1226,7 +1234,7 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
     assert!(!batch
         .changes
         .iter()
-        .any(|change| matches!(change, Change::Upsert(record) if matches!(record.data, RecordData::Usage(_)))));
+        .any(|change| matches!(change, Change::Upsert(record) if matches!(record.data, RecordData::UsageReport(_)))));
     assert!(batch.changes.iter().any(|change| {
         matches!(
             change,
@@ -1276,8 +1284,8 @@ fn incremental_scan_waits_for_a_complete_line() {
             Change::Upsert(record)
                 if matches!(
                     record.data,
-                    RecordData::Item(ref item)
-                        if matches!(&item.data, ItemData::Message(_))
+                    RecordData::Event(ref item)
+                        if matches!(&item.data, EventData::Message(_))
                 )
         )
     }));
@@ -1297,10 +1305,10 @@ fn transcript_without_a_trailing_newline_is_normalized_once() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Message(message)
+                            EventData::Message(message)
                                 if message.content == vec![ContentBlock::text("done")]
                         )
                 )
@@ -1529,8 +1537,8 @@ fn subscription_emits_new_transcript_entries() {
             Change::Upsert(record)
                 if matches!(
                     record.data,
-                    RecordData::Item(ref item)
-                        if matches!(&item.data, ItemData::Message(_))
+                    RecordData::Event(ref item)
+                        if matches!(&item.data, EventData::Message(_))
                 )
         )
     }));

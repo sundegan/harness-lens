@@ -32,14 +32,14 @@ CREATE TABLE rollout_sources (
     path TEXT PRIMARY KEY NOT NULL,
     provider TEXT NOT NULL,
     session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL,
-    current_turn_id TEXT,
+    current_invocation_id TEXT,
     updated_at_ms INTEGER NOT NULL
 );
 
 CREATE INDEX rollout_sources_session_idx
     ON rollout_sources(session_id);
 
-CREATE TABLE session_turns (
+CREATE TABLE agent_invocations (
     id TEXT PRIMARY KEY NOT NULL,
     session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
     source_path TEXT NOT NULL,
@@ -52,18 +52,18 @@ CREATE TABLE session_turns (
     error_message TEXT
 );
 
-CREATE INDEX session_turns_session_idx
-    ON session_turns(session_id);
+CREATE INDEX agent_invocations_session_idx
+    ON agent_invocations(session_id);
 
-CREATE INDEX session_turns_source_idx
-    ON session_turns(source_path);
+CREATE INDEX agent_invocations_source_idx
+    ON agent_invocations(source_path);
 
-CREATE INDEX session_turns_status_idx
-    ON session_turns(status);
+CREATE INDEX agent_invocations_status_idx
+    ON agent_invocations(status);
 
 CREATE TABLE skill_invocations (
     id TEXT PRIMARY KEY NOT NULL,
-    turn_id TEXT NOT NULL REFERENCES session_turns(id) ON DELETE CASCADE,
+    invocation_id TEXT NOT NULL REFERENCES agent_invocations(id) ON DELETE CASCADE,
     session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
     skill_name TEXT NOT NULL,
     started_at_ms INTEGER,

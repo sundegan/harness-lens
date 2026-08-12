@@ -33,11 +33,6 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
-        "turn",
-        SourceCoverage::Persisted,
-        AdapterCoverage::Normalized,
-    ),
-    CapabilityCoverage::new(
         "message",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,

@@ -434,7 +434,7 @@ fn read_usage_events(path: &Path, max_line_bytes: usize) -> std::io::Result<Vec<
         {
             return true;
         }
-        if let Some(usage) = token_usage::observation(payload, &mut accounting) {
+        if let Some(usage) = token_usage::usage_report(payload, &mut accounting) {
             if let Some(delta) = usage.delta {
                 events.push(UsageEvent {
                     timestamp: normalize::timestamp_value(value.get("timestamp")),
@@ -457,7 +457,7 @@ fn inspect_child_usage_shape(
     let mut record_index = 0_usize;
     let mut usage_count = 0_usize;
     let mut last_task_started = None;
-    let mut last_turn_context = None;
+    let mut last_invocation_context = None;
     let mut saw_trigger_marker = false;
     let mut structural_prefix_len = None;
     visit_json_lines(path, max_line_bytes, |value| {
@@ -468,7 +468,7 @@ fn inspect_child_usage_shape(
         if record_type == Some("event_msg")
             && payload.get("type").and_then(Value::as_str) == Some("token_count")
         {
-            if token_usage::observation(payload, &mut accounting)
+            if token_usage::usage_report(payload, &mut accounting)
                 .and_then(|usage| usage.delta)
                 .is_some()
             {
@@ -482,7 +482,7 @@ fn inspect_child_usage_shape(
         {
             last_task_started = Some((current_index, usage_count));
         } else if record_type == Some("turn_context") {
-            last_turn_context = Some((current_index, usage_count));
+            last_invocation_context = Some((current_index, usage_count));
         }
 
         let is_trigger_marker = matches!(
@@ -493,7 +493,7 @@ fn inspect_child_usage_shape(
         if is_trigger_marker && !saw_trigger_marker {
             saw_trigger_marker = true;
             structural_prefix_len = last_task_started.map(|(_, count)| count).or_else(|| {
-                last_turn_context
+                last_invocation_context
                     .filter(|(index, _)| index.saturating_add(1) == current_index)
                     .map(|(_, count)| count)
             });

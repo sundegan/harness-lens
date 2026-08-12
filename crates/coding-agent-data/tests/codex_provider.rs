@@ -13,11 +13,11 @@ use coding_agent_data::providers::codex::{CodexProvider, CodexSource};
 use coding_agent_data::WatchProvider;
 use coding_agent_data::{
     Actor, AdapterCoverage, AgentInvocationStatus, AgentOperation, ApprovalPolicy, Change,
-    ContentAudience, ContentBlock, ContentIconTheme, ContentPriority, DataQuality, FileChangeKind,
-    GoalStatus, HistoryMode, ItemData, MessageRole, ModeChangeKind, NoticeLevel, PlanStepStatus,
-    Provider, RateLimitReason, RateLimitScope, ReasoningVisibility, Record, RecordData, RecordId,
-    SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason, TokenUsage, ToolKind,
-    ToolStatus, TurnStatus,
+    ContentAudience, ContentBlock, ContentIconTheme, ContentPriority, DataQuality, EventData,
+    FileChangeKind, GoalStatus, HistoryMode, MessageRole, ModeChangeKind, NoticeLevel,
+    PlanStepStatus, Provider, RateLimitReason, RateLimitScope, ReasoningVisibility, Record,
+    RecordData, RecordId, SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason,
+    TokenUsage, ToolKind, ToolStatus,
 };
 use rusqlite::{params, Connection};
 use tempfile::TempDir;
@@ -287,7 +287,9 @@ fn usage_deltas_for_session(changes: &[Change], external_id: &str) -> Vec<Option
                     .is_some_and(|id| id.as_str().ends_with(&suffix)) =>
             {
                 match &record.data {
-                    RecordData::Usage(usage) => Some(usage.delta.as_ref().map(|usage| usage.total)),
+                    RecordData::UsageReport(usage) => {
+                        Some(usage.delta.as_ref().map(|usage| usage.total))
+                    }
                     _ => None,
                 }
             }
@@ -312,7 +314,7 @@ fn usage_deltas_in_records(
                 return None;
             }
             match &record.data {
-                RecordData::Usage(usage) => Some((
+                RecordData::UsageReport(usage) => Some((
                     record.origin.path.clone(),
                     record.timestamp,
                     usage.delta.as_ref().map(|delta| delta.total),
@@ -419,10 +421,10 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "call-1"
                                     && call.input["path"] == "SKILL.md"
                                     && call.locations.iter().any(|location|
@@ -438,7 +440,7 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.cumulative.as_ref().map(|usage| usage.total) == Some(100)
                             && usage
                                 .cumulative
@@ -455,9 +457,9 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Turn(turn)
-                        if turn.external_id.as_deref() == Some("turn-1")
-                            && turn.status == TurnStatus::InProgress
+                    RecordData::AgentInvocation(invocation)
+                        if invocation.invocation_id == "turn-1"
+                            && invocation.status == AgentInvocationStatus::InProgress
                 )
         )
     }));
@@ -510,10 +512,10 @@ fn plain_rollouts_without_a_trailing_newline_are_normalized_once() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Message(message)
+                            EventData::Message(message)
                                 if message.content == vec![ContentBlock::text("done")]
                         )
                 )
@@ -795,7 +797,7 @@ fn legacy_fork_owner_is_the_filename_session_when_copied_parent_metadata_follows
                         .session
                         .as_ref()
                         .is_some_and(|id| id.as_str().ends_with(":session:thread-2"))
-                    && matches!(&record.data, RecordData::Item(_))
+                    && matches!(&record.data, RecordData::Event(_))
         )
     }));
 }
@@ -819,8 +821,10 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Turn(turn) if turn.status == TurnStatus::Completed => {
-                    Some((record.id.clone(), turn))
+                RecordData::AgentInvocation(invocation)
+                    if invocation.status == AgentInvocationStatus::Completed =>
+                {
+                    Some((record.id.clone(), invocation))
                 }
                 _ => None,
             },
@@ -835,13 +839,13 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.as_ref() == Some(&completed_turn.0)
+                if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::ExecutionContext(context)
+                                EventData::ExecutionContext(context)
                                     if context.cwd.as_deref()
                                         == Some(std::path::Path::new("/workspace/project"))
                                         && context.workspace_roots
@@ -860,8 +864,8 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) => match &item.data {
-                    ItemData::ExecutionContext(context) => Some(context),
+                RecordData::Event(item) => match &item.data {
+                    EventData::ExecutionContext(context) => Some(context),
                     _ => None,
                 },
                 _ => None,
@@ -908,10 +912,10 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Reasoning(reasoning)
+                            EventData::Reasoning(reasoning)
                                 if reasoning.visibility == ReasoningVisibility::Encrypted
                                     && reasoning.content.is_empty()
                         )
@@ -922,13 +926,13 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.as_ref() == Some(&completed_turn.0)
+                if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::Message(message)
+                                EventData::Message(message)
                                     if message.content
                                         == vec![ContentBlock::text("done")]
                             )
@@ -951,8 +955,8 @@ fn thread_settings_applied_reads_the_nested_snapshot() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) => match &item.data {
-                    ItemData::ExecutionContext(context) => Some(context),
+                RecordData::Event(item) => match &item.data {
+                    EventData::ExecutionContext(context) => Some(context),
                     _ => None,
                 },
                 _ => None,
@@ -1029,10 +1033,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Message(message)
+                            EventData::Message(message)
                                 if message.content.iter().any(|content|
                                     matches!(
                                         content,
@@ -1049,13 +1053,13 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.is_some()
+                if record.invocation.is_some()
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::Plan(plan)
+                                EventData::Plan(plan)
                                     if plan.text.as_deref() == Some("Inspect and update")
                             )
                     )
@@ -1067,10 +1071,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "command-1"
                                     && result.status == ToolStatus::Completed
                                     && result.duration_ms == Some(1_500)
@@ -1085,10 +1089,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "mcp-1"
                                     && call.namespace.as_deref() == Some("filesystem")
                                     && call.name == "edit_file"
@@ -1105,10 +1109,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::FileChange(change)
+                            EventData::FileChange(change)
                                 if change.path
                                     == std::path::Path::new("src/new.rs")
                                     && change.kind == FileChangeKind::Create
@@ -1123,10 +1127,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::AgentInvocation(invocation)
+                            EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::Spawn
                                     && invocation.status
                                         == AgentInvocationStatus::Completed
@@ -1142,10 +1146,10 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ModeChange(change)
+                            EventData::ModeChange(change)
                                 if change.mode == "review"
                                     && change.kind == ModeChangeKind::Entered
                         )
@@ -1197,10 +1201,10 @@ fn paginated_history_preserves_lineage_and_logical_ordinals() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.sequence.position == 2
                             && item.sequence.logical_ordinal == Some(6)
-                            && matches!(&item.data, ItemData::Message(_))
+                            && matches!(&item.data, EventData::Message(_))
                 )
         )
     }));
@@ -1286,7 +1290,7 @@ fn paginated_lineage_resolves_all_physical_segments_and_filters_subagent_context
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if item.sequence.logical_ordinal == Some(3)
                     )
         )
@@ -1298,7 +1302,7 @@ fn paginated_lineage_resolves_all_physical_segments_and_filters_subagent_context
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if item.sequence.logical_ordinal == Some(5)
                     )
         )
@@ -1437,10 +1441,10 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::WorldState(state)
+                            EventData::WorldState(state)
                                 if state.full
                                     && state.state["branch"] == "main"
                         )
@@ -1453,10 +1457,10 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ForkTurnBoundary(boundary)
+                            EventData::ForkInvocationBoundary(boundary)
                                 if boundary.trigger_turn
                         )
                 )
@@ -1466,13 +1470,13 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
         matches!(
             change,
             Change::Upsert(record)
-                if record.turn.is_some()
+                if record.invocation.is_some()
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if matches!(
                                 &item.data,
-                                ItemData::Goal(goal)
+                                EventData::Goal(goal)
                                     if goal.objective == "finish coverage"
                                         && goal.status == GoalStatus::Active
                                         && goal.token_budget == Some(1000)
@@ -1487,10 +1491,10 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "shell-1"
                                     && call.name == "local_shell"
                                     && call.kind == ToolKind::Execute
@@ -1506,10 +1510,10 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "image-extension-1"
                                     && result.content.iter().any(|content|
                                         matches!(
@@ -1527,10 +1531,10 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "web-extension-1"
                                     && result.output["results"][0]["title"] == "Rust"
                         )
@@ -1543,7 +1547,7 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.model.as_deref() == Some("gpt-5.6")
                             && usage.model_provider.as_deref() == Some("openai")
                             && usage.service_tier.as_deref() == Some("fast")
@@ -1597,8 +1601,8 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
                 Change::Upsert(record)
                     if matches!(
                         &record.data,
-                        RecordData::Item(item)
-                            if matches!(&item.data, ItemData::Message(_))
+                        RecordData::Event(item)
+                            if matches!(&item.data, EventData::Message(_))
                     )
             )
         })
@@ -1609,8 +1613,10 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Turn(turn) if turn.status == TurnStatus::Completed => {
-                    Some((record, turn))
+                RecordData::AgentInvocation(invocation)
+                    if invocation.status == AgentInvocationStatus::Completed =>
+                {
+                    Some((record, invocation))
                 }
                 _ => None,
             },
@@ -1618,19 +1624,15 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
         })
         .expect("legacy message boundaries should infer a completed turn");
     assert_eq!(completed_turn.1.duration_ms, Some(1_100));
-    assert!(completed_turn
-        .1
-        .external_id
-        .as_deref()
-        .is_some_and(|id| id.starts_with("legacy:")));
+    assert!(completed_turn.1.invocation_id.starts_with("legacy:"));
     assert!(batch.changes.iter().all(|change| {
         !matches!(
             change,
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item) if matches!(&item.data, ItemData::Message(_))
-                ) && record.turn.as_ref() != Some(&completed_turn.0.id)
+                    RecordData::Event(item) if matches!(&item.data, EventData::Message(_))
+                ) && record.invocation.as_ref() != Some(&completed_turn.0.id)
         )
     }));
     assert_eq!(
@@ -1643,8 +1645,8 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Item(item)
-                                if matches!(&item.data, ItemData::Reasoning(_))
+                            RecordData::Event(item)
+                                if matches!(&item.data, EventData::Reasoning(_))
                         )
                 )
             })
@@ -1657,10 +1659,10 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Notice(notice)
+                            EventData::Notice(notice)
                                 if notice.level == NoticeLevel::Error
                                     && notice.code.as_deref()
                                         == Some("internal_server_error")
@@ -1684,7 +1686,7 @@ fn canonical_presentation_appended_later_deletes_the_legacy_projection() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) if matches!(&item.data, ItemData::Message(_)) => {
+                RecordData::Event(item) if matches!(&item.data, EventData::Message(_)) => {
                     Some(record.id.clone())
                 }
                 _ => None,
@@ -1732,7 +1734,7 @@ fn legacy_presentation_remains_when_no_canonical_projection_ever_arrives() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) if matches!(&item.data, ItemData::Message(_)) => {
+                RecordData::Event(item) if matches!(&item.data, EventData::Message(_)) => {
                     Some(record.id.clone())
                 }
                 _ => None,
@@ -1779,8 +1781,8 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
 
     let call = batch.changes.iter().find_map(|change| match change {
         Change::Upsert(record) => match &record.data {
-            RecordData::Item(item) => match &item.data {
-                ItemData::ToolCall(call) if call.call_id == "call-1" => Some((record, item, call)),
+            RecordData::Event(item) => match &item.data {
+                EventData::ToolCall(call) if call.call_id == "call-1" => Some((record, item, call)),
                 _ => None,
             },
             _ => None,
@@ -1794,8 +1796,8 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
 
     let result = batch.changes.iter().find_map(|change| match change {
         Change::Upsert(record) => match &record.data {
-            RecordData::Item(item) => match &item.data {
-                ItemData::ToolResult(result) if result.call_id == "call-1" => Some((item, result)),
+            RecordData::Event(item) => match &item.data {
+                EventData::ToolResult(result) if result.call_id == "call-1" => Some((item, result)),
                 _ => None,
             },
             _ => None,
@@ -1813,11 +1815,11 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.actor == Actor::Agent
                             && matches!(
                                 &item.data,
-                                ItemData::Message(message)
+                                EventData::Message(message)
                                     if message.role == MessageRole::Assistant
                                         && message.content
                                             == vec![ContentBlock::text("done")]
@@ -1831,10 +1833,10 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Reasoning(reasoning)
+                            EventData::Reasoning(reasoning)
                                 if reasoning.summary == ["checked the files"]
                                     && reasoning.content
                                         == vec![ContentBlock::text("visible reasoning")]
@@ -1848,10 +1850,10 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ContextCompaction(compaction)
+                            EventData::ContextCompaction(compaction)
                                 if compaction.summary.as_deref()
                                     == Some("replacement summary")
                         )
@@ -1869,8 +1871,8 @@ fn scan_normalizes_acp_v2_content_annotations_icons_and_extensions() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Item(item) => match &item.data {
-                    ItemData::Message(message)
+                RecordData::Event(item) => match &item.data {
+                    EventData::Message(message)
                         if item.external_id.as_deref() == Some("message-v2") =>
                     {
                         Some(&message.content)
@@ -1943,10 +1945,10 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "search-1"
                                     && call.status == ToolStatus::InProgress
                         )
@@ -1959,10 +1961,10 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "search-1"
                                     && result.status == ToolStatus::Completed
                                     && result.output["tools"][0]["name"] == "formatter"
@@ -1977,10 +1979,10 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "image-1"
                                     && result.status == ToolStatus::Completed
                                     && result.content
@@ -2012,10 +2014,10 @@ fn compacted_events_normalize_camel_case_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ContextCompaction(compaction)
+                            EventData::ContextCompaction(compaction)
                                 if compaction.summary.as_deref() == Some("replacement summary")
                                     && compaction.automatic == Some(true)
                                     && compaction.tokens_before == Some(120000)
@@ -2050,10 +2052,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "patch-1"
                                     && call.kind == ToolKind::Edit
                                     && call.status == ToolStatus::Completed
@@ -2067,10 +2069,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "patch-1"
                                     && result.content
                                         == vec![ContentBlock::text("Done!")]
@@ -2086,10 +2088,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::FileChange(change)
+                            EventData::FileChange(change)
                                 if change.kind == FileChangeKind::Create
                                     && change.path == std::path::Path::new("src/new.rs")
                                     && change.status == ToolStatus::Completed
@@ -2103,10 +2105,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::FileChange(change)
+                            EventData::FileChange(change)
                                 if change.kind == FileChangeKind::Move
                                     && change.old_path.as_deref()
                                         == Some(std::path::Path::new("src/old.rs"))
@@ -2122,10 +2124,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "mcp-1"
                                     && result.status == ToolStatus::Completed
                                     && result.duration_ms == Some(1_500)
@@ -2141,10 +2143,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::AgentInvocation(invocation)
+                            EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::Spawn
                                     && invocation.status
                                         == AgentInvocationStatus::InProgress
@@ -2159,10 +2161,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Plan(plan)
+                            EventData::Plan(plan)
                                 if plan.text.as_deref() == Some("Implementation plan")
                                     && plan.steps.len() == 3
                                     && plan.steps[1].status
@@ -2179,8 +2181,8 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
-                        if matches!(&item.data, ItemData::ContextCompaction(_))
+                    RecordData::Event(item)
+                        if matches!(&item.data, EventData::ContextCompaction(_))
                 )
         )
     }));
@@ -2190,11 +2192,11 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::Rollback(rollback)
-                                if rollback.turns_removed == Some(2)
+                            EventData::Rollback(rollback)
+                                if rollback.user_inputs_removed == Some(2)
                         )
                 )
         )
@@ -2205,11 +2207,11 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("future-1")
                             && matches!(
                                 &item.data,
-                                ItemData::Unknown(unknown)
+                                EventData::Unknown(unknown)
                                     if unknown.kind.as_deref()
                                         == Some("future_response_item")
                             )
@@ -2236,7 +2238,7 @@ fn unknown_response_item_keeps_its_explicit_turn_after_terminal_context_is_clear
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if item.external_id.as_deref() == Some("future-after-turn")
                 ) =>
             {
@@ -2247,7 +2249,7 @@ fn unknown_response_item_keeps_its_explicit_turn_after_terminal_context_is_clear
         .expect("unknown response item");
 
     assert!(record
-        .turn
+        .invocation
         .as_ref()
         .is_some_and(|id| id.as_str().ends_with(":turn-1")));
 }
@@ -2268,10 +2270,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "exec-1"
                                     && result.status == ToolStatus::Completed
                                     && result.duration_ms == Some(1_250)
@@ -2294,10 +2296,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Item(item)
+                            RecordData::Event(item)
                                 if matches!(
                                     &item.data,
-                                    ItemData::ToolResult(result)
+                                    EventData::ToolResult(result)
                                         if result.call_id == "exec-1"
                                 )
                         )
@@ -2313,10 +2315,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "web-1"
                                     && result.output["results"][0]["title"] == "Rust"
                                     && result.content.is_empty()
@@ -2330,10 +2332,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolCall(call)
+                            EventData::ToolCall(call)
                                 if call.call_id == "view-1"
                                     && call.kind == ToolKind::Read
                                     && call.locations.first().is_some_and(|location|
@@ -2349,10 +2351,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::ToolResult(result)
+                            EventData::ToolResult(result)
                                 if result.call_id == "image-2"
                                     && result.content == vec![ContentBlock::Image {
                                         mime_type: None,
@@ -2374,10 +2376,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Item(item)
+                            RecordData::Event(item)
                                 if matches!(
                                     &item.data,
-                                    ItemData::ToolResult(result)
+                                    EventData::ToolResult(result)
                                         if result.call_id == "image-2"
                                 )
                         )
@@ -2393,10 +2395,10 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Item(item)
+                    RecordData::Event(item)
                         if matches!(
                             &item.data,
-                            ItemData::AgentInvocation(invocation)
+                            EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::SendInput
                                     && invocation.sender_id.as_deref() == Some("reviewer")
                                     && invocation.receiver_ids == ["root"]
@@ -2645,13 +2647,13 @@ fn terminal_turn_preserves_start_time_and_derives_duration() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Turn(turn)
-                        if turn.status == TurnStatus::Completed
-                            && turn.started_at.map(|value| value.as_millis())
+                    RecordData::AgentInvocation(invocation)
+                        if invocation.status == AgentInvocationStatus::Completed
+                            && invocation.started_at.map(|value| value.as_millis())
                                 == Some(1_704_164_646_000)
-                            && turn.completed_at.map(|value| value.as_millis())
+                            && invocation.completed_at.map(|value| value.as_millis())
                                 == Some(1_704_164_648_000)
-                            && turn.duration_ms == Some(2_000)
+                            && invocation.duration_ms == Some(2_000)
                 )
         )
     }));
@@ -2673,10 +2675,10 @@ fn aborted_turn_preserves_interruption_semantics() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Turn(turn)
-                        if turn.status == TurnStatus::Interrupted
-                            && turn.stop_reason.as_ref() == Some(&StopReason::Interrupted)
-                            && turn.duration_ms == Some(2_000)
+                    RecordData::AgentInvocation(invocation)
+                        if invocation.status == AgentInvocationStatus::Interrupted
+                            && invocation.stop_reason.as_ref() == Some(&StopReason::Interrupted)
+                            && invocation.duration_ms == Some(2_000)
                 )
         )
     }));
@@ -2698,9 +2700,9 @@ fn aborted_turn_inherits_the_started_turn_identity() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Turn(turn)
-                        if turn.external_id.as_deref() == Some("turn-1")
-                            && turn.status == TurnStatus::Interrupted
+                    RecordData::AgentInvocation(invocation)
+                        if invocation.invocation_id == "turn-1"
+                            && invocation.status == AgentInvocationStatus::Interrupted
                 )
         )
     }));
@@ -2843,7 +2845,7 @@ fn repeated_cumulative_usage_does_not_repeat_delta_and_missing_delta_is_derived(
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some(usage),
+                RecordData::UsageReport(usage) => Some(usage),
                 _ => None,
             },
             _ => None,
@@ -2878,7 +2880,7 @@ fn reasoning_tokens_remain_an_output_breakdown_without_inflating_totals() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some(usage),
+                RecordData::UsageReport(usage) => Some(usage),
                 _ => None,
             },
             _ => None,
@@ -2910,7 +2912,7 @@ fn legacy_usage_aliases_derive_total_without_double_counting_reasoning() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some(usage),
+                RecordData::UsageReport(usage) => Some(usage),
                 _ => None,
             },
             _ => None,
@@ -2942,7 +2944,7 @@ fn newly_available_cumulative_components_are_not_treated_as_component_deltas() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some(usage),
+                RecordData::UsageReport(usage) => Some(usage),
                 _ => None,
             },
             _ => None,
@@ -2972,7 +2974,7 @@ fn first_cumulative_usage_without_a_reported_delta_uses_a_zero_baseline() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.delta.as_ref().map(|usage| usage.total) == Some(40)
                             && usage.delta.as_ref().and_then(|usage| usage.input) == Some(30)
                             && usage.delta.as_ref().and_then(|usage| usage.output) == Some(10)
@@ -3057,7 +3059,7 @@ fn cross_component_divergence_keeps_the_provider_reported_delta_whole() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref(),
+                RecordData::UsageReport(usage) => usage.delta.as_ref(),
                 _ => None,
             },
             _ => None,
@@ -3160,7 +3162,7 @@ fn estimated_total_only_last_usage_is_evidence_but_not_additive() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => Some(usage),
+                RecordData::UsageReport(usage) => Some(usage),
                 _ => None,
             },
             _ => None,
@@ -3201,7 +3203,7 @@ fn identical_usage_across_sessions_is_attributed_once_without_hiding_raw_records
 
     let usage = records
         .values()
-        .filter(|record| matches!(record.data, RecordData::Usage(_)))
+        .filter(|record| matches!(record.data, RecordData::UsageReport(_)))
         .collect::<Vec<_>>();
     assert_eq!(usage.len(), 2);
     assert!(usage.iter().all(|record| record.original.is_some()));
@@ -3211,7 +3213,7 @@ fn identical_usage_across_sessions_is_attributed_once_without_hiding_raw_records
         usage
             .iter()
             .filter_map(|record| match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|delta| delta.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|delta| delta.total),
                 _ => None,
             })
             .sum::<i64>(),
@@ -3466,7 +3468,7 @@ fn fork_replay_is_not_attributed_twice_and_incremental_scan_keeps_its_position()
                     .is_some_and(|id| id.as_str().ends_with(":session:thread-2")) =>
             {
                 match &record.data {
-                    RecordData::Usage(usage) => Some(usage),
+                    RecordData::UsageReport(usage) => Some(usage),
                     _ => None,
                 }
             }
@@ -3505,7 +3507,7 @@ fn fork_replay_is_not_attributed_twice_and_incremental_scan_keeps_its_position()
                     .is_some_and(|id| id.as_str().ends_with(":session:thread-2"))
                     && matches!(
                         &record.data,
-                        RecordData::Usage(usage)
+                        RecordData::UsageReport(usage)
                             if usage.delta.as_ref().map(|usage| usage.total) == Some(25)
                     )
         )
@@ -3520,7 +3522,7 @@ fn fork_replay_is_not_attributed_twice_and_incremental_scan_keeps_its_position()
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -3560,7 +3562,7 @@ fn copied_legacy_items_link_to_their_immediate_parent_records() {
                 if record.origin.path == fixture.rollout_path
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if item.external_id.as_deref() == Some("shared-message")
                     ) =>
             {
@@ -3577,12 +3579,12 @@ fn copied_legacy_items_link_to_their_immediate_parent_records() {
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Item(item)
+                        RecordData::Event(item)
                             if item.external_id.as_deref() == Some("shared-message")
                     ) =>
             {
                 match &record.data {
-                    RecordData::Item(item) => Some(item),
+                    RecordData::Event(item) => Some(item),
                     _ => None,
                 }
             }
@@ -3622,7 +3624,7 @@ fn numeric_fork_timestamp_excludes_parent_usage_recorded_after_the_fork() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -3664,7 +3666,9 @@ fn missing_fork_parent_uses_the_rewritten_burst_fallback() {
                     .is_some_and(|id| id.as_str().ends_with(":session:thread-2")) =>
             {
                 match &record.data {
-                    RecordData::Usage(usage) => Some(usage.delta.as_ref().map(|usage| usage.total)),
+                    RecordData::UsageReport(usage) => {
+                        Some(usage.delta.as_ref().map(|usage| usage.total))
+                    }
                     _ => None,
                 }
             }
@@ -3711,7 +3715,7 @@ fn compacted_fork_prefix_falls_back_to_the_rewritten_usage_burst() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -3766,7 +3770,7 @@ fn nested_forks_compare_against_each_raw_parent_stream() {
         .iter()
         .filter_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Usage(usage) => usage.delta.as_ref().map(|usage| usage.total),
+                RecordData::UsageReport(usage) => usage.delta.as_ref().map(|usage| usage.total),
                 _ => None,
             },
             _ => None,
@@ -3791,7 +3795,7 @@ fn a_session_that_names_itself_as_parent_keeps_its_usage() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Usage(usage)
+                    RecordData::UsageReport(usage)
                         if usage.delta.as_ref().map(|usage| usage.total) == Some(100)
                 )
         )
@@ -3886,7 +3890,7 @@ fn subscription_emits_incremental_changes() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Turn(turn) if turn.status == TurnStatus::Completed
+                    RecordData::AgentInvocation(invocation) if invocation.status == AgentInvocationStatus::Completed
                 )
         )
     }));

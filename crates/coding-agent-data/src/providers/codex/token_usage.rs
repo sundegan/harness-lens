@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::{TokenUsage, Usage};
+use crate::{TokenUsage, UsageReport};
 
 const SEEN_CUMULATIVE_LIMIT: usize = 64;
 
@@ -38,12 +38,15 @@ pub(super) struct UsageAccountingState {
     seen_cumulative: Vec<UsageSnapshotFingerprint>,
 }
 
-pub(super) fn observation(payload: &Value, state: &mut UsageAccountingState) -> Option<Usage> {
+pub(super) fn usage_report(
+    payload: &Value,
+    state: &mut UsageAccountingState,
+) -> Option<UsageReport> {
     let info = payload.get("info")?;
     let cumulative = info.get("total_token_usage").and_then(normalize_usage);
     let reported_delta = info.get("last_token_usage").and_then(normalize_usage);
     let delta = account(cumulative.as_ref(), reported_delta.as_ref(), state);
-    (cumulative.is_some() || reported_delta.is_some()).then_some(Usage {
+    (cumulative.is_some() || reported_delta.is_some()).then_some(UsageReport {
         model_provider: None,
         model: None,
         service_tier: None,

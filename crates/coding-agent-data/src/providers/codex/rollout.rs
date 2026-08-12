@@ -596,7 +596,7 @@ fn parse_line(
     );
     inheritance.apply(path, &mut records);
     for record in &mut records {
-        if let crate::RecordData::Usage(usage) = &mut record.data {
+        if let crate::RecordData::UsageReport(usage) = &mut record.data {
             let replayed_delta = replay.filter_delta(
                 path,
                 &mut context.usage_replay,
@@ -633,7 +633,7 @@ fn parse_line(
         batch.changes.extend(
             records
                 .into_iter()
-                .filter(|record| matches!(&record.data, crate::RecordData::Turn(_)))
+                .filter(|record| matches!(&record.data, crate::RecordData::AgentInvocation(_)))
                 .map(Change::upsert),
         );
     }
@@ -669,7 +669,7 @@ fn reconcile_presentation(
                 .extend(
                     records
                         .iter()
-                        .filter(|record| matches!(&record.data, crate::RecordData::Item(_)))
+                        .filter(|record| matches!(&record.data, crate::RecordData::Event(_)))
                         .map(|record| record.id.as_str().to_owned()),
                 );
             (true, Vec::new())

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use coding_agent_data::providers::claude_code::ClaudeCodeProvider;
 use coding_agent_data::providers::codex::CodexProvider;
-use coding_agent_data::{Change, ItemData, Provider, Record, RecordData, RecordId, Result};
+use coding_agent_data::{Change, EventData, Provider, Record, RecordData, RecordId, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 
 fn main() -> Result<()> {
@@ -84,8 +84,8 @@ fn report_provider(name: &str, provider: &impl Provider) -> Result<()> {
     for record in records.values() {
         let kind = match &record.data {
             RecordData::Session(_) => "session",
-            RecordData::Turn(_) => "turn",
-            RecordData::Usage(usage) => {
+            RecordData::AgentInvocation(_) => "agent_invocation",
+            RecordData::UsageReport(usage) => {
                 if let Some(delta) = &usage.delta {
                     additive_tokens = additive_tokens.saturating_add(delta.total);
                 }
@@ -103,29 +103,29 @@ fn report_provider(name: &str, provider: &impl Provider) -> Result<()> {
                     .or_default() += 1;
                 "unknown_record"
             }
-            RecordData::Item(item) => match &item.data {
-                ItemData::Message(_) => "message",
-                ItemData::Reasoning(_) => "reasoning",
-                ItemData::Plan(_) => "plan",
-                ItemData::ToolCall(_) => "tool_call",
-                ItemData::ToolResult(_) => "tool_result",
-                ItemData::ApprovalRequest(_) => "approval_request",
-                ItemData::ApprovalDecision(_) => "approval_decision",
-                ItemData::ModelInvocation(_) => "model_invocation",
-                ItemData::AgentInvocation(_) => "agent_invocation",
-                ItemData::FileChange(_) => "file_change",
-                ItemData::WorldState(_) => "world_state",
-                ItemData::Goal(_) => "goal",
-                ItemData::ForkTurnBoundary(_) => "fork_turn_boundary",
-                ItemData::InputQueue(_) => "input_queue",
-                ItemData::ContextCompaction(_) => "context_compaction",
-                ItemData::ExecutionContext(_) => "execution_context",
-                ItemData::ModeChange(_) => "mode_change",
-                ItemData::Notice(_) => "notice",
-                ItemData::HookResult(_) => "hook_result",
-                ItemData::Retry(_) => "retry",
-                ItemData::Rollback(_) => "rollback",
-                ItemData::Unknown(unknown) => {
+            RecordData::Event(event) => match &event.data {
+                EventData::Message(_) => "message",
+                EventData::Reasoning(_) => "reasoning",
+                EventData::Plan(_) => "plan",
+                EventData::ToolCall(_) => "tool_call",
+                EventData::ToolResult(_) => "tool_result",
+                EventData::ApprovalRequest(_) => "approval_request",
+                EventData::ApprovalDecision(_) => "approval_decision",
+                EventData::ModelInvocation(_) => "model_invocation",
+                EventData::AgentInvocation(_) => "agent_invocation",
+                EventData::FileChange(_) => "file_change",
+                EventData::WorldState(_) => "world_state",
+                EventData::Goal(_) => "goal",
+                EventData::ForkInvocationBoundary(_) => "fork_turn_boundary",
+                EventData::InputQueue(_) => "input_queue",
+                EventData::ContextCompaction(_) => "context_compaction",
+                EventData::ExecutionContext(_) => "execution_context",
+                EventData::ModeChange(_) => "mode_change",
+                EventData::Notice(_) => "notice",
+                EventData::HookResult(_) => "hook_result",
+                EventData::Retry(_) => "retry",
+                EventData::Rollback(_) => "rollback",
+                EventData::Unknown(unknown) => {
                     *unknown_types
                         .entry(
                             unknown

@@ -8,7 +8,7 @@ use crate::{Timestamp, TokenUsage};
 
 use super::checkpoint::{CodexCheckpoint, RolloutContext};
 
-/// Stable, compact identity for one additive Codex usage observation.
+/// Stable, compact identity for one additive Codex usage report.
 ///
 /// The identity intentionally excludes the session and source location. Codex
 /// can copy the same model request into multiple session histories, while the

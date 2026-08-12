@@ -29,9 +29,9 @@ pub(super) struct TranscriptState {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(super) struct TranscriptContext {
-    pub current_turn: Option<RecordId>,
-    pub current_turn_external_id: Option<String>,
-    pub current_turn_started_at: Option<Timestamp>,
+    pub current_invocation: Option<RecordId>,
+    pub current_invocation_external_id: Option<String>,
+    pub current_invocation_started_at: Option<Timestamp>,
     #[serde(default)]
     pub tool_calls: BTreeMap<String, ObservedTool>,
     /// Background-task identity learned from durable queue notifications,
@@ -75,7 +75,7 @@ pub(super) struct UsageSnapshot {
     #[serde(default)]
     pub timestamp: Option<Timestamp>,
     #[serde(default)]
-    pub turn: Option<RecordId>,
+    pub invocation: Option<RecordId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

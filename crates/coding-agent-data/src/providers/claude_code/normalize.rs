@@ -11,12 +11,12 @@ use crate::providers::shared::{
 };
 use crate::{
     Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, ContentBlock, ContextCompaction,
-    Cost, DataQuality, ExecutionContext, FileChange, FileChangeKind, HookResult, HookStatus,
-    InputQueue, Item, ItemData, ItemSequence, Message, MessageRole, ModeChange, ModeChangeKind,
-    ModelInvocation, ModelInvocationStatus, OriginalData, ProviderInfo, QueueOperation, Reasoning,
-    ReasoningVisibility, Record, RecordData, RecordId, Session, SessionRelation,
-    SessionRelationKind, SourceLocation, SourceRef, StopReason, Timestamp, TokenUsage, ToolCall,
-    ToolResult, ToolStatus, Turn, TurnStatus, UnknownItem, UnknownRecord, Usage,
+    Cost, DataQuality, Event, EventData, EventSequence, ExecutionContext, FileChange,
+    FileChangeKind, HookResult, HookStatus, InputQueueMutation, Message, MessageRole, ModeChange,
+    ModeChangeKind, ModelInvocation, ModelInvocationStatus, OriginalData, ProviderInfo,
+    QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId, Session,
+    SessionRelation, SessionRelationKind, SourceLocation, SourceRef, StopReason, Timestamp,
+    TokenUsage, ToolCall, ToolResult, ToolStatus, UnknownEvent, UnknownRecord, UsageReport,
 };
 
 use super::checkpoint::{SessionSummary, TranscriptContext, UsageSnapshot};
@@ -33,12 +33,14 @@ pub(super) struct Position {
 
 fn stop_reason(value: &str) -> StopReason {
     match value {
-        "end_turn" | "completed" | "complete" | "success" | "succeeded" => StopReason::EndTurn,
+        "end_turn" | "completed" | "complete" | "success" | "succeeded" => {
+            StopReason::EndInvocation
+        }
         "max_tokens" => StopReason::MaxTokens,
-        "max_turn_requests" => StopReason::MaxTurnRequests,
+        "max_turn_requests" => StopReason::MaxInvocationRequests,
         "stop_sequence" => StopReason::StopSequence,
         "tool_use" => StopReason::ToolUse,
-        "pause_turn" => StopReason::PauseTurn,
+        "pause_turn" => StopReason::PauseInvocation,
         "model_context_window_exceeded" | "context_window_exceeded" => {
             StopReason::ContextWindowExceeded
         }
@@ -134,7 +136,7 @@ pub(super) fn summary_record(info: &ProviderInfo, path: &Path, summary: &Session
         id: session_record_id(info, &summary.project_key, &summary.session.external_id),
         source: info.source.clone(),
         session: None,
-        turn: None,
+        invocation: None,
         timestamp: summary.session.updated_at,
         origin: SourceRef {
             source: info.source.clone(),
@@ -235,7 +237,7 @@ pub(super) fn line_records(
     let session = identity
         .as_ref()
         .map(|identity| session_record_id(info, &identity.project_key, &identity.external_id));
-    let item_scope = identity
+    let event_scope = identity
         .as_ref()
         .map(|identity| identity.transcript_key.clone());
     let timestamp = value
@@ -266,8 +268,8 @@ pub(super) fn line_records(
         .get("uuid")
         .or_else(|| message.get("id"))
         .and_then(Value::as_str);
-    let item_id = entry_record_id(info, item_scope.as_deref(), external_id, &base);
-    let parent = parent_record_id(info, item_scope.as_deref(), value);
+    let event_id = entry_record_id(info, event_scope.as_deref(), external_id, &base);
+    let parent = parent_record_id(info, event_scope.as_deref(), value);
     let inherited_from = inherited_item_record_id(info, identity.as_ref(), value);
 
     if (entry_type == Some("system")
@@ -286,20 +288,20 @@ pub(super) fn line_records(
                 .map(str::to_owned)
         };
         return vec![Record {
-            id: item_id,
+            id: event_id,
             source: info.source.clone(),
             session,
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: external_id.map(str::to_owned),
-                sequence: ItemSequence::new(position.line, 0),
+                sequence: EventSequence::new(position.line, 0),
                 parent,
                 inherited_from,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ContextCompaction(ContextCompaction {
+                data: EventData::ContextCompaction(ContextCompaction {
                     summary,
                     automatic: None,
                     tokens_before: None,
@@ -337,20 +339,20 @@ pub(super) fn line_records(
             HookStatus::Completed
         };
         return vec![Record {
-            id: item_id,
+            id: event_id,
             source: info.source.clone(),
             session,
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: external_id.map(str::to_owned),
-                sequence: ItemSequence::new(position.line, 0),
+                sequence: EventSequence::new(position.line, 0),
                 parent,
                 inherited_from,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::HookResult(HookResult {
+                data: EventData::HookResult(HookResult {
                     event: Some("stop".to_owned()),
                     entrypoint: value
                         .get("entrypoint")
@@ -388,20 +390,20 @@ pub(super) fn line_records(
             .filter(|mode| !mode.is_empty())
         {
             return vec![Record {
-                id: item_id,
+                id: event_id,
                 source: info.source.clone(),
                 session,
-                turn: context.current_turn.clone(),
+                invocation: context.current_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: external_id.map(str::to_owned),
-                    sequence: ItemSequence::new(position.line, 0),
+                    sequence: EventSequence::new(position.line, 0),
                     parent,
                     inherited_from,
                     actor: Actor::System,
                     agent_id: None,
-                    data: ItemData::ModeChange(ModeChange {
+                    data: EventData::ModeChange(ModeChange {
                         mode: mode.to_owned(),
                         kind: ModeChangeKind::Selected,
                         description: None,
@@ -425,12 +427,12 @@ pub(super) fn line_records(
             id: RecordId::scoped(&info.source, "input-queue", &base),
             source: info.source.clone(),
             session: session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: external_id.map(str::to_owned),
-                sequence: ItemSequence::new(position.line, 0),
+                sequence: EventSequence::new(position.line, 0),
                 parent: parent.clone(),
                 inherited_from,
                 actor: Actor::System,
@@ -438,7 +440,7 @@ pub(super) fn line_records(
                     .get("agentId")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
-                data: ItemData::InputQueue(queue.clone()),
+                data: EventData::InputQueue(queue.clone()),
             }),
             original: Some(original),
         }];
@@ -460,25 +462,25 @@ pub(super) fn line_records(
                     .filter(|prompt| !prompt.is_empty())
                 {
                     return vec![Record {
-                        id: item_id,
+                        id: event_id,
                         source: info.source.clone(),
                         session,
-                        turn: context.current_turn.clone(),
+                        invocation: context.current_invocation.clone(),
                         timestamp,
                         origin,
-                        data: RecordData::Item(Item {
+                        data: RecordData::Event(Event {
                             external_id: external_id.map(str::to_owned).or_else(|| {
                                 attachment
                                     .get("id")
                                     .and_then(Value::as_str)
                                     .map(str::to_owned)
                             }),
-                            sequence: ItemSequence::new(position.line, 0),
+                            sequence: EventSequence::new(position.line, 0),
                             parent,
                             inherited_from,
                             actor: Actor::User,
                             agent_id: None,
-                            data: ItemData::Message(Message {
+                            data: EventData::Message(Message {
                                 role: MessageRole::User,
                                 phase: None,
                                 content: vec![ContentBlock::text(prompt)],
@@ -495,15 +497,15 @@ pub(super) fn line_records(
                     .filter(|path| !path.is_empty())
                 {
                     return vec![Record {
-                        id: item_id,
+                        id: event_id,
                         source: info.source.clone(),
                         session,
-                        turn: context.current_turn.clone(),
+                        invocation: context.current_invocation.clone(),
                         timestamp,
                         origin,
-                        data: RecordData::Item(Item {
+                        data: RecordData::Event(Event {
                             external_id: external_id.map(str::to_owned),
-                            sequence: ItemSequence::new(position.line, 0),
+                            sequence: EventSequence::new(position.line, 0),
                             parent,
                             inherited_from,
                             actor: Actor::Environment,
@@ -511,7 +513,7 @@ pub(super) fn line_records(
                                 .get("agentId")
                                 .and_then(Value::as_str)
                                 .map(str::to_owned),
-                            data: ItemData::FileChange(FileChange {
+                            data: EventData::FileChange(FileChange {
                                 path: PathBuf::from(path),
                                 old_path: None,
                                 kind: FileChangeKind::Update,
@@ -530,20 +532,20 @@ pub(super) fn line_records(
                     .filter(|date| !date.is_empty())
                 {
                     return vec![Record {
-                        id: item_id,
+                        id: event_id,
                         source: info.source.clone(),
                         session,
-                        turn: context.current_turn.clone(),
+                        invocation: context.current_invocation.clone(),
                         timestamp,
                         origin,
-                        data: RecordData::Item(Item {
+                        data: RecordData::Event(Event {
                             external_id: external_id.map(str::to_owned),
-                            sequence: ItemSequence::new(position.line, 0),
+                            sequence: EventSequence::new(position.line, 0),
                             parent,
                             inherited_from,
                             actor: Actor::System,
                             agent_id: None,
-                            data: ItemData::ExecutionContext(ExecutionContext {
+                            data: EventData::ExecutionContext(ExecutionContext {
                                 current_date: Some(current_date.to_owned()),
                                 ..ExecutionContext::default()
                             }),
@@ -565,7 +567,7 @@ pub(super) fn line_records(
             id: RecordId::scoped(&info.source, "unknown", base),
             source: info.source.clone(),
             session,
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
             data: RecordData::Unknown(UnknownRecord {
@@ -599,9 +601,9 @@ pub(super) fn line_records(
         let mut records = Vec::new();
         let primary_user = role == MessageRole::User && is_primary_user_message(value, &content);
         if primary_user {
-            records.extend(begin_turn(
+            records.extend(begin_invocation(
                 info,
-                item_scope.as_deref(),
+                event_scope.as_deref(),
                 &base,
                 value,
                 timestamp,
@@ -610,45 +612,45 @@ pub(super) fn line_records(
                 context,
             ));
         }
-        let turn = context.current_turn.clone();
-        let invocation = (role == MessageRole::Assistant)
+        let invocation_id = context.current_invocation.clone();
+        let model_record = (role == MessageRole::Assistant)
             .then(|| {
                 model_invocation_record(
                     info,
-                    item_scope.as_deref(),
+                    event_scope.as_deref(),
                     &base,
                     position.line,
                     value,
                     message,
                     timestamp,
                     session.clone(),
-                    turn.clone(),
+                    invocation_id.clone(),
                     origin.clone(),
                     parent.clone(),
                 )
             })
             .flatten();
-        let message_parent = invocation
+        let message_parent = model_record
             .as_ref()
             .map(|record| record.id.clone())
             .or(parent);
-        let message_part = u32::from(invocation.is_some());
-        records.extend(invocation);
+        let message_part = u32::from(model_record.is_some());
+        records.extend(model_record);
         records.push(Record {
-            id: item_id.clone(),
+            id: event_id.clone(),
             source: info.source.clone(),
             session: session.clone(),
-            turn: turn.clone(),
+            invocation: invocation_id.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: external_id.map(str::to_owned),
-                sequence: ItemSequence::new(position.line, message_part),
+                sequence: EventSequence::new(position.line, message_part),
                 parent: message_parent,
                 inherited_from,
                 actor: actor_for_message(&role),
                 agent_id: agent_id.clone(),
-                data: ItemData::Message(Message {
+                data: EventData::Message(Message {
                     role: role.clone(),
                     phase: None,
                     content: normalize_message_content(&content),
@@ -666,17 +668,17 @@ pub(super) fn line_records(
                     ),
                     source: info.source.clone(),
                     session: session.clone(),
-                    turn: turn.clone(),
+                    invocation: invocation_id.clone(),
                     timestamp,
                     origin: origin.clone(),
-                    data: RecordData::Item(Item {
+                    data: RecordData::Event(Event {
                         external_id: None,
-                        sequence: ItemSequence::new(position.line, message_part.saturating_add(1)),
-                        parent: Some(item_id.clone()),
+                        sequence: EventSequence::new(position.line, message_part.saturating_add(1)),
+                        parent: Some(event_id.clone()),
                         inherited_from: None,
                         actor: Actor::System,
                         agent_id: None,
-                        data: ItemData::ExecutionContext(execution_context),
+                        data: EventData::ExecutionContext(execution_context),
                     }),
                     original: None,
                 });
@@ -700,16 +702,16 @@ pub(super) fn line_records(
                                 .tool_calls
                                 .insert(call_id.to_owned(), observed.clone());
                             records.push(Record {
-                                id: tool_call_record_id(info, item_scope.as_deref(), call_id),
+                                id: tool_call_record_id(info, event_scope.as_deref(), call_id),
                                 source: info.source.clone(),
                                 session: session.clone(),
-                                turn: turn.clone(),
+                                invocation: invocation_id.clone(),
                                 timestamp,
                                 origin: origin.clone(),
-                                data: RecordData::Item(Item {
+                                data: RecordData::Event(Event {
                                     external_id: Some(call_id.to_owned()),
                                     sequence,
-                                    parent: Some(item_id.clone()),
+                                    parent: Some(event_id.clone()),
                                     inherited_from: inherited_tool_call_record_id(
                                         info,
                                         identity.as_ref(),
@@ -718,7 +720,7 @@ pub(super) fn line_records(
                                     ),
                                     actor: Actor::Agent,
                                     agent_id: agent_id.clone(),
-                                    data: ItemData::ToolCall(ToolCall {
+                                    data: EventData::ToolCall(ToolCall {
                                         call_id: call_id.to_owned(),
                                         title: None,
                                         kind: observed.kind,
@@ -734,7 +736,7 @@ pub(super) fn line_records(
                             if is_agent_tool(&observed.name) {
                                 let invocation = agent_invocation_record(
                                     info,
-                                    item_scope.as_deref(),
+                                    event_scope.as_deref(),
                                     call_id,
                                     &observed,
                                     AgentInvocationStatus::InProgress,
@@ -743,7 +745,7 @@ pub(super) fn line_records(
                                     sequence,
                                     timestamp,
                                     session.clone(),
-                                    turn.clone(),
+                                    invocation_id.clone(),
                                     origin.clone(),
                                     agent_id.clone(),
                                     child_sessions,
@@ -769,21 +771,21 @@ pub(super) fn line_records(
                                 ),
                                 source: info.source.clone(),
                                 session: session.clone(),
-                                turn: turn.clone(),
+                                invocation: invocation_id.clone(),
                                 timestamp,
                                 origin: origin.clone(),
-                                data: RecordData::Item(Item {
+                                data: RecordData::Event(Event {
                                     external_id: Some(call_id.to_owned()),
                                     sequence,
                                     parent: Some(tool_call_record_id(
                                         info,
-                                        item_scope.as_deref(),
+                                        event_scope.as_deref(),
                                         call_id,
                                     )),
                                     inherited_from: None,
                                     actor: Actor::Tool,
                                     agent_id: None,
-                                    data: ItemData::ToolResult(ToolResult {
+                                    data: EventData::ToolResult(ToolResult {
                                         call_id: call_id.to_owned(),
                                         name: observed.as_ref().map(|tool| tool.name.clone()),
                                         output: output.clone(),
@@ -800,7 +802,7 @@ pub(super) fn line_records(
                             if let Some(observed) = observed.as_ref() {
                                 records.extend(file_change_records(
                                     info,
-                                    item_scope.as_deref(),
+                                    event_scope.as_deref(),
                                     &base,
                                     call_id,
                                     observed,
@@ -809,13 +811,13 @@ pub(super) fn line_records(
                                     sequence,
                                     timestamp,
                                     session.clone(),
-                                    turn.clone(),
+                                    invocation_id.clone(),
                                     origin.clone(),
                                 ));
                                 if is_agent_tool(&observed.name) {
                                     let invocation = agent_invocation_record(
                                         info,
-                                        item_scope.as_deref(),
+                                        event_scope.as_deref(),
                                         call_id,
                                         observed,
                                         agent_status(status),
@@ -824,7 +826,7 @@ pub(super) fn line_records(
                                         sequence,
                                         timestamp,
                                         session.clone(),
-                                        turn.clone(),
+                                        invocation_id.clone(),
                                         origin.clone(),
                                         agent_id.clone(),
                                         child_sessions,
@@ -849,17 +851,17 @@ pub(super) fn line_records(
                             ),
                             source: info.source.clone(),
                             session: session.clone(),
-                            turn: turn.clone(),
+                            invocation: invocation_id.clone(),
                             timestamp,
                             origin: origin.clone(),
-                            data: RecordData::Item(Item {
+                            data: RecordData::Event(Event {
                                 external_id: None,
                                 sequence,
-                                parent: Some(item_id.clone()),
+                                parent: Some(event_id.clone()),
                                 inherited_from: None,
                                 actor: Actor::Agent,
                                 agent_id: agent_id.clone(),
-                                data: ItemData::Reasoning(Reasoning {
+                                data: EventData::Reasoning(Reasoning {
                                     summary: Vec::new(),
                                     content: if redacted {
                                         Vec::new()
@@ -886,11 +888,11 @@ pub(super) fn line_records(
             }
         }
         if role == MessageRole::Assistant {
-            if let Some(reason) = terminal_turn_reason(message) {
-                if let Some(turn_record) =
-                    finish_turn(info, value, reason, timestamp, session, origin, context)
+            if let Some(reason) = terminal_invocation_reason(message) {
+                if let Some(invocation_record) =
+                    finish_invocation(info, value, reason, timestamp, session, origin, context)
                 {
-                    records.push(turn_record);
+                    records.push(invocation_record);
                 }
             }
         }
@@ -899,15 +901,15 @@ pub(super) fn line_records(
 
     if external_id.is_some() || parent.is_some() {
         vec![Record {
-            id: item_id,
+            id: event_id,
             source: info.source.clone(),
             session,
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: external_id.map(str::to_owned),
-                sequence: ItemSequence::new(position.line, 0),
+                sequence: EventSequence::new(position.line, 0),
                 parent,
                 inherited_from,
                 actor: actor_for_entry(entry_type),
@@ -915,7 +917,7 @@ pub(super) fn line_records(
                     .get("agentId")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
-                data: ItemData::Unknown(UnknownItem {
+                data: EventData::Unknown(UnknownEvent {
                     kind: entry_type.map(str::to_owned),
                 }),
             }),
@@ -926,7 +928,7 @@ pub(super) fn line_records(
             id: RecordId::scoped(&info.source, "unknown", base),
             source: info.source.clone(),
             session,
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
             data: RecordData::Unknown(UnknownRecord {
@@ -937,7 +939,7 @@ pub(super) fn line_records(
     }
 }
 
-fn normalize_input_queue(value: &Value) -> InputQueue {
+fn normalize_input_queue(value: &Value) -> InputQueueMutation {
     let content = value.get("content").and_then(|content| {
         content
             .as_str()
@@ -1001,7 +1003,7 @@ fn normalize_input_queue(value: &Value) -> InputQueue {
                 .and_then(|value| xml_tag(value, "status"))
         })
         .map(str::to_owned);
-    InputQueue {
+    InputQueueMutation {
         operation: queue_operation(
             value
                 .get("operation")
@@ -1035,9 +1037,9 @@ fn xml_tag<'a>(value: &'a str, tag: &str) -> Option<&'a str> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn begin_turn(
+fn begin_invocation(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     fallback: &str,
     value: &Value,
     timestamp: Option<Timestamp>,
@@ -1052,27 +1054,39 @@ fn begin_turn(
         .filter(|value| !value.is_empty())
         .unwrap_or(fallback)
         .to_owned();
-    let id = turn_record_id(info, item_scope, &external_id);
-    if context.current_turn.as_ref() == Some(&id) {
+    let id = invocation_record_id(info, event_scope, &external_id);
+    if context.current_invocation.as_ref() == Some(&id) {
         return Vec::new();
     }
 
     let mut records = Vec::new();
-    if let Some(previous_id) = context.current_turn.take() {
-        let started_at = context.current_turn_started_at.take();
+    if let Some(previous_id) = context.current_invocation.take() {
+        let started_at = context.current_invocation_started_at.take();
         records.push(Record {
             id: previous_id,
             source: info.source.clone(),
             session: session.clone(),
-            turn: None,
+            invocation: None,
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Turn(Turn {
-                external_id: context.current_turn_external_id.take(),
-                status: TurnStatus::Interrupted,
+            data: RecordData::AgentInvocation(AgentInvocation {
+                invocation_id: context
+                    .current_invocation_external_id
+                    .take()
+                    .unwrap_or_default(),
+                context_id: None,
+                task_id: None,
+                operation: AgentOperation::Invoke,
+                sender_id: None,
+                receiver_ids: Vec::new(),
+                child_session: None,
+                status: AgentInvocationStatus::Interrupted,
                 started_at,
                 completed_at: timestamp,
                 duration_ms: elapsed_millis(started_at, timestamp),
+                input: None,
+                output: None,
+                artifacts: Vec::new(),
                 error: None,
                 stop_reason: Some(StopReason::Interrupted),
                 trace_id: None,
@@ -1083,23 +1097,32 @@ fn begin_turn(
         });
     }
 
-    context.current_turn = Some(id.clone());
-    context.current_turn_external_id = Some(external_id.clone());
-    context.current_turn_started_at = timestamp;
+    context.current_invocation = Some(id.clone());
+    context.current_invocation_external_id = Some(external_id.clone());
+    context.current_invocation_started_at = timestamp;
     context.tool_calls.clear();
     records.push(Record {
         id,
         source: info.source.clone(),
         session,
-        turn: None,
+        invocation: None,
         timestamp,
         origin,
-        data: RecordData::Turn(Turn {
-            external_id: Some(external_id),
-            status: TurnStatus::InProgress,
+        data: RecordData::AgentInvocation(AgentInvocation {
+            invocation_id: external_id,
+            context_id: None,
+            task_id: None,
+            operation: AgentOperation::Invoke,
+            sender_id: None,
+            receiver_ids: Vec::new(),
+            child_session: None,
+            status: AgentInvocationStatus::InProgress,
             started_at: timestamp,
             completed_at: None,
             duration_ms: None,
+            input: None,
+            output: None,
+            artifacts: Vec::new(),
             error: None,
             stop_reason: None,
             trace_id: None,
@@ -1137,11 +1160,15 @@ fn is_primary_user_message(value: &Value, content: &Value) -> bool {
     }
 }
 
-fn turn_record_id(info: &ProviderInfo, item_scope: Option<&str>, external_id: &str) -> RecordId {
+fn invocation_record_id(
+    info: &ProviderInfo,
+    event_scope: Option<&str>,
+    external_id: &str,
+) -> RecordId {
     RecordId::scoped(
         &info.source,
         "turn",
-        item_scope
+        event_scope
             .map(|scope| format!("{scope}:{external_id}"))
             .unwrap_or_else(|| external_id.to_owned()),
     )
@@ -1201,14 +1228,14 @@ fn execution_context(value: &Value, message: &Value) -> Option<ExecutionContext>
 #[allow(clippy::too_many_arguments)]
 fn model_invocation_record(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     fallback: &str,
     line: u64,
     value: &Value,
     message: &Value,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     parent: Option<RecordId>,
 ) -> Option<Record> {
@@ -1223,7 +1250,7 @@ fn model_invocation_record(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty());
     let identity = invocation_id.unwrap_or(fallback);
-    let scoped_identity = item_scope
+    let scoped_identity = event_scope
         .map(|scope| format!("{scope}:{identity}"))
         .unwrap_or_else(|| identity.to_owned());
     let raw_stop_reason = message
@@ -1242,12 +1269,12 @@ fn model_invocation_record(
         id: RecordId::scoped(&info.source, "model-invocation", scoped_identity),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: invocation_id.map(str::to_owned),
-            sequence: ItemSequence::new(line, 0),
+            sequence: EventSequence::new(line, 0),
             parent,
             inherited_from: None,
             actor: Actor::Agent,
@@ -1255,7 +1282,7 @@ fn model_invocation_record(
                 .get("agentId")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
-            data: ItemData::ModelInvocation(ModelInvocation {
+            data: EventData::ModelInvocation(ModelInvocation {
                 invocation_id: invocation_id.map(str::to_owned),
                 provider: Some("anthropic".to_owned()),
                 service_tier: usage_service_tier(value, message),
@@ -1282,7 +1309,7 @@ fn model_invocation_record(
     })
 }
 
-fn terminal_turn_reason(message: &Value) -> Option<StopReason> {
+fn terminal_invocation_reason(message: &Value) -> Option<StopReason> {
     let reason = message
         .get("stop_reason")
         .and_then(Value::as_str)
@@ -1290,7 +1317,7 @@ fn terminal_turn_reason(message: &Value) -> Option<StopReason> {
     (!matches!(reason, "tool_use" | "pause_turn")).then(|| stop_reason(reason))
 }
 
-fn finish_turn(
+fn finish_invocation(
     info: &ProviderInfo,
     value: &Value,
     reason: StopReason,
@@ -1299,33 +1326,42 @@ fn finish_turn(
     origin: SourceRef,
     context: &mut TranscriptContext,
 ) -> Option<Record> {
-    let id = context.current_turn.take()?;
-    let external_id = context.current_turn_external_id.take();
-    let started_at = context.current_turn_started_at.take();
+    let id = context.current_invocation.take()?;
+    let external_id = context.current_invocation_external_id.take();
+    let started_at = context.current_invocation_started_at.take();
     context.tool_calls.clear();
     let failed = matches!(reason, StopReason::Failed);
     Some(Record {
         id,
         source: info.source.clone(),
         session,
-        turn: None,
+        invocation: None,
         timestamp,
         origin,
-        data: RecordData::Turn(Turn {
-            external_id,
+        data: RecordData::AgentInvocation(AgentInvocation {
+            invocation_id: external_id.unwrap_or_default(),
+            context_id: None,
+            task_id: None,
+            operation: AgentOperation::Invoke,
+            sender_id: None,
+            receiver_ids: Vec::new(),
+            child_session: None,
             status: if failed {
-                TurnStatus::Failed
+                AgentInvocationStatus::Failed
             } else {
-                TurnStatus::Completed
+                AgentInvocationStatus::Completed
             },
             started_at,
             completed_at: timestamp,
             duration_ms: elapsed_millis(started_at, timestamp),
+            input: None,
+            output: None,
+            artifacts: Vec::new(),
             error: failed.then(|| {
                 value
                     .get("error")
                     .and_then(Value::as_str)
-                    .unwrap_or("Claude Code turn failed")
+                    .unwrap_or("Claude Code agent invocation failed")
                     .to_owned()
             }),
             stop_reason: Some(reason),
@@ -1352,13 +1388,13 @@ fn elapsed_millis(started_at: Option<Timestamp>, completed_at: Option<Timestamp>
     }
 }
 
-fn content_block_sequence(line: u64, index: usize, message_part: u32) -> ItemSequence {
+fn content_block_sequence(line: u64, index: usize, message_part: u32) -> EventSequence {
     let max_block = u32::MAX / CONTENT_BLOCK_PART_STRIDE;
     let block = u32::try_from(index)
         .unwrap_or(max_block)
         .saturating_add(1)
         .min(max_block);
-    ItemSequence::new(
+    EventSequence::new(
         line,
         block
             .saturating_mul(CONTENT_BLOCK_PART_STRIDE)
@@ -1408,21 +1444,21 @@ fn agent_status(status: ToolStatus) -> AgentInvocationStatus {
 #[allow(clippy::too_many_arguments)]
 fn agent_invocation_record(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     call_id: &str,
     tool: &ObservedTool,
     status: AgentInvocationStatus,
     output: Option<Value>,
     error: Option<String>,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     sender_id: Option<String>,
     child_sessions: &BTreeMap<String, RecordId>,
 ) -> Record {
-    let identity = item_scope
+    let identity = event_scope
         .map(|scope| format!("{scope}:{call_id}"))
         .unwrap_or_else(|| call_id.to_owned());
     let receiver_ids = tool
@@ -1451,25 +1487,32 @@ fn agent_invocation_record(
         id: RecordId::scoped(&info.source, "agent-invocation", identity),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(call_id.to_owned()),
-            sequence: ItemSequence::new(sequence.position, sequence.part.saturating_add(1)),
-            parent: Some(tool_call_record_id(info, item_scope, call_id)),
+            sequence: EventSequence::new(sequence.position, sequence.part.saturating_add(1)),
+            parent: Some(tool_call_record_id(info, event_scope, call_id)),
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: sender_id.clone(),
-            data: ItemData::AgentInvocation(AgentInvocation {
+            data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: call_id.to_owned(),
-                context_id: item_scope.map(str::to_owned),
+                context_id: event_scope.map(str::to_owned),
                 task_id,
                 operation: AgentOperation::Spawn,
                 sender_id,
                 receiver_ids,
                 child_session,
                 status,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                stop_reason: None,
+                trace_id: None,
+                model_context_window: None,
+                time_to_first_token_ms: None,
                 input: Some(tool.input.clone()),
                 output,
                 artifacts: Vec::new(),
@@ -1486,8 +1529,8 @@ fn merge_agent_invocation(
     incoming: Record,
 ) -> Record {
     let Some((call_id, incoming_invocation)) = (match &incoming.data {
-        RecordData::Item(item) => match &item.data {
-            ItemData::AgentInvocation(invocation) => {
+        RecordData::Event(item) => match &item.data {
+            EventData::AgentInvocation(invocation) => {
                 Some((invocation.invocation_id.clone(), invocation.clone()))
             }
             _ => None,
@@ -1498,8 +1541,8 @@ fn merge_agent_invocation(
     };
     let previous = context.agent_invocations.get(&call_id).cloned();
     let mut merged = previous.unwrap_or_else(|| incoming.clone());
-    if let RecordData::Item(item) = &mut merged.data {
-        if let ItemData::AgentInvocation(invocation) = &mut item.data {
+    if let RecordData::Event(item) = &mut merged.data {
+        if let EventData::AgentInvocation(invocation) = &mut item.data {
             if agent_status_rank(incoming_invocation.status) >= agent_status_rank(invocation.status)
             {
                 invocation.status = incoming_invocation.status;
@@ -1558,16 +1601,16 @@ fn agent_status_rank(status: AgentInvocationStatus) -> u8 {
 #[allow(clippy::too_many_arguments)]
 fn file_change_records(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     base: &str,
     call_id: &str,
     tool: &ObservedTool,
     output: &Value,
     status: ToolStatus,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
 ) -> Vec<Record> {
     normalized_file_changes(tool, output, status)
@@ -1581,23 +1624,23 @@ fn file_change_records(
             ),
             source: info.source.clone(),
             session: session.clone(),
-            turn: turn.clone(),
+            invocation: invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
-                sequence: ItemSequence::new(
+                sequence: EventSequence::new(
                     sequence.position,
                     sequence
                         .part
                         .saturating_add(u32::try_from(index).unwrap_or(u32::MAX))
                         .saturating_add(2),
                 ),
-                parent: Some(tool_call_record_id(info, item_scope, call_id)),
+                parent: Some(tool_call_record_id(info, event_scope, call_id)),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::FileChange(change),
+                data: EventData::FileChange(change),
             }),
             original: None,
         })
@@ -1606,7 +1649,7 @@ fn file_change_records(
 
 fn entry_record_id(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     external_id: Option<&str>,
     fallback: &str,
 ) -> RecordId {
@@ -1614,14 +1657,14 @@ fn entry_record_id(
         &info.source,
         "item",
         external_id
-            .and_then(|external_id| item_scope.map(|scope| format!("{scope}:{external_id}")))
+            .and_then(|external_id| event_scope.map(|scope| format!("{scope}:{external_id}")))
             .unwrap_or_else(|| fallback.to_owned()),
     )
 }
 
 fn parent_record_id(
     info: &ProviderInfo,
-    item_scope: Option<&str>,
+    event_scope: Option<&str>,
     value: &Value,
 ) -> Option<RecordId> {
     value
@@ -1630,7 +1673,7 @@ fn parent_record_id(
         .or_else(|| value.get("logicalParentUuid").and_then(Value::as_str))
         .filter(|parent_id| !parent_id.is_empty())
         .and_then(|parent_id| {
-            item_scope
+            event_scope
                 .map(|scope| RecordId::scoped(&info.source, "item", format!("{scope}:{parent_id}")))
         })
 }
@@ -1643,14 +1686,14 @@ fn inherited_item_record_id(
     let project_key = &identity?.project_key;
     let inherited = value.get("forkedFrom")?;
     let session_id = inherited.get("sessionId").and_then(Value::as_str)?;
-    let item_id = inherited
+    let event_id = inherited
         .get("messageUuid")
         .or_else(|| inherited.get("messageUUID"))
         .and_then(Value::as_str)?;
     Some(RecordId::scoped(
         &info.source,
         "item",
-        format!("{project_key}:{session_id}:{item_id}"),
+        format!("{project_key}:{session_id}:{event_id}"),
     ))
 }
 
@@ -1683,11 +1726,11 @@ fn actor_for_entry(entry_type: Option<&str>) -> Actor {
     }
 }
 
-fn tool_call_record_id(info: &ProviderInfo, item_scope: Option<&str>, call_id: &str) -> RecordId {
+fn tool_call_record_id(info: &ProviderInfo, event_scope: Option<&str>, call_id: &str) -> RecordId {
     RecordId::scoped(
         &info.source,
         "tool-call",
-        item_scope
+        event_scope
             .map(|scope| format!("{scope}:{call_id}"))
             .unwrap_or_else(|| call_id.to_owned()),
     )
@@ -1999,10 +2042,10 @@ fn correlated_tool_use_result<'a>(
         .then_some(result)
 }
 
-pub(super) fn usage_observations(
+pub(super) fn usage_snapshots(
     value: &Value,
     position: Position,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
 ) -> Vec<(String, UsageSnapshot)> {
     let Some(entry) = assistant_usage_entry(value) else {
         return Vec::new();
@@ -2083,7 +2126,7 @@ pub(super) fn usage_observations(
             byte_start: position.byte_start,
             byte_end: position.byte_end,
             timestamp,
-            turn: turn.clone(),
+            invocation: invocation.clone(),
         },
     )];
 
@@ -2126,7 +2169,7 @@ pub(super) fn usage_observations(
                 byte_start: position.byte_start,
                 byte_end: position.byte_end,
                 timestamp,
-                turn: turn.clone(),
+                invocation: invocation.clone(),
             },
         ));
         advisor_index += 1;
@@ -2156,7 +2199,7 @@ pub(super) fn should_replace_usage(
         Some(previous) if previous.cost.is_some() != current.cost.is_some() => {
             current.cost.is_some()
         }
-        Some(previous) if previous.turn != current.turn => true,
+        Some(previous) if previous.invocation != current.invocation => true,
         Some(previous) => {
             previous.usage != current.usage
                 || previous.service_tier != current.service_tier
@@ -2185,7 +2228,7 @@ pub(super) fn usage_record(
         id: RecordId::scoped(&info.source, "usage", format!("{artifact}:{key}")),
         source: info.source.clone(),
         session,
-        turn: snapshot.turn.clone(),
+        invocation: snapshot.invocation.clone(),
         timestamp: snapshot.timestamp,
         origin: SourceRef {
             source: info.source.clone(),
@@ -2196,7 +2239,7 @@ pub(super) fn usage_record(
                 byte_end: Some(snapshot.byte_end),
             },
         },
-        data: RecordData::Usage(Usage {
+        data: RecordData::UsageReport(UsageReport {
             model_provider: Some("anthropic".to_owned()),
             model: snapshot.model.clone(),
             service_tier: snapshot.service_tier.clone(),

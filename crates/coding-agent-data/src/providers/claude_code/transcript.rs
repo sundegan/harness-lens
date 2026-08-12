@@ -274,7 +274,7 @@ fn scan_transcript(
             byte_start,
             byte_end: safe_offset,
         };
-        let turn_before = context.current_turn.clone();
+        let turn_before = context.current_invocation.clone();
         changes.extend(
             normalize::line_records(
                 source,
@@ -288,10 +288,10 @@ fn scan_transcript(
             .into_iter()
             .map(Change::upsert),
         );
-        for (key, snapshot) in normalize::usage_observations(
+        for (key, snapshot) in normalize::usage_snapshots(
             &value,
             position,
-            turn_before.or_else(|| context.current_turn.clone()),
+            turn_before.or_else(|| context.current_invocation.clone()),
         ) {
             if normalize::should_replace_usage(usage.get(&key), &snapshot) {
                 usage.insert(key, snapshot);

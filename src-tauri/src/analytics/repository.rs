@@ -168,11 +168,11 @@ fn query_overall_summary(connection: &Connection) -> Result<OverallSummary, Data
                 (SELECT COUNT(*) FROM agent_sessions),
                 (SELECT COALESCE(SUM(delta_tokens), 0) FROM token_usage_records),
                 (SELECT COUNT(*) FROM skill_invocations),
-                (SELECT COUNT(*) FROM session_turns WHERE status = 'succeeded'),
-                (SELECT COUNT(*) FROM session_turns WHERE status = 'failed'),
-                (SELECT COUNT(*) FROM session_turns WHERE status = 'cancelled'),
-                (SELECT COUNT(*) FROM session_turns WHERE status = 'in_progress'),
-                (SELECT COUNT(*) FROM session_turns WHERE status = 'unknown')
+                (SELECT COUNT(*) FROM agent_invocations WHERE status = 'succeeded'),
+                (SELECT COUNT(*) FROM agent_invocations WHERE status = 'failed'),
+                (SELECT COUNT(*) FROM agent_invocations WHERE status = 'cancelled'),
+                (SELECT COUNT(*) FROM agent_invocations WHERE status = 'in_progress'),
+                (SELECT COUNT(*) FROM agent_invocations WHERE status = 'unknown')
             ",
             [],
             |row| {
@@ -217,7 +217,7 @@ fn query_sessions(connection: &Connection) -> Result<Vec<SessionSummary>, Databa
                 sessions.archived,
                 COALESCE((
                     SELECT latest.status
-                    FROM session_turns latest
+                    FROM agent_invocations latest
                     WHERE latest.session_id = sessions.id
                     ORDER BY
                         COALESCE(latest.completed_at_ms, latest.started_at_ms, 0) DESC,
@@ -230,7 +230,7 @@ fn query_sessions(connection: &Connection) -> Result<Vec<SessionSummary>, Databa
                     session_id,
                     COUNT(*) AS turn_count,
                     COALESCE(SUM(duration_ms), 0) AS observed_duration_ms
-                FROM session_turns
+                FROM agent_invocations
                 GROUP BY session_id
             ) turns ON turns.session_id = sessions.id
             LEFT JOIN (

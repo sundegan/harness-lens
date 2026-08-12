@@ -43,7 +43,7 @@ fn initialize_creates_versioned_analytics_database() {
                 'provider_sync_state',
                 'agent_sessions',
                 'rollout_sources',
-                'session_turns',
+                'agent_invocations',
                 'skill_invocations',
                 'token_usage_records'
               )

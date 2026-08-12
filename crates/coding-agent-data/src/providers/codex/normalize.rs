@@ -11,14 +11,14 @@ use crate::providers::shared::{
 };
 use crate::{
     Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, ContentBlock, ContextCompaction,
-    CreditBalance, DataQuality, ExecutionContext, FileChange, FileChangeKind, ForkTurnBoundary,
-    Goal, GoalStatus, HistoryMode, HistoryPosition, HistorySegment, Item, ItemData, ItemSequence,
-    Message, MessagePhase, MessageRole, ModeChange, ModeChangeKind, Notice, NoticeLevel,
-    OriginalData, Plan, PlanStep, PlanStepStatus, ProviderInfo, RateLimit, RateLimitReason,
-    RateLimitScope, RateLimitWindow, Reasoning, ReasoningVisibility, Record, RecordData, RecordId,
-    Rollback, SandboxPolicy, Session, SessionHistory, SessionRelation, SessionRelationKind,
-    SourceLocation, SourceRef, SpendLimit, StopReason, Timestamp, ToolCall, ToolKind, ToolLocation,
-    ToolResult, ToolStatus, Turn, TurnStatus, UnknownItem, UnknownRecord, WorldState,
+    CreditBalance, DataQuality, Event, EventData, EventSequence, ExecutionContext, FileChange,
+    FileChangeKind, ForkInvocationBoundary, Goal, GoalStatus, HistoryMode, HistoryPosition,
+    HistorySegment, Message, MessagePhase, MessageRole, ModeChange, ModeChangeKind, Notice,
+    NoticeLevel, OriginalData, Plan, PlanStep, PlanStepStatus, ProviderInfo, RateLimit,
+    RateLimitReason, RateLimitScope, RateLimitWindow, Reasoning, ReasoningVisibility, Record,
+    RecordData, RecordId, Rollback, SandboxPolicy, Session, SessionHistory, SessionRelation,
+    SessionRelationKind, SourceLocation, SourceRef, SpendLimit, StopReason, Timestamp, ToolCall,
+    ToolKind, ToolLocation, ToolResult, ToolStatus, UnknownEvent, UnknownRecord, WorldState,
 };
 
 use super::checkpoint::RolloutContext;
@@ -252,7 +252,7 @@ pub(super) fn thread_session(
         id,
         source: info.source.clone(),
         session: None,
-        turn: None,
+        invocation: None,
         timestamp: session.updated_at,
         origin: SourceRef {
             source: info.source.clone(),
@@ -386,7 +386,7 @@ pub(super) fn rollout_records(
             byte_end: position.byte_end,
         },
     };
-    let sequence = ItemSequence::with_logical_ordinal(position.line, 0, position.logical_ordinal);
+    let sequence = EventSequence::with_logical_ordinal(position.line, 0, position.logical_ordinal);
 
     match kind {
         Some("session_meta") => {
@@ -476,7 +476,7 @@ pub(super) fn rollout_records(
                 id: record_id,
                 source: info.source.clone(),
                 session: None,
-                turn: None,
+                invocation: None,
                 timestamp: session.updated_at.or(timestamp),
                 origin,
                 data: RecordData::Session(session),
@@ -505,7 +505,7 @@ pub(super) fn rollout_records(
             original,
             payload,
         ),
-        Some("turn_context") => normalize_turn_context(
+        Some("turn_context") => normalize_invocation_context(
             info,
             &artifact,
             &position_id,
@@ -535,17 +535,17 @@ pub(super) fn rollout_records(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ForkTurnBoundary(ForkTurnBoundary {
+                data: EventData::ForkInvocationBoundary(ForkInvocationBoundary {
                     trigger_turn: payload
                         .get("trigger_turn")
                         .and_then(Value::as_bool)
@@ -562,17 +562,17 @@ pub(super) fn rollout_records(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::WorldState(WorldState {
+                data: EventData::WorldState(WorldState {
                     full: payload
                         .get("full")
                         .and_then(Value::as_bool)
@@ -590,17 +590,17 @@ pub(super) fn rollout_records(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: string(payload, "window_id").map(str::to_owned),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ContextCompaction(normalize_compaction(payload)),
+                data: EventData::ContextCompaction(normalize_compaction(payload)),
             }),
             original: Some(original),
         }],
@@ -618,11 +618,11 @@ pub(super) fn rollout_records(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn normalize_turn_context(
+fn normalize_invocation_context(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -631,15 +631,15 @@ fn normalize_turn_context(
 ) -> Vec<Record> {
     update_execution_context_state(context, payload);
     let external_id = string(payload, "turn_id").filter(|value| !value.is_empty());
-    let turn = external_id
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone());
-    if let (Some(external_id), Some(turn)) = (external_id, turn.as_ref()) {
-        if context.current_turn.as_ref() != Some(turn) {
-            context.current_turn = Some(turn.clone());
-            context.current_turn_external_id = Some(external_id.to_owned());
-            context.current_turn_inferred = false;
-            context.current_turn_started_at = None;
+    let invocation = external_id
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone());
+    if let (Some(external_id), Some(invocation)) = (external_id, invocation.as_ref()) {
+        if context.current_invocation.as_ref() != Some(invocation) {
+            context.current_invocation = Some(invocation.clone());
+            context.current_invocation_external_id = Some(external_id.to_owned());
+            context.current_invocation_inferred = false;
+            context.current_invocation_started_at = None;
         }
     }
     let model_context_window = payload
@@ -647,29 +647,41 @@ fn normalize_turn_context(
         .or_else(|| payload.get("context_window"))
         .and_then(Value::as_i64);
     if model_context_window.is_some() {
-        context.current_turn_model_context_window = model_context_window;
+        context.current_invocation_model_context_window = model_context_window;
     }
 
     let mut records = Vec::new();
-    if let Some(turn) = turn.clone() {
+    if let Some(invocation) = invocation.clone() {
         records.push(Record {
-            id: turn,
+            id: invocation,
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: None,
+            invocation: None,
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Turn(Turn {
-                external_id: context.current_turn_external_id.clone(),
-                status: TurnStatus::InProgress,
-                started_at: context.current_turn_started_at,
+            data: RecordData::AgentInvocation(AgentInvocation {
+                invocation_id: context
+                    .current_invocation_external_id
+                    .clone()
+                    .unwrap_or_default(),
+                context_id: None,
+                task_id: None,
+                operation: AgentOperation::Invoke,
+                sender_id: None,
+                receiver_ids: Vec::new(),
+                child_session: None,
+                status: AgentInvocationStatus::InProgress,
+                started_at: context.current_invocation_started_at,
                 completed_at: None,
                 duration_ms: None,
+                input: None,
+                output: None,
+                artifacts: Vec::new(),
                 error: None,
                 stop_reason: None,
-                trace_id: context.current_turn_trace_id.clone(),
-                model_context_window: context.current_turn_model_context_window,
-                time_to_first_token_ms: context.current_turn_time_to_first_token_ms,
+                trace_id: context.current_invocation_trace_id.clone(),
+                model_context_window: context.current_invocation_model_context_window,
+                time_to_first_token_ms: context.current_invocation_time_to_first_token_ms,
             }),
             original: Some(original.clone()),
         });
@@ -700,7 +712,7 @@ fn execution_context_record(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
     origin: SourceRef,
@@ -765,17 +777,17 @@ fn execution_context_record(
         ),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: string(payload, "turn_id").map(str::to_owned),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::System,
             agent_id: None,
-            data: ItemData::ExecutionContext(ExecutionContext {
+            data: EventData::ExecutionContext(ExecutionContext {
                 cwd: string(payload, "cwd").map(PathBuf::from),
                 workspace_roots,
                 model: optional_nonempty_string(payload, "model").or_else(|| {
@@ -837,7 +849,7 @@ fn normalize_event_msg(
     position: &str,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -856,20 +868,20 @@ fn normalize_event_msg(
                     Some("task_started"),
                 )];
             };
-            let id = turn_id(info, artifact, external_id);
+            let id = invocation_id(info, artifact, external_id);
             let started_at = integer_timestamp(payload.get("started_at")).or(timestamp);
             context.terminal_tool_results.clear();
             context.tool_calls.clear();
-            context.current_turn = Some(id.clone());
-            context.current_turn_external_id = Some(external_id.to_owned());
-            context.current_turn_inferred = false;
-            context.current_turn_started_at = started_at;
-            context.current_turn_trace_id = optional_nonempty_string(payload, "trace_id");
-            context.current_turn_model_context_window = payload
+            context.current_invocation = Some(id.clone());
+            context.current_invocation_external_id = Some(external_id.to_owned());
+            context.current_invocation_inferred = false;
+            context.current_invocation_started_at = started_at;
+            context.current_invocation_trace_id = optional_nonempty_string(payload, "trace_id");
+            context.current_invocation_model_context_window = payload
                 .get("model_context_window")
                 .or_else(|| payload.get("context_window"))
                 .and_then(Value::as_i64);
-            context.current_turn_time_to_first_token_ms = payload
+            context.current_invocation_time_to_first_token_ms = payload
                 .get("time_to_first_token_ms")
                 .or_else(|| payload.get("ttft_ms"))
                 .and_then(Value::as_i64);
@@ -877,28 +889,37 @@ fn normalize_event_msg(
                 id,
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: None,
+                invocation: None,
                 timestamp,
                 origin,
-                data: RecordData::Turn(Turn {
-                    external_id: Some(external_id.to_owned()),
-                    status: TurnStatus::InProgress,
+                data: RecordData::AgentInvocation(AgentInvocation {
+                    invocation_id: external_id.to_owned(),
+                    context_id: None,
+                    task_id: None,
+                    operation: AgentOperation::Invoke,
+                    sender_id: None,
+                    receiver_ids: Vec::new(),
+                    child_session: None,
+                    status: AgentInvocationStatus::InProgress,
                     started_at,
                     completed_at: None,
                     duration_ms: None,
+                    input: None,
+                    output: None,
+                    artifacts: Vec::new(),
                     error: None,
                     stop_reason: None,
-                    trace_id: context.current_turn_trace_id.clone(),
-                    model_context_window: context.current_turn_model_context_window,
-                    time_to_first_token_ms: context.current_turn_time_to_first_token_ms,
+                    trace_id: context.current_invocation_trace_id.clone(),
+                    model_context_window: context.current_invocation_model_context_window,
+                    time_to_first_token_ms: context.current_invocation_time_to_first_token_ms,
                 }),
                 original: Some(original),
             }]
         }
-        Some("task_complete" | "turn_complete") => normalize_terminal_turn(
+        Some("task_complete" | "turn_complete") => normalize_terminal_invocation(
             info, artifact, position, timestamp, context, origin, original, payload, false,
         ),
-        Some("turn_aborted") => normalize_terminal_turn(
+        Some("turn_aborted") => normalize_terminal_invocation(
             info, artifact, position, timestamp, context, origin, original, payload, true,
         ),
         Some("context_compacted") => vec![Record {
@@ -909,17 +930,17 @@ fn normalize_event_msg(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ContextCompaction(normalize_compaction(payload)),
+                data: EventData::ContextCompaction(normalize_compaction(payload)),
             }),
             original: Some(original),
         }],
@@ -934,18 +955,18 @@ fn normalize_event_msg(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::Rollback(Rollback {
-                    turns_removed: payload.get("num_turns").and_then(Value::as_u64),
+                data: EventData::Rollback(Rollback {
+                    user_inputs_removed: payload.get("num_turns").and_then(Value::as_u64),
                 }),
             }),
             original: Some(original),
@@ -955,7 +976,7 @@ fn normalize_event_msg(
         ) => normalize_legacy_presentation(
             info, artifact, position, timestamp, context, sequence, origin, original, payload,
         ),
-        Some("item_started" | "item_completed") => normalize_materialized_item(
+        Some("item_started" | "item_completed") => normalize_materialized_event(
             info, artifact, position, timestamp, context, sequence, origin, original, payload,
         ),
         Some("entered_review_mode" | "exited_review_mode") => normalize_review_mode_event(
@@ -1003,7 +1024,7 @@ fn normalize_event_msg(
             info, artifact, position, timestamp, context, origin, original,
         ),
         Some("token_count") => {
-            let usage = token_usage::observation(payload, &mut context.usage_accounting);
+            let usage = token_usage::usage_report(payload, &mut context.usage_accounting);
             let rate_limit = payload.get("rate_limits").and_then(normalize_rate_limit);
             let mut records = Vec::with_capacity(
                 usize::from(usage.is_some()) + usize::from(rate_limit.is_some()),
@@ -1040,10 +1061,10 @@ fn normalize_event_msg(
                     id: RecordId::scoped(&info.source, "usage", format!("{artifact}:{position}")),
                     source: info.source.clone(),
                     session: context.session.clone(),
-                    turn: context.current_turn.clone(),
+                    invocation: context.current_invocation.clone(),
                     timestamp,
                     origin: origin.clone(),
-                    data: RecordData::Usage(usage),
+                    data: RecordData::UsageReport(usage),
                     original: Some(original.clone()),
                 });
             }
@@ -1056,7 +1077,7 @@ fn normalize_event_msg(
                     ),
                     source: info.source.clone(),
                     session: context.session.clone(),
-                    turn: context.current_turn.clone(),
+                    invocation: context.current_invocation.clone(),
                     timestamp,
                     origin,
                     data: RecordData::RateLimit(rate_limit),
@@ -1078,7 +1099,7 @@ fn normalize_goal_event(
     position: &str,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -1108,18 +1129,18 @@ fn normalize_goal_event(
             Some("thread_goal_updated"),
         )];
     };
-    let record_turn = string(payload, "turn_id")
+    let record_invocation = string(payload, "turn_id")
         .filter(|value| !value.is_empty())
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone());
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone());
     vec![Record {
         id: RecordId::scoped(&info.source, "item", format!("{artifact}:{position}:goal")),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: record_turn,
+        invocation: record_invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: string(goal, "thread_id")
                 .or_else(|| string(payload, "thread_id"))
                 .map(str::to_owned),
@@ -1128,7 +1149,7 @@ fn normalize_goal_event(
             inherited_from: None,
             actor: Actor::System,
             agent_id: None,
-            data: ItemData::Goal(Goal {
+            data: EventData::Goal(Goal {
                 objective: objective.to_owned(),
                 status: goal_status(status),
                 token_budget: goal.get("token_budget").and_then(Value::as_i64),
@@ -1230,7 +1251,7 @@ fn normalize_thread_name_update(
         id: session_id(info, &external_id),
         source: info.source.clone(),
         session: None,
-        turn: None,
+        invocation: None,
         timestamp: session.updated_at.or(timestamp),
         origin,
         data: RecordData::Session(session),
@@ -1250,7 +1271,7 @@ fn normalize_legacy_presentation(
     position: &str,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -1261,26 +1282,35 @@ fn normalize_legacy_presentation(
         )];
     };
     let mut records = Vec::new();
-    if kind == "user_message" && context.current_turn.is_none() {
+    if kind == "user_message" && context.current_invocation.is_none() {
         let external_id = format!("legacy:{position}");
-        let id = turn_id(info, artifact, &external_id);
-        context.current_turn = Some(id.clone());
-        context.current_turn_external_id = Some(external_id.clone());
-        context.current_turn_inferred = true;
-        context.current_turn_started_at = timestamp;
+        let id = invocation_id(info, artifact, &external_id);
+        context.current_invocation = Some(id.clone());
+        context.current_invocation_external_id = Some(external_id.clone());
+        context.current_invocation_inferred = true;
+        context.current_invocation_started_at = timestamp;
         records.push(Record {
             id,
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: None,
+            invocation: None,
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Turn(Turn {
-                external_id: Some(external_id),
-                status: TurnStatus::InProgress,
+            data: RecordData::AgentInvocation(AgentInvocation {
+                invocation_id: external_id,
+                context_id: None,
+                task_id: None,
+                operation: AgentOperation::Invoke,
+                sender_id: None,
+                receiver_ids: Vec::new(),
+                child_session: None,
+                status: AgentInvocationStatus::InProgress,
                 started_at: timestamp,
                 completed_at: None,
                 duration_ms: None,
+                input: None,
+                output: None,
+                artifacts: Vec::new(),
                 error: None,
                 stop_reason: None,
                 trace_id: None,
@@ -1290,14 +1320,14 @@ fn normalize_legacy_presentation(
             original: Some(original.clone()),
         });
     }
-    let (item_data, role) = match kind {
+    let (event_data, role) = match kind {
         "user_message" => {
             let value = payload
                 .get("message")
                 .or_else(|| payload.get("content"))
                 .unwrap_or(&Value::Null);
             (
-                ItemData::Message(Message {
+                EventData::Message(Message {
                     role: MessageRole::User,
                     phase: None,
                     content: normalize_content(value),
@@ -1311,7 +1341,7 @@ fn normalize_legacy_presentation(
                 .or_else(|| payload.get("content"))
                 .unwrap_or(&Value::Null);
             (
-                ItemData::Message(Message {
+                EventData::Message(Message {
                     role: MessageRole::Assistant,
                     phase: optional_nonempty_string(payload, "phase")
                         .as_deref()
@@ -1329,7 +1359,7 @@ fn normalize_legacy_presentation(
                 .or_else(|| payload.get("content"))
                 .unwrap_or(&Value::Null);
             (
-                ItemData::Reasoning(Reasoning {
+                EventData::Reasoning(Reasoning {
                     summary: if kind == "agent_reasoning" {
                         normalize_reasoning_summary(value)
                     } else {
@@ -1359,10 +1389,10 @@ fn normalize_legacy_presentation(
         ),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin: origin.clone(),
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: string(payload, "client_id")
                 .or_else(|| string(payload, "id"))
                 .map(str::to_owned),
@@ -1377,26 +1407,32 @@ fn normalize_legacy_presentation(
                 Actor::Agent
             },
             agent_id: None,
-            data: item_data,
+            data: event_data,
         }),
         original: Some(original),
     });
-    if kind == "agent_message" && context.current_turn_inferred {
-        let id = context.current_turn.take();
-        let external_id = context.current_turn_external_id.take();
-        let started_at = context.current_turn_started_at.take();
-        context.current_turn_inferred = false;
+    if kind == "agent_message" && context.current_invocation_inferred {
+        let id = context.current_invocation.take();
+        let external_id = context.current_invocation_external_id.take();
+        let started_at = context.current_invocation_started_at.take();
+        context.current_invocation_inferred = false;
         if let Some(id) = id {
             records.push(Record {
                 id,
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: None,
+                invocation: None,
                 timestamp,
                 origin,
-                data: RecordData::Turn(Turn {
-                    external_id,
-                    status: TurnStatus::Completed,
+                data: RecordData::AgentInvocation(AgentInvocation {
+                    invocation_id: external_id.unwrap_or_default(),
+                    context_id: None,
+                    task_id: None,
+                    operation: AgentOperation::Invoke,
+                    sender_id: None,
+                    receiver_ids: Vec::new(),
+                    child_session: None,
+                    status: AgentInvocationStatus::Completed,
                     started_at,
                     completed_at: timestamp,
                     duration_ms: match (started_at, timestamp) {
@@ -1408,8 +1444,11 @@ fn normalize_legacy_presentation(
                         ),
                         _ => None,
                     },
+                    input: None,
+                    output: None,
+                    artifacts: Vec::new(),
                     error: None,
-                    stop_reason: Some(StopReason::EndTurn),
+                    stop_reason: Some(StopReason::EndInvocation),
                     trace_id: None,
                     model_context_window: None,
                     time_to_first_token_ms: None,
@@ -1426,7 +1465,7 @@ fn normalize_inter_agent_communication(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
     origin: SourceRef,
@@ -1454,10 +1493,10 @@ fn normalize_inter_agent_communication(
         .and_then(|metadata| string(metadata, "turn_id"))
         .filter(|value| !value.is_empty())
         .map(str::to_owned);
-    let record_turn = task_id
+    let record_invocation = task_id
         .as_deref()
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone());
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone());
     let content = string(payload, "content")
         .filter(|value| !value.is_empty())
         .map(|value| serde_json::json!({ "content": value }));
@@ -1470,17 +1509,17 @@ fn normalize_inter_agent_communication(
         ),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: record_turn,
+        invocation: record_invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: external_id.map(str::to_owned),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: sender.clone(),
-            data: ItemData::AgentInvocation(AgentInvocation {
+            data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: identity.to_owned(),
                 context_id: context.session_external_id.clone(),
                 task_id,
@@ -1489,6 +1528,13 @@ fn normalize_inter_agent_communication(
                 receiver_ids,
                 child_session: None,
                 status: AgentInvocationStatus::Completed,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                stop_reason: None,
+                trace_id: None,
+                model_context_window: None,
+                time_to_first_token_ms: None,
                 input: content,
                 output: None,
                 artifacts: Vec::new(),
@@ -1506,7 +1552,7 @@ fn normalize_review_mode_event(
     position: &str,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -1514,10 +1560,10 @@ fn normalize_review_mode_event(
     let entered = payload.get("type").and_then(Value::as_str) == Some("entered_review_mode");
     let external_id = optional_nonempty_string(payload, "item_id");
     let identity = external_id.as_deref().unwrap_or(position);
-    let record_turn = string(payload, "turn_id")
+    let record_invocation = string(payload, "turn_id")
         .filter(|value| !value.is_empty())
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone());
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone());
     let description = if entered {
         optional_nonempty_string(payload, "user_facing_hint")
     } else {
@@ -1533,17 +1579,17 @@ fn normalize_review_mode_event(
         ),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: record_turn,
+        invocation: record_invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id,
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::System,
             agent_id: None,
-            data: ItemData::ModeChange(ModeChange {
+            data: EventData::ModeChange(ModeChange {
                 mode: "review".to_owned(),
                 kind: if entered {
                     ModeChangeKind::Entered
@@ -1564,7 +1610,7 @@ fn normalize_notice_event(
     position: &str,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -1600,17 +1646,17 @@ fn normalize_notice_event(
         id: RecordId::scoped(&info.source, "notice", format!("{artifact}:{position}")),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: None,
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::System,
             agent_id: None,
-            data: ItemData::Notice(Notice {
+            data: EventData::Notice(Notice {
                 level,
                 code,
                 message: message.to_owned(),
@@ -1637,11 +1683,11 @@ struct MaterializedTool {
 fn materialized_tool_records(
     info: &ProviderInfo,
     artifact: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     tool: MaterializedTool,
@@ -1664,17 +1710,17 @@ fn materialized_tool_records(
         id: call_record_id.clone(),
         source: info.source.clone(),
         session: session.clone(),
-        turn: turn.clone(),
+        invocation: invocation.clone(),
         timestamp,
         origin: origin.clone(),
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(tool.call_id.clone()),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: None,
-            data: ItemData::ToolCall(ToolCall {
+            data: EventData::ToolCall(ToolCall {
                 call_id: tool.call_id.clone(),
                 name: tool.observed.name.clone(),
                 namespace: tool.observed.namespace.clone(),
@@ -1699,17 +1745,17 @@ fn materialized_tool_records(
         ),
         source: info.source.clone(),
         session: session.clone(),
-        turn: turn.clone(),
+        invocation: invocation.clone(),
         timestamp,
         origin: origin.clone(),
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(tool.call_id.clone()),
             sequence: sequence.with_part(sequence.part.saturating_add(1)),
             parent: Some(call_record_id.clone()),
             inherited_from: None,
             actor: Actor::Tool,
             agent_id: None,
-            data: ItemData::ToolResult(ToolResult {
+            data: EventData::ToolResult(ToolResult {
                 call_id: tool.call_id.clone(),
                 name: Some(tool.observed.name.clone()),
                 output: tool.output.clone(),
@@ -1739,10 +1785,10 @@ fn materialized_tool_records(
                 ),
                 source: info.source.clone(),
                 session: session.clone(),
-                turn: turn.clone(),
+                invocation: invocation.clone(),
                 timestamp,
                 origin: origin.clone(),
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: None,
                     sequence: sequence.with_part(
                         sequence
@@ -1754,7 +1800,7 @@ fn materialized_tool_records(
                     inherited_from: None,
                     actor: Actor::Tool,
                     agent_id: None,
-                    data: ItemData::FileChange(change),
+                    data: EventData::FileChange(change),
                 }),
                 original: None,
             });
@@ -1764,13 +1810,13 @@ fn materialized_tool_records(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn normalize_materialized_item(
+fn normalize_materialized_event(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -1788,14 +1834,14 @@ fn normalize_materialized_item(
         )];
     };
     let item_kind = item.get("type").and_then(Value::as_str);
-    let item_id = string(item, "id").filter(|value| !value.is_empty());
-    let identity = item_id.unwrap_or(position);
+    let event_id = string(item, "id").filter(|value| !value.is_empty());
+    let identity = event_id.unwrap_or(position);
     let terminal = payload.get("type").and_then(Value::as_str) == Some("item_completed");
-    let item_timestamp = materialized_item_timestamp(payload, terminal).or(timestamp);
-    let record_turn = string(payload, "turn_id")
+    let event_timestamp = materialized_event_timestamp(payload, terminal).or(timestamp);
+    let record_invocation = string(payload, "turn_id")
         .filter(|value| !value.is_empty())
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone());
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone());
     let session = context.session.clone();
 
     match item_kind {
@@ -1804,17 +1850,17 @@ fn normalize_materialized_item(
                 id: RecordId::scoped(&info.source, "message", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session,
-                turn: record_turn,
-                timestamp: item_timestamp,
+                invocation: record_invocation,
+                timestamp: event_timestamp,
                 origin,
-                data: RecordData::Item(Item {
-                    external_id: item_id.map(str::to_owned),
+                data: RecordData::Event(Event {
+                    external_id: event_id.map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::User,
                     agent_id: None,
-                    data: ItemData::Message(Message {
+                    data: EventData::Message(Message {
                         role: MessageRole::User,
                         phase: None,
                         content: normalize_content(item.get("content").unwrap_or(&Value::Null)),
@@ -1837,17 +1883,17 @@ fn normalize_materialized_item(
                 id: RecordId::scoped(&info.source, "message", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session,
-                turn: record_turn,
-                timestamp: item_timestamp,
+                invocation: record_invocation,
+                timestamp: event_timestamp,
                 origin,
-                data: RecordData::Item(Item {
-                    external_id: item_id.map(str::to_owned),
+                data: RecordData::Event(Event {
+                    external_id: event_id.map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::System,
                     agent_id: None,
-                    data: ItemData::Message(Message {
+                    data: EventData::Message(Message {
                         role: MessageRole::Developer,
                         phase: None,
                         content,
@@ -1861,17 +1907,17 @@ fn normalize_materialized_item(
                 id: RecordId::scoped(&info.source, "message", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session,
-                turn: record_turn,
-                timestamp: item_timestamp,
+                invocation: record_invocation,
+                timestamp: event_timestamp,
                 origin,
-                data: RecordData::Item(Item {
-                    external_id: item_id.map(str::to_owned),
+                data: RecordData::Event(Event {
+                    external_id: event_id.map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::Message(Message {
+                    data: EventData::Message(Message {
                         role: MessageRole::Assistant,
                         phase: string(item, "phase").map(message_phase),
                         content: normalize_content(item.get("content").unwrap_or(&Value::Null)),
@@ -1884,17 +1930,17 @@ fn normalize_materialized_item(
             id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
             source: info.source.clone(),
             session,
-            turn: record_turn,
-            timestamp: item_timestamp,
+            invocation: record_invocation,
+            timestamp: event_timestamp,
             origin,
-            data: RecordData::Item(Item {
-                external_id: item_id.map(str::to_owned),
+            data: RecordData::Event(Event {
+                external_id: event_id.map(str::to_owned),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::Agent,
                 agent_id: None,
-                data: ItemData::Plan(Plan {
+                data: EventData::Plan(Plan {
                     text: optional_nonempty_string(item, "text"),
                     steps: Vec::new(),
                 }),
@@ -1906,17 +1952,17 @@ fn normalize_materialized_item(
                 id: RecordId::scoped(&info.source, "reasoning", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session,
-                turn: record_turn,
-                timestamp: item_timestamp,
+                invocation: record_invocation,
+                timestamp: event_timestamp,
                 origin,
-                data: RecordData::Item(Item {
-                    external_id: item_id.map(str::to_owned),
+                data: RecordData::Event(Event {
+                    external_id: event_id.map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::Reasoning(Reasoning {
+                    data: EventData::Reasoning(Reasoning {
                         summary: normalize_reasoning_summary(
                             item.get("summary_text").unwrap_or(&Value::Null),
                         ),
@@ -1984,10 +2030,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2023,10 +2069,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2048,11 +2094,11 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 identity,
-                item_id,
+                event_id,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 item,
@@ -2064,11 +2110,11 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 identity,
-                item_id,
+                event_id,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 item,
@@ -2088,10 +2134,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2121,10 +2167,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2159,10 +2205,10 @@ fn normalize_materialized_item(
                 artifact,
                 identity,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 item,
@@ -2183,10 +2229,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2219,10 +2265,10 @@ fn normalize_materialized_item(
                 info,
                 artifact,
                 sequence,
-                item_timestamp,
+                event_timestamp,
                 context,
                 session,
-                record_turn,
+                record_invocation,
                 origin,
                 original,
                 MaterializedTool {
@@ -2251,10 +2297,10 @@ fn normalize_materialized_item(
             artifact,
             identity,
             sequence,
-            item_timestamp,
+            event_timestamp,
             context,
             session,
-            record_turn,
+            record_invocation,
             origin,
             original,
             item,
@@ -2265,11 +2311,11 @@ fn normalize_materialized_item(
             info,
             artifact,
             identity,
-            item_id,
+            event_id,
             sequence,
-            item_timestamp,
+            event_timestamp,
             session,
-            record_turn,
+            record_invocation,
             origin,
             original,
             item,
@@ -2279,10 +2325,10 @@ fn normalize_materialized_item(
             artifact,
             identity,
             sequence,
-            item_timestamp,
+            event_timestamp,
             context,
             session,
-            record_turn,
+            record_invocation,
             origin,
             original,
             item,
@@ -2293,10 +2339,10 @@ fn normalize_materialized_item(
             artifact,
             identity,
             sequence,
-            item_timestamp,
+            event_timestamp,
             context,
             session,
-            record_turn,
+            record_invocation,
             origin,
             original,
             item,
@@ -2306,28 +2352,28 @@ fn normalize_materialized_item(
             id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
             source: info.source.clone(),
             session,
-            turn: record_turn,
-            timestamp: item_timestamp,
+            invocation: record_invocation,
+            timestamp: event_timestamp,
             origin,
-            data: RecordData::Item(Item {
-                external_id: item_id.map(str::to_owned),
+            data: RecordData::Event(Event {
+                external_id: event_id.map(str::to_owned),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ContextCompaction(normalize_compaction(item)),
+                data: EventData::ContextCompaction(normalize_compaction(item)),
             }),
             original: Some(original),
         }],
-        _ => vec![unknown_item_record(
+        _ => vec![unknown_event_record(
             info,
             artifact,
             position,
             sequence,
-            item_timestamp,
+            event_timestamp,
             session,
-            record_turn,
+            record_invocation,
             origin,
             original,
             item,
@@ -2336,7 +2382,7 @@ fn normalize_materialized_item(
     }
 }
 
-fn materialized_item_timestamp(payload: &Value, terminal: bool) -> Option<Timestamp> {
+fn materialized_event_timestamp(payload: &Value, terminal: bool) -> Option<Timestamp> {
     let key = if terminal {
         "completed_at_ms"
     } else {
@@ -2354,11 +2400,11 @@ fn normalize_materialized_agent_call(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    item_id: Option<&str>,
-    sequence: ItemSequence,
+    event_id: Option<&str>,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2410,17 +2456,17 @@ fn normalize_materialized_agent_call(
         ),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
-            external_id: item_id.map(str::to_owned),
+        data: RecordData::Event(Event {
+            external_id: event_id.map(str::to_owned),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: optional_nonempty_string(item, "sender_thread_id"),
-            data: ItemData::AgentInvocation(AgentInvocation {
+            data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: identity.to_owned(),
                 context_id: None,
                 task_id: None,
@@ -2431,6 +2477,13 @@ fn normalize_materialized_agent_call(
                     .flatten(),
                 receiver_ids,
                 status,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                stop_reason: None,
+                trace_id: None,
+                model_context_window: None,
+                time_to_first_token_ms: None,
                 input: Some(input),
                 output,
                 artifacts: Vec::new(),
@@ -2446,11 +2499,11 @@ fn normalize_materialized_subagent_activity(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    item_id: Option<&str>,
-    sequence: ItemSequence,
+    event_id: Option<&str>,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2481,17 +2534,17 @@ fn normalize_materialized_subagent_activity(
         ),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
-            external_id: item_id.map(str::to_owned),
+        data: RecordData::Event(Event {
+            external_id: event_id.map(str::to_owned),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: optional_nonempty_string(item, "agent_path"),
-            data: ItemData::AgentInvocation(AgentInvocation {
+            data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: identity.to_owned(),
                 context_id: None,
                 task_id: None,
@@ -2500,6 +2553,13 @@ fn normalize_materialized_subagent_activity(
                 receiver_ids: agent_thread_id.clone().into_iter().collect(),
                 child_session: agent_thread_id.map(|id| session_id(info, &id)),
                 status,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                stop_reason: None,
+                trace_id: None,
+                model_context_window: None,
+                time_to_first_token_ms: None,
                 input: None,
                 output: None,
                 artifacts: Vec::new(),
@@ -2515,11 +2575,11 @@ fn normalize_materialized_mode_change(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    item_id: Option<&str>,
-    sequence: ItemSequence,
+    event_id: Option<&str>,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2542,17 +2602,17 @@ fn normalize_materialized_mode_change(
         ),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
-            external_id: item_id.map(str::to_owned),
+        data: RecordData::Event(Event {
+            external_id: event_id.map(str::to_owned),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::System,
             agent_id: None,
-            data: ItemData::ModeChange(ModeChange {
+            data: EventData::ModeChange(ModeChange {
                 mode: "review".to_owned(),
                 kind: if entered {
                     ModeChangeKind::Entered
@@ -2571,11 +2631,11 @@ fn normalize_materialized_image_generation(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2620,7 +2680,7 @@ fn normalize_materialized_image_generation(
         timestamp,
         context,
         session.clone(),
-        turn.clone(),
+        invocation.clone(),
         origin.clone(),
         original,
         MaterializedTool {
@@ -2651,10 +2711,10 @@ fn normalize_materialized_image_generation(
                 ),
                 source: info.source.clone(),
                 session,
-                turn,
+                invocation,
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: None,
                     sequence: sequence.with_part(sequence.part.saturating_add(2)),
                     parent: Some(RecordId::scoped(
@@ -2665,7 +2725,7 @@ fn normalize_materialized_image_generation(
                     inherited_from: None,
                     actor: Actor::Tool,
                     agent_id: None,
-                    data: ItemData::FileChange(FileChange {
+                    data: EventData::FileChange(FileChange {
                         path: PathBuf::from(saved_path),
                         old_path: None,
                         kind: FileChangeKind::Create,
@@ -2685,11 +2745,11 @@ fn normalize_materialized_file_change(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2723,7 +2783,7 @@ fn normalize_materialized_file_change(
         timestamp,
         context,
         session.clone(),
-        turn.clone(),
+        invocation.clone(),
         origin.clone(),
         original,
         MaterializedTool {
@@ -2759,10 +2819,10 @@ fn normalize_materialized_file_change(
             ),
             source: info.source.clone(),
             session: session.clone(),
-            turn: turn.clone(),
+            invocation: invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence: sequence.with_part(
                     sequence
@@ -2778,7 +2838,7 @@ fn normalize_materialized_file_change(
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::FileChange(file_change),
+                data: EventData::FileChange(file_change),
             }),
             original: None,
         });
@@ -2791,11 +2851,11 @@ fn normalize_materialized_mcp_call(
     info: &ProviderInfo,
     artifact: &str,
     identity: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     item: &Value,
@@ -2840,7 +2900,7 @@ fn normalize_materialized_mcp_call(
         timestamp,
         context,
         session,
-        turn,
+        invocation,
         origin,
         original,
         MaterializedTool {
@@ -2868,7 +2928,7 @@ fn normalize_patch_event(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -2924,17 +2984,17 @@ fn normalize_patch_event(
         id: call_record_id.clone(),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin: origin.clone(),
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(call_id.to_owned()),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: None,
-            data: ItemData::ToolCall(ToolCall {
+            data: EventData::ToolCall(ToolCall {
                 call_id: call_id.to_owned(),
                 name: observed.name,
                 namespace: observed.namespace,
@@ -2977,17 +3037,17 @@ fn normalize_patch_event(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(1),
                 parent: Some(call_record_id.clone()),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some("apply_patch".to_owned()),
                     content,
@@ -3020,10 +3080,10 @@ fn normalize_patch_event(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence: sequence
                     .with_part(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(2)),
@@ -3031,7 +3091,7 @@ fn normalize_patch_event(
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::FileChange(file_change),
+                data: EventData::FileChange(file_change),
             }),
             original: None,
         });
@@ -3082,7 +3142,7 @@ fn normalize_mcp_event(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -3136,17 +3196,17 @@ fn normalize_mcp_event(
         id: call_record_id.clone(),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin: origin.clone(),
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(call_id.to_owned()),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: None,
-            data: ItemData::ToolCall(ToolCall {
+            data: EventData::ToolCall(ToolCall {
                 call_id: call_id.to_owned(),
                 name: observed.name.clone(),
                 namespace: observed.namespace.clone(),
@@ -3180,17 +3240,17 @@ fn normalize_mcp_event(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(1),
                 parent: Some(call_record_id),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some(observed.name),
                     output,
@@ -3211,7 +3271,7 @@ fn normalize_exec_command_end(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -3297,17 +3357,17 @@ fn normalize_exec_command_end(
             id: call_record_id.clone(),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::Agent,
                 agent_id: None,
-                data: ItemData::ToolCall(ToolCall {
+                data: EventData::ToolCall(ToolCall {
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
@@ -3324,17 +3384,17 @@ fn normalize_exec_command_end(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(1),
                 parent: Some(call_record_id),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some(observed.name),
                     content: display_output.map(ContentBlock::text).into_iter().collect(),
@@ -3354,7 +3414,7 @@ fn normalize_web_search_end(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -3395,17 +3455,17 @@ fn normalize_web_search_end(
             id: call_record_id.clone(),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::Agent,
                 agent_id: None,
-                data: ItemData::ToolCall(ToolCall {
+                data: EventData::ToolCall(ToolCall {
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
@@ -3422,17 +3482,17 @@ fn normalize_web_search_end(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(1),
                 parent: Some(call_record_id),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some(observed.name),
                     content: Vec::new(),
@@ -3452,7 +3512,7 @@ fn normalize_image_generation_end(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -3501,17 +3561,17 @@ fn normalize_image_generation_end(
             id: call_record_id.clone(),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::Agent,
                 agent_id: None,
-                data: ItemData::ToolCall(ToolCall {
+                data: EventData::ToolCall(ToolCall {
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
@@ -3528,17 +3588,17 @@ fn normalize_image_generation_end(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(sequence.part.saturating_add(1)),
                 parent: Some(call_record_id.clone()),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some(observed.name),
                     output,
@@ -3565,17 +3625,17 @@ fn normalize_image_generation_end(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: None,
                 sequence: sequence.with_part(sequence.part.saturating_add(2)),
                 parent: Some(call_record_id),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::FileChange(FileChange {
+                data: EventData::FileChange(FileChange {
                     path: PathBuf::from(saved_path),
                     old_path: None,
                     kind: FileChangeKind::Create,
@@ -3594,7 +3654,7 @@ fn normalize_view_image(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
@@ -3621,17 +3681,17 @@ fn normalize_view_image(
             id: call_record_id.clone(),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin: origin.clone(),
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::Agent,
                 agent_id: None,
-                data: ItemData::ToolCall(ToolCall {
+                data: EventData::ToolCall(ToolCall {
                     call_id: call_id.to_owned(),
                     name: "view_image".to_owned(),
                     namespace: None,
@@ -3651,17 +3711,17 @@ fn normalize_view_image(
             id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: context.current_turn.clone(),
+            invocation: context.current_invocation.clone(),
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: Some(call_id.to_owned()),
                 sequence: sequence.with_part(1),
                 parent: Some(call_record_id),
                 inherited_from: None,
                 actor: Actor::Tool,
                 agent_id: None,
-                data: ItemData::ToolResult(ToolResult {
+                data: EventData::ToolResult(ToolResult {
                     call_id: call_id.to_owned(),
                     name: Some("view_image".to_owned()),
                     output: value,
@@ -3686,7 +3746,7 @@ fn normalize_subagent_event(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
     origin: SourceRef,
@@ -3737,17 +3797,17 @@ fn normalize_subagent_event(
         ),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp: occurred_at,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: Some(event_id.to_owned()),
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: agent_path,
-            data: ItemData::AgentInvocation(AgentInvocation {
+            data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: event_id.to_owned(),
                 context_id: context.session_external_id.clone(),
                 task_id: None,
@@ -3761,6 +3821,13 @@ fn normalize_subagent_event(
                 child_session: (!agent_thread_id.is_empty())
                     .then(|| session_id(info, agent_thread_id)),
                 status,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                stop_reason: None,
+                trace_id: None,
+                model_context_window: None,
+                time_to_first_token_ms: None,
                 input: None,
                 output: None,
                 artifacts: Vec::new(),
@@ -3776,7 +3843,7 @@ fn normalize_plan_event(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &RolloutContext,
     origin: SourceRef,
@@ -3810,17 +3877,17 @@ fn normalize_plan_event(
         id: RecordId::scoped(&info.source, "item", format!("{artifact}:{position}:plan")),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id: None,
             sequence,
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
             agent_id: None,
-            data: ItemData::Plan(Plan {
+            data: EventData::Plan(Plan {
                 text: optional_nonempty_string(payload, "explanation"),
                 steps,
             }),
@@ -3830,7 +3897,7 @@ fn normalize_plan_event(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn normalize_terminal_turn(
+fn normalize_terminal_invocation(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
@@ -3843,11 +3910,11 @@ fn normalize_terminal_turn(
 ) -> Vec<Record> {
     let external_id = string(payload, "turn_id")
         .map(str::to_owned)
-        .or_else(|| context.current_turn_external_id.clone());
+        .or_else(|| context.current_invocation_external_id.clone());
     let id = external_id
         .as_deref()
-        .map(|value| turn_id(info, artifact, value))
-        .or_else(|| context.current_turn.clone())
+        .map(|value| invocation_id(info, artifact, value))
+        .or_else(|| context.current_invocation.clone())
         .unwrap_or_else(|| {
             RecordId::scoped(&info.source, "turn", format!("{artifact}:{position}"))
         });
@@ -3858,13 +3925,13 @@ fn normalize_terminal_turn(
     let abort_reason = string(payload, "reason");
     let status = if aborted {
         match abort_reason {
-            Some("cancelled" | "canceled") => TurnStatus::Cancelled,
-            _ => TurnStatus::Interrupted,
+            Some("cancelled" | "canceled") => AgentInvocationStatus::Cancelled,
+            _ => AgentInvocationStatus::Interrupted,
         }
     } else if error.is_some() {
-        TurnStatus::Failed
+        AgentInvocationStatus::Failed
     } else {
-        TurnStatus::Completed
+        AgentInvocationStatus::Completed
     };
     let stop_reason = if aborted {
         match abort_reason {
@@ -3875,10 +3942,10 @@ fn normalize_terminal_turn(
     } else if error.is_some() {
         StopReason::Failed
     } else {
-        StopReason::EndTurn
+        StopReason::EndInvocation
     };
     let started_at =
-        integer_timestamp(payload.get("started_at")).or(context.current_turn_started_at);
+        integer_timestamp(payload.get("started_at")).or(context.current_invocation_started_at);
     let completed_at = integer_timestamp(payload.get("completed_at")).or(timestamp);
     let duration_ms = payload
         .get("duration_ms")
@@ -3893,38 +3960,47 @@ fn normalize_terminal_turn(
             _ => None,
         });
     let trace_id = optional_nonempty_string(payload, "trace_id")
-        .or_else(|| context.current_turn_trace_id.clone());
+        .or_else(|| context.current_invocation_trace_id.clone());
     let model_context_window = payload
         .get("model_context_window")
         .or_else(|| payload.get("context_window"))
         .and_then(Value::as_i64)
-        .or(context.current_turn_model_context_window);
+        .or(context.current_invocation_model_context_window);
     let time_to_first_token_ms = payload
         .get("time_to_first_token_ms")
         .or_else(|| payload.get("ttft_ms"))
         .and_then(Value::as_i64)
-        .or(context.current_turn_time_to_first_token_ms);
-    context.current_turn = None;
-    context.current_turn_external_id = None;
-    context.current_turn_inferred = false;
-    context.current_turn_started_at = None;
-    context.current_turn_trace_id = None;
-    context.current_turn_model_context_window = None;
-    context.current_turn_time_to_first_token_ms = None;
+        .or(context.current_invocation_time_to_first_token_ms);
+    context.current_invocation = None;
+    context.current_invocation_external_id = None;
+    context.current_invocation_inferred = false;
+    context.current_invocation_started_at = None;
+    context.current_invocation_trace_id = None;
+    context.current_invocation_model_context_window = None;
+    context.current_invocation_time_to_first_token_ms = None;
     context.tool_calls.clear();
     vec![Record {
         id,
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: None,
+        invocation: None,
         timestamp,
         origin,
-        data: RecordData::Turn(Turn {
-            external_id,
+        data: RecordData::AgentInvocation(AgentInvocation {
+            invocation_id: external_id.unwrap_or_default(),
+            context_id: None,
+            task_id: None,
+            operation: AgentOperation::Invoke,
+            sender_id: None,
+            receiver_ids: Vec::new(),
+            child_session: None,
             status,
             started_at,
             completed_at,
             duration_ms,
+            input: None,
+            output: None,
+            artifacts: Vec::new(),
             error,
             stop_reason: Some(stop_reason),
             trace_id,
@@ -3940,17 +4016,17 @@ fn normalize_response_item(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     context: &mut RolloutContext,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
 ) -> Vec<Record> {
-    let record_turn = response_item_turn(info, artifact, payload, context);
+    let record_invocation = response_item_invocation(info, artifact, payload, context);
     match payload.get("type").and_then(Value::as_str) {
         Some("agent_message") => {
-            let invocation_id = string(payload, "id").unwrap_or(position);
+            let event_id = string(payload, "id").unwrap_or(position).to_owned();
             let sender = optional_nonempty_string(payload, "author");
             let mut receiver_ids = optional_nonempty_string(payload, "recipient")
                 .into_iter()
@@ -3966,7 +4042,7 @@ fn normalize_response_item(
                     .filter(|value| !value.is_empty())
                     .map(str::to_owned),
             );
-            let turn_id = payload
+            let invocation_id = payload
                 .get("internal_chat_message_metadata_passthrough")
                 .and_then(|metadata| string(metadata, "turn_id"))
                 .map(str::to_owned);
@@ -3974,29 +4050,36 @@ fn normalize_response_item(
                 id: RecordId::scoped(
                     &info.source,
                     "agent-invocation",
-                    format!("{artifact}:{invocation_id}"),
+                    format!("{artifact}:{event_id}"),
                 ),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: string(payload, "id").map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: sender.clone(),
-                    data: ItemData::AgentInvocation(AgentInvocation {
-                        invocation_id: invocation_id.to_owned(),
+                    data: EventData::AgentInvocation(AgentInvocation {
+                        invocation_id: event_id,
                         context_id: context.session_external_id.clone(),
-                        task_id: turn_id,
+                        task_id: invocation_id,
                         operation: AgentOperation::SendInput,
                         sender_id: sender,
                         receiver_ids,
                         child_session: None,
                         status: AgentInvocationStatus::Completed,
+                        started_at: None,
+                        completed_at: None,
+                        duration_ms: None,
+                        stop_reason: None,
+                        trace_id: None,
+                        model_context_window: None,
+                        time_to_first_token_ms: None,
                         input: Some(payload.get("content").cloned().unwrap_or(Value::Null)),
                         output: None,
                         artifacts: Vec::new(),
@@ -4028,17 +4111,17 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "tool-call", format!("{artifact}:{call_id}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn,
+                invocation: record_invocation,
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::ToolCall(ToolCall {
+                    data: EventData::ToolCall(ToolCall {
                         call_id: call_id.to_owned(),
                         name: observed.name,
                         namespace: observed.namespace,
@@ -4085,17 +4168,17 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "tool-call", format!("{artifact}:{call_id}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::ToolCall(ToolCall {
+                    data: EventData::ToolCall(ToolCall {
                         call_id: call_id.to_owned(),
                         title: None,
                         kind: observed.kind,
@@ -4136,10 +4219,10 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: Some(RecordId::scoped(
@@ -4150,7 +4233,7 @@ fn normalize_response_item(
                     inherited_from: None,
                     actor: Actor::Tool,
                     agent_id: None,
-                    data: ItemData::ToolResult(ToolResult {
+                    data: EventData::ToolResult(ToolResult {
                         call_id: call_id.to_owned(),
                         name: optional_nonempty_string(payload, "name")
                             .or_else(|| observed.as_ref().map(|tool| tool.name.clone())),
@@ -4173,17 +4256,17 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "message", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: string(payload, "id").map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: actor_for_message(&role),
                     agent_id: None,
-                    data: ItemData::Message(Message {
+                    data: EventData::Message(Message {
                         role,
                         phase: string(payload, "phase").map(message_phase),
                         content: normalize_content(payload.get("content").unwrap_or(&Value::Null)),
@@ -4200,17 +4283,17 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "reasoning", format!("{artifact}:{identity}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: string(payload, "id").map(str::to_owned),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::Reasoning(Reasoning {
+                    data: EventData::Reasoning(Reasoning {
                         summary: normalize_reasoning_summary(
                             payload.get("summary").unwrap_or(&Value::Null),
                         ),
@@ -4239,10 +4322,10 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "tool-result", format!("{artifact}:{call_id}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: Some(RecordId::scoped(
@@ -4253,7 +4336,7 @@ fn normalize_response_item(
                     inherited_from: None,
                     actor: Actor::Tool,
                     agent_id: None,
-                    data: ItemData::ToolResult(ToolResult {
+                    data: EventData::ToolResult(ToolResult {
                         call_id: call_id.to_owned(),
                         name: Some("tool_search".to_owned()),
                         content: Vec::new(),
@@ -4290,17 +4373,17 @@ fn normalize_response_item(
                 id: RecordId::scoped(&info.source, "tool-call", format!("{artifact}:{call_id}")),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin,
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::ToolCall(ToolCall {
+                    data: EventData::ToolCall(ToolCall {
                         call_id: call_id.to_owned(),
                         name: observed.name,
                         namespace: observed.namespace,
@@ -4346,17 +4429,17 @@ fn normalize_response_item(
                 id: call_record_id.clone(),
                 source: info.source.clone(),
                 session: context.session.clone(),
-                turn: record_turn.clone(),
+                invocation: record_invocation.clone(),
                 timestamp,
                 origin: origin.clone(),
-                data: RecordData::Item(Item {
+                data: RecordData::Event(Event {
                     external_id: Some(call_id.to_owned()),
                     sequence,
                     parent: None,
                     inherited_from: None,
                     actor: Actor::Agent,
                     agent_id: None,
-                    data: ItemData::ToolCall(ToolCall {
+                    data: EventData::ToolCall(ToolCall {
                         call_id: call_id.to_owned(),
                         name: observed.name.clone(),
                         namespace: observed.namespace,
@@ -4386,17 +4469,17 @@ fn normalize_response_item(
                     ),
                     source: info.source.clone(),
                     session: context.session.clone(),
-                    turn: record_turn,
+                    invocation: record_invocation,
                     timestamp,
                     origin,
-                    data: RecordData::Item(Item {
+                    data: RecordData::Event(Event {
                         external_id: Some(call_id.to_owned()),
                         sequence: sequence.with_part(sequence.part.saturating_add(1)),
                         parent: Some(call_record_id),
                         inherited_from: None,
                         actor: Actor::Tool,
                         agent_id: None,
-                        data: ItemData::ToolResult(ToolResult {
+                        data: EventData::ToolResult(ToolResult {
                             call_id: call_id.to_owned(),
                             name: Some(observed.name),
                             output: result.clone(),
@@ -4428,28 +4511,28 @@ fn normalize_response_item(
             ),
             source: info.source.clone(),
             session: context.session.clone(),
-            turn: record_turn,
+            invocation: record_invocation,
             timestamp,
             origin,
-            data: RecordData::Item(Item {
+            data: RecordData::Event(Event {
                 external_id: string(payload, "id").map(str::to_owned),
                 sequence,
                 parent: None,
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: ItemData::ContextCompaction(normalize_compaction(payload)),
+                data: EventData::ContextCompaction(normalize_compaction(payload)),
             }),
             original: Some(original),
         }],
-        item_kind => vec![unknown_item_record(
+        item_kind => vec![unknown_event_record(
             info,
             artifact,
             position,
             sequence,
             timestamp,
             context.session.clone(),
-            record_turn,
+            record_invocation,
             origin,
             original,
             payload,
@@ -4458,7 +4541,7 @@ fn normalize_response_item(
     }
 }
 
-fn response_item_turn(
+fn response_item_invocation(
     info: &ProviderInfo,
     artifact: &str,
     payload: &Value,
@@ -4468,19 +4551,19 @@ fn response_item_turn(
         .get("internal_chat_message_metadata_passthrough")
         .and_then(|metadata| string(metadata, "turn_id"))
         .filter(|external_id| !external_id.is_empty())
-        .map(|external_id| turn_id(info, artifact, external_id))
-        .or_else(|| context.current_turn.clone())
+        .map(|external_id| invocation_id(info, artifact, external_id))
+        .or_else(|| context.current_invocation.clone())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn unknown_item_record(
+fn unknown_event_record(
     info: &ProviderInfo,
     artifact: &str,
     position: &str,
-    sequence: ItemSequence,
+    sequence: EventSequence,
     timestamp: Option<Timestamp>,
     session: Option<RecordId>,
-    turn: Option<RecordId>,
+    invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
     payload: &Value,
@@ -4494,10 +4577,10 @@ fn unknown_item_record(
         id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
         source: info.source.clone(),
         session,
-        turn,
+        invocation,
         timestamp,
         origin,
-        data: RecordData::Item(Item {
+        data: RecordData::Event(Event {
             external_id,
             sequence,
             parent: None,
@@ -4508,7 +4591,7 @@ fn unknown_item_record(
                 Actor::Agent
             },
             agent_id: None,
-            data: ItemData::Unknown(UnknownItem {
+            data: EventData::Unknown(UnknownEvent {
                 kind: kind.map(str::to_owned),
             }),
         }),
@@ -4531,7 +4614,7 @@ fn unknown_record(
         id: RecordId::scoped(&info.source, "unknown", format!("{artifact}:{position}")),
         source: info.source.clone(),
         session: context.session.clone(),
-        turn: context.current_turn.clone(),
+        invocation: context.current_invocation.clone(),
         timestamp,
         origin,
         data: RecordData::Unknown(UnknownRecord {
@@ -4541,7 +4624,7 @@ fn unknown_record(
     }
 }
 
-fn turn_id(info: &ProviderInfo, artifact: &str, external_id: &str) -> RecordId {
+fn invocation_id(info: &ProviderInfo, artifact: &str, external_id: &str) -> RecordId {
     RecordId::scoped(&info.source, "turn", format!("{artifact}:{external_id}"))
 }
 
