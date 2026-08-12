@@ -13,9 +13,10 @@ use coding_agent_data::providers::claude_code::{ClaudeCodeProvider, ClaudeCodeSo
 use coding_agent_data::WatchProvider;
 use coding_agent_data::{
     Actor, AdapterCoverage, AgentInvocationStatus, ApprovalPolicy, Change, ContentBlock, EventData,
-    FileChangeKind, HookStatus, MessageRole, ModeChangeKind, ModelInvocationStatus, Provider,
-    QueueOperation, ReasoningVisibility, Record, RecordData, RecordId, SessionRelationKind,
-    SourceCoverage, SourceLocation, StopReason, Timestamp, ToolKind, ToolStatus,
+    FileChangeKind, HookStatus, MessageRole, ModeChangeKind, ModelInvocationStatus, NoticeLevel,
+    Provider, QueueOperation, ReasoningVisibility, Record, RecordData, RecordId,
+    SessionRelationKind, SourceCoverage, SourceLocation, StopReason, Timestamp, ToolKind,
+    ToolStatus,
 };
 use tempfile::TempDir;
 
@@ -134,13 +135,13 @@ fn scan_normalizes_session_messages_and_subagent_entries() {
                     Change::Upsert(record)
                         if matches!(
                             record.data,
-                            RecordData::Event(ref item)
-                                if matches!(&item.data, EventData::Message(_))
+                            RecordData::Event(ref event)
+                                if matches!(&event.data, EventData::Message(_))
                         )
                 )
             })
             .count(),
-        3
+        2
     );
     assert!(!batch.changes.iter().any(|change| {
         matches!(
@@ -166,7 +167,7 @@ fn untyped_and_custom_content_are_preserved_as_unknown() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) => match &item.data {
+                RecordData::Event(event) => match &event.data {
                     EventData::Message(message) if message.content.len() == 2 => {
                         Some(&message.content)
                     }
@@ -208,9 +209,9 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "tool-1" && call.name == "Read"
                         )
@@ -223,10 +224,10 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.actor == Actor::Agent
+                    RecordData::Event(event)
+                        if event.actor == Actor::Agent
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Reasoning(reasoning)
                                     if reasoning.content
                                         == vec![ContentBlock::text("inspect first")]
@@ -240,11 +241,11 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.actor == Actor::Tool
-                            && item.parent.is_some()
+                    RecordData::Event(event)
+                        if event.actor == Actor::Tool
+                            && event.parent.is_some()
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::ToolResult(result)
                                     if result.status == ToolStatus::Completed
                                         && result.content
@@ -255,15 +256,15 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
                 )
         )
     }));
-    assert!(batch.changes.iter().any(|change| {
+    assert!(!batch.changes.iter().any(|change| {
         matches!(
             change,
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Message(message)
                                 if message.role == MessageRole::Assistant
                         )
@@ -276,9 +277,9 @@ fn tool_blocks_are_normalized_without_exposing_transcript_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "tool-1"
                                     && result.status == ToolStatus::Completed
@@ -327,19 +328,19 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         "",
     );
     let batch = fixture.provider().scan(None).unwrap();
-    let mut item_sequences = HashSet::new();
+    let mut event_sequences = HashSet::new();
     for record in batch.changes.iter().filter_map(|change| match change {
         Change::Upsert(record) if matches!(record.data, RecordData::Event(_)) => Some(record),
         _ => None,
     }) {
-        let RecordData::Event(item) = &record.data else {
-            unreachable!("filtered to item records");
+        let RecordData::Event(event) = &record.data else {
+            unreachable!("filtered to event records");
         };
         assert!(
-            item_sequences.insert((
+            event_sequences.insert((
                 record.origin.path.clone(),
-                item.sequence.position,
-                item.sequence.part,
+                event.sequence.position,
+                event.sequence.part,
             )),
             "derived items at one source position must have unique sequence parts"
         );
@@ -349,10 +350,10 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::AgentInvocation(invocation)
-                    if invocation.status == AgentInvocationStatus::Completed =>
+                RecordData::AgentInvocation(execution)
+                    if execution.status == AgentInvocationStatus::Completed =>
                 {
-                    Some((record.id.clone(), invocation))
+                    Some((record.id.clone(), execution))
                 }
                 _ => None,
             },
@@ -374,9 +375,9 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
                 if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::ModelInvocation(invocation)
                                     if invocation.provider.as_deref() == Some("anthropic")
                                         && invocation.model.as_deref() == Some("claude-test")
@@ -393,9 +394,9 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
                 if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::ToolCall(call)
                                     if call.name == "edit_file"
                                         && call.namespace.as_deref() == Some("filesystem")
@@ -414,9 +415,9 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
                 if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::FileChange(change)
                                     if change.path
                                         == std::path::Path::new("src/lib.rs")
@@ -433,9 +434,9 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Reasoning(reasoning)
                                 if reasoning.visibility == ReasoningVisibility::Redacted
                                     && reasoning.content.is_empty()
@@ -449,9 +450,9 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ExecutionContext(context)
                                 if context.cwd.as_deref()
                                     == Some(std::path::Path::new("/workspace/project"))
@@ -494,9 +495,9 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ModeChange(change)
                                 if change.mode == "normal"
                                     && change.kind == ModeChangeKind::Selected
@@ -510,9 +511,9 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::FileChange(change)
                                 if change.path
                                     == std::path::Path::new("src/lib.rs")
@@ -528,11 +529,134 @@ fn mode_and_external_file_edit_entries_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ExecutionContext(context)
                                 if context.current_date.as_deref() == Some("2026-01-03")
+                        )
+                )
+        )
+    }));
+}
+
+#[test]
+fn provider_state_attachments_and_progress_entries_are_normalized() {
+    let fixture = Fixture::new(
+        concat!(
+            "{\"type\":\"attachment\",\"uuid\":\"task-reminder\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:05Z\",\"attachment\":{\"type\":\"task_reminder\",\"content\":\"Two tasks remain\",\"itemCount\":2}}\n",
+            "{\"type\":\"attachment\",\"uuid\":\"skill-listing\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"attachment\":{\"type\":\"skill_listing\",\"names\":[\"review\"],\"skillCount\":1,\"isInitial\":true}}\n",
+            "{\"type\":\"attachment\",\"uuid\":\"agent-listing\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:07Z\",\"attachment\":{\"type\":\"agent_listing_delta\",\"addedTypes\":[\"worker\"],\"removedTypes\":[]}}\n",
+            "{\"type\":\"attachment\",\"uuid\":\"permissions\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:08Z\",\"attachment\":{\"type\":\"command_permissions\",\"allowedTools\":[\"Read\",\"Bash(git status:*)\"]}}\n",
+            "{\"type\":\"system\",\"subtype\":\"hook_started\",\"uuid\":\"hook-started\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:09Z\",\"message\":\"running hook\"}\n",
+            "{\"type\":\"tool_progress\",\"uuid\":\"tool-progress\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:10Z\",\"toolUseID\":\"tool-1\",\"message\":\"reading file\"}\n",
+            "{\"type\":\"progress\",\"uuid\":\"agent-progress\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:11Z\",\"data\":{\"type\":\"agent_progress\",\"description\":\"delegating work\"}}\n",
+            "{\"type\":\"system\",\"subtype\":\"hook_response\",\"uuid\":\"hook-response\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:12Z\",\"hookEvent\":\"PreToolUse\",\"toolUseID\":\"tool-1\",\"response\":{\"outcome\":\"failed\",\"stderr\":\"lint failed\"}}\n"
+        ),
+        "",
+    );
+    let batch = fixture.provider().scan(None).unwrap();
+
+    for (code, message) in [
+        ("task_reminder", "Two tasks remain"),
+        ("hook_started", "running hook"),
+        ("tool_progress", "reading file"),
+        ("agent_progress", "delegating work"),
+    ] {
+        assert!(batch.changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::Event(event)
+                            if matches!(
+                                &event.data,
+                                EventData::Notice(notice)
+                                    if notice.level == NoticeLevel::Info
+                                        && notice.code.as_deref() == Some(code)
+                                        && notice.message == message
+                            )
+                    )
+            )
+        }));
+    }
+    assert!(batch.changes.iter().any(|change| {
+        matches!(
+            change,
+            Change::Upsert(record)
+                if matches!(
+                    &record.data,
+                    RecordData::Event(event)
+                        if matches!(
+                            &event.data,
+                            EventData::ExecutionContext(context)
+                                if context
+                                    .provider_attributes
+                                    .get("skill_listing")
+                                    .is_some_and(|listing| listing["names"][0] == "review")
+                        )
+                )
+        )
+    }));
+    assert!(batch.changes.iter().any(|change| {
+        matches!(
+            change,
+            Change::Upsert(record)
+                if matches!(
+                    &record.data,
+                    RecordData::Event(event)
+                        if matches!(
+                            &event.data,
+                            EventData::ExecutionContext(context)
+                                if context
+                                    .provider_attributes
+                                    .get("agent_listing_delta")
+                                    .is_some_and(
+                                        |listing| listing["addedTypes"][0] == "worker"
+                                    )
+                        )
+                )
+        )
+    }));
+    assert!(batch.changes.iter().any(|change| {
+        matches!(
+            change,
+            Change::Upsert(record)
+                if matches!(
+                    &record.data,
+                    RecordData::Event(event)
+                        if matches!(
+                            &event.data,
+                            EventData::ExecutionContext(context)
+                                if context.permission_profile.as_ref().is_some_and(
+                                    |profile| profile[0] == "Read" && profile[1]
+                                        == "Bash(git status:*)"
+                                )
+                        )
+                )
+        )
+    }));
+    assert!(batch.changes.iter().any(|change| {
+        matches!(
+            change,
+            Change::Upsert(record)
+                if matches!(
+                    &record.data,
+                    RecordData::Event(event)
+                        if matches!(
+                            &event.data,
+                            EventData::HookResult(result)
+                                if result.event.as_deref() == Some("PreToolUse")
+                                    && result.tool_call_id.as_deref() == Some("tool-1")
+                                    && result.status == HookStatus::Failed
+                                    && result.context.iter().any(
+                                        |block| matches!(
+                                            block,
+                                            ContentBlock::Text { text, .. }
+                                                if text == "lint failed"
+                                        )
+                                    )
                         )
                 )
         )
@@ -557,9 +681,9 @@ fn stop_hook_summaries_are_normalized_as_hook_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::HookResult(result)
                                 if result.event.as_deref() == Some("stop")
                                     && result.entrypoint.as_deref()
@@ -595,9 +719,9 @@ fn agent_tool_calls_are_also_exposed_as_agent_invocations() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::AgentInvocation(invocation)
                                 if invocation.invocation_id == "agent-1"
                                     && invocation.task_id.as_deref() == Some("worker-1")
@@ -626,11 +750,11 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) => match &item.data {
+                RecordData::Event(event) => match &event.data {
                     EventData::AgentInvocation(invocation)
                         if invocation.status == AgentInvocationStatus::Completed =>
                     {
-                        Some((record.id.clone(), item.sequence))
+                        Some((record.id.clone(), event.sequence))
                     }
                     _ => None,
                 },
@@ -661,9 +785,9 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::InputQueue(queue)
                                 if queue.operation == QueueOperation::Enqueue
                                     && queue.task_id.as_deref() == Some("worker")
@@ -680,9 +804,9 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::InputQueue(queue)
                                 if queue.operation == QueueOperation::Dequeue
                                     && queue.task_id.as_deref() == Some("worker")
@@ -698,10 +822,10 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
                 if record.id == initial_invocation.0
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if item.sequence == initial_invocation.1
+                        RecordData::Event(event)
+                            if event.sequence == initial_invocation.1
                                 && matches!(
-                                    &item.data,
+                                    &event.data,
                                     EventData::AgentInvocation(invocation)
                                         if invocation.status
                                             == AgentInvocationStatus::Completed
@@ -718,10 +842,10 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.actor == Actor::User
+                    RecordData::Event(event)
+                        if event.actor == Actor::User
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Message(message)
                                     if message.role == MessageRole::User
                                         && message.content
@@ -740,8 +864,8 @@ fn queue_operations_and_queued_commands_preserve_task_and_child_session_linkage(
                     .is_some_and(|original| original.value["type"] == "queue-operation")
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if matches!(&item.data, EventData::Message(_))
+                        RecordData::Event(event)
+                            if matches!(&event.data, EventData::Message(_))
                     )
         )
     }));
@@ -861,8 +985,8 @@ fn distinct_primary_requests_with_the_same_message_id_are_preserved() {
 fn distinct_message_ids_with_the_same_request_id_are_preserved() {
     let fixture = Fixture::new(
         concat!(
-            "{\"type\":\"assistant\",\"uuid\":\"entry-1\",\"requestId\":\"shared-request\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:05Z\",\"message\":{\"id\":\"message-1\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n",
-            "{\"type\":\"assistant\",\"uuid\":\"entry-2\",\"requestId\":\"shared-request\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"message\":{\"id\":\"message-2\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n"
+            "{\"type\":\"assistant\",\"uuid\":\"entry-1\",\"requestId\":\"shared-request\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:05Z\",\"message\":{\"id\":\"message-1\",\"model\":\"claude-test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n",
+            "{\"type\":\"assistant\",\"uuid\":\"entry-2\",\"requestId\":\"shared-request\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"message\":{\"id\":\"message-2\",\"model\":\"claude-test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n"
         ),
         "",
     );
@@ -882,6 +1006,148 @@ fn distinct_message_ids_with_the_same_request_id_are_preserved() {
     totals.sort_unstable();
 
     assert_eq!(totals, vec![3, 7]);
+    let model_invocations: Vec<_> = batch
+        .changes
+        .iter()
+        .filter_map(|change| match change {
+            Change::Upsert(record) => match &record.data {
+                RecordData::Event(event)
+                    if matches!(&event.data, EventData::ModelInvocation(_)) =>
+                {
+                    Some(record.id.clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(model_invocations.len(), 2);
+    assert_ne!(model_invocations[0], model_invocations[1]);
+}
+
+#[test]
+fn api_error_messages_fail_the_model_and_agent_invocations() {
+    for stop_reason in [
+        ",\"stop_reason\":\"stop_sequence\"",
+        ",\"stop_reason\":\"end_turn\"",
+        "",
+    ] {
+        let fixture = Fixture::new(
+            &format!(
+                "{}{{\"type\":\"assistant\",\"uuid\":\"assistant-error\",\"requestId\":\"request-error\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"isApiErrorMessage\":true,\"error\":{{\"message\":\"upstream unavailable\"}},\"message\":{{\"id\":\"message-error\",\"model\":\"claude-test\",\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"API Error\"}}]{stop_reason}}}}}\n",
+                user_entry("2026-01-02T03:04:05Z"),
+            ),
+            "",
+        );
+        let batch = fixture.provider().scan(None).unwrap();
+
+        assert!(batch.changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::Event(event)
+                            if matches!(
+                                &event.data,
+                                EventData::ModelInvocation(invocation)
+                                    if invocation.status == ModelInvocationStatus::Failed
+                                        && invocation.stop_reason == Some(StopReason::Failed)
+                                        && invocation.error.as_deref()
+                                            == Some("upstream unavailable")
+                            )
+                    )
+            )
+        }));
+        assert!(batch.changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::AgentInvocation(invocation)
+                            if invocation.status == AgentInvocationStatus::Failed
+                                && invocation.stop_reason == Some(StopReason::Failed)
+                                && invocation.error.as_deref() == Some("upstream unavailable")
+                    )
+            )
+        }));
+        assert!(!batch.changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::AgentInvocation(invocation)
+                            if invocation.status == AgentInvocationStatus::Completed
+                    )
+            )
+        }));
+    }
+}
+
+#[test]
+fn tool_and_reasoning_only_entries_do_not_emit_empty_messages() {
+    let fixture = Fixture::new(
+        &format!(
+            "{}{}{}",
+            user_entry("2026-01-02T03:04:05Z"),
+            "{\"type\":\"assistant\",\"uuid\":\"assistant-tools\",\"requestId\":\"request-tools\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"message\":{\"id\":\"message-tools\",\"model\":\"claude-test\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"inspect first\"},{\"type\":\"tool_use\",\"id\":\"tool-1\",\"name\":\"Read\",\"input\":{\"file_path\":\"src/lib.rs\"}}],\"stop_reason\":\"tool_use\"}}\n",
+            "{\"type\":\"user\",\"uuid\":\"tool-result-entry\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:07Z\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tool-1\",\"content\":\"file contents\"}]}}\n"
+        ),
+        "",
+    );
+    let batch = fixture.provider().scan(None).unwrap();
+
+    let messages: Vec<_> = batch
+        .changes
+        .iter()
+        .filter_map(|change| match change {
+            Change::Upsert(record) => match &record.data {
+                RecordData::Event(event) => match &event.data {
+                    EventData::Message(message) => Some(message),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(messages.len(), 1);
+    assert!(messages.iter().all(|message| !message.content.is_empty()));
+
+    let model_record = batch
+        .changes
+        .iter()
+        .find_map(|change| match change {
+            Change::Upsert(record)
+                if matches!(
+                    &record.data,
+                    RecordData::Event(event)
+                        if matches!(&event.data, EventData::ModelInvocation(_))
+                ) =>
+            {
+                Some(record)
+            }
+            _ => None,
+        })
+        .expect("model invocation");
+    for event in batch.changes.iter().filter_map(|change| match change {
+        Change::Upsert(record) => match &record.data {
+            RecordData::Event(event)
+                if matches!(
+                    &event.data,
+                    EventData::ToolCall(_) | EventData::Reasoning(_)
+                ) =>
+            {
+                Some(event)
+            }
+            _ => None,
+        },
+        _ => None,
+    }) {
+        assert_eq!(event.parent.as_ref(), Some(&model_record.id));
+    }
 }
 
 #[test]
@@ -1098,9 +1364,9 @@ fn child_session_linkage_requires_an_explicit_provider_agent_id() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::AgentInvocation(invocation)
                                 if invocation.invocation_id == "agent-1"
                                     && invocation.child_session.is_some()
@@ -1159,14 +1425,16 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) if item.external_id.as_deref() == Some("attachment-1") => {
-                    Some((record, item))
+                RecordData::Event(event)
+                    if event.external_id.as_deref() == Some("attachment-1") =>
+                {
+                    Some((record, event))
                 }
                 _ => None,
             },
             _ => None,
         })
-        .expect("attachment item");
+        .expect("attachment event");
     assert_eq!(attachment.1.actor, Actor::Environment);
     assert!(matches!(
         attachment.1.data,
@@ -1179,9 +1447,9 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("reply-1")
-                            && item.parent.as_ref() == Some(&attachment.0.id)
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("reply-1")
+                            && event.parent.as_ref() == Some(&attachment.0.id)
                 )
         )
     }));
@@ -1191,11 +1459,11 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("system-1")
-                            && item.parent.is_some()
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("system-1")
+                            && event.parent.is_some()
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::HookResult(result)
                                     if result.status == HookStatus::Completed
                             )
@@ -1208,11 +1476,11 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("compact-1")
-                            && item.parent.is_some()
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("compact-1")
+                            && event.parent.is_some()
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::ContextCompaction(compaction)
                                     if compaction.summary.as_deref() == Some("summary")
                             )
@@ -1225,9 +1493,9 @@ fn structural_entries_preserve_item_links_forks_and_compaction() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("inherited-1")
-                            && item.inherited_from.is_some()
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("inherited-1")
+                            && event.inherited_from.is_some()
                 )
         )
     }));
@@ -1284,8 +1552,8 @@ fn incremental_scan_waits_for_a_complete_line() {
             Change::Upsert(record)
                 if matches!(
                     record.data,
-                    RecordData::Event(ref item)
-                        if matches!(&item.data, EventData::Message(_))
+                    RecordData::Event(ref event)
+                        if matches!(&event.data, EventData::Message(_))
                 )
         )
     }));
@@ -1305,9 +1573,9 @@ fn transcript_without_a_trailing_newline_is_normalized_once() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Message(message)
                                 if message.content == vec![ContentBlock::text("done")]
                         )
@@ -1537,8 +1805,8 @@ fn subscription_emits_new_transcript_entries() {
             Change::Upsert(record)
                 if matches!(
                     record.data,
-                    RecordData::Event(ref item)
-                        if matches!(&item.data, EventData::Message(_))
+                    RecordData::Event(ref event)
+                        if matches!(&event.data, EventData::Message(_))
                 )
         )
     }));

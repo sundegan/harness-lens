@@ -355,6 +355,20 @@ fn scan_plain(
                 limits,
                 batch.diagnostics,
             );
+            batch
+                .changes
+                .push(Change::upsert(normalize::line_too_large_record(
+                    environment.source,
+                    info,
+                    path,
+                    Position {
+                        line,
+                        byte_start: Some(byte_start),
+                        byte_end: Some(safe_offset),
+                        logical_ordinal: None,
+                    },
+                    &context,
+                )));
             continue;
         }
         parse_line(
@@ -494,6 +508,20 @@ fn scan_compressed(
         *batch.remaining -= 1;
         if too_large {
             push_line_too_large(info, path, line, None, None, limits, batch.diagnostics);
+            batch
+                .changes
+                .push(Change::upsert(normalize::line_too_large_record(
+                    environment.source,
+                    info,
+                    path,
+                    Position {
+                        line,
+                        byte_start: None,
+                        byte_end: None,
+                        logical_ordinal: None,
+                    },
+                    &context,
+                )));
         } else {
             parse_line(
                 environment,
@@ -907,7 +935,7 @@ fn push_line_too_large(
         Diagnostic::warning(
             "codex.rollout.line_too_large",
             format!(
-                "rollout line {line} exceeds the {} byte limit and was skipped",
+                "rollout line {line} exceeds the {} byte limit and was emitted as an unparsed placeholder",
                 limits.max_line_bytes
             ),
         )
@@ -957,7 +985,7 @@ mod tests {
     use std::fs;
 
     use crate::providers::codex::{CodexProvider, CodexSource};
-    use crate::Provider;
+    use crate::{Change, Provider, RecordData};
 
     use super::{
         scan_plain, CodexCheckpoint, InheritancePlan, LineagePlan, ReplayPlan, RolloutState,
@@ -1031,5 +1059,66 @@ mod tests {
         assert!(!second_has_more);
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(second_state, RolloutState::Plain { line: 3, .. }));
+    }
+
+    #[test]
+    fn oversized_lines_emit_placeholder_records() {
+        let directory = tempfile::tempdir().unwrap();
+        let codex_home = directory.path().join(".codex");
+        let sessions = codex_home.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let path = sessions.join("rollout-test.jsonl");
+        fs::write(&path, b"{\"content\":\"this line is too large\"}\n").unwrap();
+        let source = CodexSource::new(&codex_home, &codex_home);
+        let provider = CodexProvider::new(source.clone());
+        let limits = ScanLimits {
+            max_lines_per_batch: 1,
+            max_line_bytes: 8,
+        };
+        let indexed_sessions = BTreeMap::new();
+        let replay = ReplayPlan::empty();
+        let lineage = LineagePlan::empty();
+        let inheritance = InheritancePlan::empty();
+        let mut remaining = 1;
+        let mut changes = Vec::new();
+        let mut diagnostics = Vec::new();
+        let mut attribution = UsageAttributionPlan::build(&CodexCheckpoint::default());
+        let mut pending_usage_rebuilds = BTreeMap::new();
+        let environment = ScanEnvironment {
+            source: &source,
+            info: provider.info(),
+            replay: &replay,
+            lineage: &lineage,
+            inheritance: &inheritance,
+            indexed_sessions: &indexed_sessions,
+            limits: &limits,
+        };
+
+        {
+            let mut batch = ScanBatch {
+                attribution: &mut attribution,
+                pending_usage_rebuilds: &mut pending_usage_rebuilds,
+                remaining: &mut remaining,
+                changes: &mut changes,
+                diagnostics: &mut diagnostics,
+            };
+            scan_plain(&environment, &mut batch, &path, None, None).unwrap();
+        }
+
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "codex.rollout.line_too_large"));
+        assert!(changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::Unknown(unknown)
+                            if unknown.kind.as_deref() == Some("line_too_large")
+                    )
+                        && record.original.is_none()
+            )
+        }));
     }
 }

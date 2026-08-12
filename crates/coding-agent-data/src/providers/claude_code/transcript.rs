@@ -20,7 +20,7 @@ use super::ClaudeCodeSource;
 const MAX_DIAGNOSTICS_PER_BATCH: usize = 1_000;
 // Child-agent linkage is metadata, not the transcript body. Keep this index
 // bounded so a large or malformed child file cannot turn every scan into a
-// full-file read. The path remains the stable child-session identity; an
+// full-file read. The path remains the stable child-session identity. An
 // agent ID is used for linkage only when it is explicitly persisted.
 const MAX_CHILD_SESSION_INDEX_LINES: usize = 64;
 const MAX_CHILD_SESSION_INDEX_BYTES: usize = 4 * 1024 * 1024;
@@ -239,6 +239,17 @@ fn scan_transcript(
                 limits,
                 diagnostics,
             );
+            changes.push(Change::upsert(normalize::line_too_large_record(
+                source,
+                info,
+                path,
+                normalize::Position {
+                    line,
+                    byte_start,
+                    byte_end: safe_offset,
+                },
+                &context,
+            )));
             continue;
         }
         let contents = bytes.strip_suffix(b"\n").unwrap_or(&bytes);
@@ -274,7 +285,7 @@ fn scan_transcript(
             byte_start,
             byte_end: safe_offset,
         };
-        let turn_before = context.current_invocation.clone();
+        let invocation_before = context.current_invocation.clone();
         changes.extend(
             normalize::line_records(
                 source,
@@ -291,7 +302,7 @@ fn scan_transcript(
         for (key, snapshot) in normalize::usage_snapshots(
             &value,
             position,
-            turn_before.or_else(|| context.current_invocation.clone()),
+            invocation_before.or_else(|| context.current_invocation.clone()),
         ) {
             if normalize::should_replace_usage(usage.get(&key), &snapshot) {
                 usage.insert(key, snapshot);
@@ -583,7 +594,7 @@ fn push_line_too_large(
         Diagnostic::warning(
             "claude_code.transcript.line_too_large",
             format!(
-                "transcript line {line} exceeds the {} byte limit and was skipped",
+                "transcript line {line} exceeds the {} byte limit and was emitted as an unparsed placeholder",
                 limits.max_line_bytes
             ),
         )
@@ -605,5 +616,66 @@ fn push_diagnostic(diagnostics: &mut Vec<Diagnostic>, diagnostic: Diagnostic) {
             "claude_code.diagnostics.truncated",
             "additional Claude Code diagnostics were omitted from this batch",
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::fs;
+
+    use crate::providers::claude_code::{ClaudeCodeProvider, ClaudeCodeSource};
+    use crate::{Change, Provider, RecordData};
+
+    use super::{scan_transcript, ScanLimits};
+
+    #[test]
+    fn oversized_lines_emit_placeholder_records() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_dir = directory.path().join(".claude");
+        let project_dir = config_dir.join("projects/-workspace-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let path = project_dir.join("session-1.jsonl");
+        fs::write(&path, b"{\"content\":\"this line is too large\"}\n").unwrap();
+        let source = ClaudeCodeSource::new(&config_dir);
+        let provider = ClaudeCodeProvider::new(source.clone());
+        let limits = ScanLimits {
+            max_lines_per_batch: 1,
+            max_line_bytes: 8,
+        };
+        let mut remaining = 1;
+        let mut changes = Vec::new();
+        let mut diagnostics = Vec::new();
+        let mut invalidated_paths = BTreeSet::new();
+
+        scan_transcript(
+            &source,
+            provider.info(),
+            &path,
+            None,
+            &BTreeMap::new(),
+            &limits,
+            &mut remaining,
+            &mut changes,
+            &mut diagnostics,
+            &mut invalidated_paths,
+        )
+        .unwrap();
+
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "claude_code.transcript.line_too_large"));
+        assert!(changes.iter().any(|change| {
+            matches!(
+                change,
+                Change::Upsert(record)
+                    if matches!(
+                        &record.data,
+                        RecordData::Unknown(unknown)
+                            if unknown.kind.as_deref() == Some("line_too_large")
+                    )
+                        && record.original.is_none()
+            )
+        }));
     }
 }

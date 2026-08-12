@@ -13,10 +13,11 @@ use crate::{
     Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, ContentBlock, ContextCompaction,
     Cost, DataQuality, Event, EventData, EventSequence, ExecutionContext, FileChange,
     FileChangeKind, HookResult, HookStatus, InputQueueMutation, Message, MessageRole, ModeChange,
-    ModeChangeKind, ModelInvocation, ModelInvocationStatus, OriginalData, ProviderInfo,
-    QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId, Session,
-    SessionRelation, SessionRelationKind, SourceLocation, SourceRef, StopReason, Timestamp,
-    TokenUsage, ToolCall, ToolResult, ToolStatus, UnknownEvent, UnknownRecord, UsageReport,
+    ModeChangeKind, ModelInvocation, ModelInvocationStatus, Notice, NoticeLevel, OriginalData,
+    ProviderInfo, QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId,
+    Session, SessionRelation, SessionRelationKind, SourceLocation, SourceRef, StopReason,
+    Timestamp, TokenUsage, ToolCall, ToolResult, ToolStatus, UnknownEvent, UnknownRecord,
+    UsageReport,
 };
 
 use super::checkpoint::{SessionSummary, TranscriptContext, UsageSnapshot};
@@ -29,6 +30,43 @@ pub(super) struct Position {
     pub line: u64,
     pub byte_start: u64,
     pub byte_end: u64,
+}
+
+pub(super) fn line_too_large_record(
+    source: &ClaudeCodeSource,
+    info: &ProviderInfo,
+    path: &Path,
+    position: Position,
+    context: &TranscriptContext,
+) -> Record {
+    let session = transcript_session_identity(source, path)
+        .map(|identity| session_record_id(info, &identity.project_key, &identity.external_id));
+    let artifact = path
+        .strip_prefix(source.config_dir())
+        .unwrap_or(path)
+        .to_string_lossy();
+    Record {
+        id: RecordId::scoped(
+            &info.source,
+            "unknown",
+            format!("{artifact}:byte:{}", position.byte_start),
+        ),
+        source: info.source.clone(),
+        session,
+        invocation: context.current_invocation.clone(),
+        timestamp: None,
+        origin: SourceRef::json_line(
+            info.source.clone(),
+            path,
+            position.line,
+            Some(position.byte_start),
+            Some(position.byte_end),
+        ),
+        data: RecordData::Unknown(UnknownRecord {
+            kind: Some("line_too_large".to_owned()),
+        }),
+        original: None,
+    }
 }
 
 fn stop_reason(value: &str) -> StopReason {
@@ -62,10 +100,146 @@ fn queue_operation(value: &str) -> QueueOperation {
     }
 }
 
+fn nonempty_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn values(value: &Value, key: &str) -> Vec<Value> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn provider_error_message(value: &Value) -> Option<String> {
+    value
+        .get("error")
+        .and_then(|error| {
+            error
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| nonempty_string(error, "message"))
+        })
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .map(content_text)
+                .filter(|message| !message.is_empty())
+        })
+}
+
+fn hook_status(
+    value: &Value,
+    response: &Value,
+    prevented_continuation: Option<bool>,
+) -> HookStatus {
+    if prevented_continuation == Some(true) {
+        return HookStatus::Blocked;
+    }
+    let outcome = value
+        .get("outcome")
+        .or_else(|| value.get("status"))
+        .or_else(|| response.get("outcome"))
+        .or_else(|| response.get("status"))
+        .and_then(Value::as_str);
+    match outcome {
+        Some("success" | "succeeded" | "completed" | "complete") => HookStatus::Completed,
+        Some("error" | "failed" | "failure") => HookStatus::Failed,
+        Some("blocked" | "denied" | "rejected") => HookStatus::Blocked,
+        _ if !values(value, "hookErrors").is_empty() => HookStatus::Failed,
+        _ => HookStatus::Unknown,
+    }
+}
+
+fn hook_context(value: &Value, response: &Value) -> Vec<ContentBlock> {
+    let mut context = normalize_message_content(
+        value
+            .get("hookAdditionalContext")
+            .or_else(|| response.get("hookAdditionalContext"))
+            .unwrap_or(&Value::Null),
+    );
+    for key in ["output", "stdout", "stderr"] {
+        if let Some(text) = response
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+        {
+            context.push(ContentBlock::text(text));
+        }
+    }
+    context
+}
+
+fn progress_message(value: &Value, fallback: &str) -> String {
+    [
+        value.get("content"),
+        value.get("message"),
+        value.get("description"),
+        value.get("data").and_then(|data| data.get("content")),
+        value.get("data").and_then(|data| data.get("message")),
+        value.get("data").and_then(|data| data.get("description")),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|value| {
+        value
+            .as_str()
+            .filter(|message| !message.is_empty())
+            .map(str::to_owned)
+    })
+    .unwrap_or_else(|| fallback.to_owned())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn notice_record(
+    info: &ProviderInfo,
+    id: RecordId,
+    session: Option<RecordId>,
+    invocation: Option<RecordId>,
+    timestamp: Option<Timestamp>,
+    origin: SourceRef,
+    external_id: Option<&str>,
+    line: u64,
+    parent: Option<RecordId>,
+    inherited_from: Option<RecordId>,
+    code: &str,
+    message: String,
+    original: OriginalData,
+) -> Record {
+    Record {
+        id,
+        source: info.source.clone(),
+        session,
+        invocation,
+        timestamp,
+        origin,
+        data: RecordData::Event(Event {
+            external_id: external_id.map(str::to_owned),
+            sequence: EventSequence::new(line, 0),
+            parent,
+            inherited_from,
+            actor: Actor::System,
+            agent_id: None,
+            data: EventData::Notice(Notice {
+                level: NoticeLevel::Info,
+                code: Some(code.to_owned()),
+                message,
+            }),
+        }),
+        original: Some(original),
+    }
+}
+
 /// Stable identity derived from one Claude Code transcript artifact.
 ///
 /// Claude stores a subagent transcript below its parent transcript directory.
-/// The path is the durable identity; JSONL fields only enrich the normalized
+/// The path is the durable identity. JSONL fields only enrich the normalized
 /// session and must not be used to rename it when a file is edited.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct TranscriptIdentity {
@@ -383,6 +557,117 @@ pub(super) fn line_records(
         }];
     }
 
+    if entry_type == Some("system")
+        && value.get("subtype").and_then(Value::as_str) == Some("hook_response")
+    {
+        let response = value.get("response").unwrap_or(value);
+        let prevented_continuation = value
+            .get("preventedContinuation")
+            .or_else(|| response.get("preventedContinuation"))
+            .and_then(Value::as_bool);
+        let status = hook_status(value, response, prevented_continuation);
+        let mut infos = values(value, "hookInfos");
+        let mut errors = values(value, "hookErrors");
+        if value.get("response").is_some() {
+            if matches!(status, HookStatus::Failed | HookStatus::Blocked) {
+                errors.push(response.clone());
+            } else {
+                infos.push(response.clone());
+            }
+        }
+        return vec![Record {
+            id: event_id,
+            source: info.source.clone(),
+            session,
+            invocation: context.current_invocation.clone(),
+            timestamp,
+            origin,
+            data: RecordData::Event(Event {
+                external_id: external_id.map(str::to_owned),
+                sequence: EventSequence::new(position.line, 0),
+                parent,
+                inherited_from,
+                actor: Actor::System,
+                agent_id: None,
+                data: EventData::HookResult(HookResult {
+                    event: nonempty_string(value, "hookEvent")
+                        .or_else(|| nonempty_string(value, "hook_event"))
+                        .or_else(|| Some("hook_response".to_owned())),
+                    entrypoint: nonempty_string(value, "entrypoint")
+                        .or_else(|| nonempty_string(response, "entrypoint")),
+                    tool_call_id: nonempty_string(value, "toolUseID")
+                        .or_else(|| nonempty_string(value, "tool_use_id"))
+                        .or_else(|| nonempty_string(response, "toolUseID")),
+                    count: value
+                        .get("hookCount")
+                        .or_else(|| response.get("hookCount"))
+                        .and_then(Value::as_u64),
+                    status,
+                    prevented_continuation,
+                    stop_reason: nonempty_string(value, "stopReason")
+                        .or_else(|| nonempty_string(response, "stopReason"))
+                        .or_else(|| nonempty_string(response, "outcome")),
+                    infos,
+                    errors,
+                    context: hook_context(value, response),
+                }),
+            }),
+            original: Some(original),
+        }];
+    }
+
+    if entry_type == Some("system")
+        && matches!(
+            value.get("subtype").and_then(Value::as_str),
+            Some("hook_started" | "hook_progress")
+        )
+    {
+        let subtype = value
+            .get("subtype")
+            .and_then(Value::as_str)
+            .unwrap_or("hook_progress");
+        return vec![notice_record(
+            info,
+            event_id,
+            session,
+            context.current_invocation.clone(),
+            timestamp,
+            origin,
+            external_id,
+            position.line,
+            parent,
+            inherited_from,
+            subtype,
+            progress_message(value, subtype),
+            original,
+        )];
+    }
+
+    if matches!(entry_type, Some("progress" | "tool_progress")) {
+        let code = value
+            .get("data")
+            .and_then(|data| data.get("type"))
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty())
+            .or(entry_type)
+            .unwrap_or("progress");
+        return vec![notice_record(
+            info,
+            event_id,
+            session,
+            context.current_invocation.clone(),
+            timestamp,
+            origin,
+            external_id,
+            position.line,
+            parent,
+            inherited_from,
+            code,
+            progress_message(value, code),
+            original,
+        )];
+    }
+
     if entry_type == Some("mode") {
         if let Some(mode) = value
             .get("mode")
@@ -554,12 +839,87 @@ pub(super) fn line_records(
                     }];
                 }
             }
+            Some("task_reminder") => {
+                return vec![notice_record(
+                    info,
+                    event_id,
+                    session,
+                    context.current_invocation.clone(),
+                    timestamp,
+                    origin,
+                    external_id,
+                    position.line,
+                    parent,
+                    inherited_from,
+                    "task_reminder",
+                    progress_message(attachment, "Claude Code task reminder"),
+                    original,
+                )];
+            }
+            Some("skill_listing" | "agent_listing_delta") => {
+                let attachment_type = attachment
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("attachment");
+                let mut provider_attributes = BTreeMap::new();
+                provider_attributes.insert(attachment_type.to_owned(), attachment.clone());
+                return vec![Record {
+                    id: event_id,
+                    source: info.source.clone(),
+                    session,
+                    invocation: context.current_invocation.clone(),
+                    timestamp,
+                    origin,
+                    data: RecordData::Event(Event {
+                        external_id: external_id.map(str::to_owned),
+                        sequence: EventSequence::new(position.line, 0),
+                        parent,
+                        inherited_from,
+                        actor: Actor::System,
+                        agent_id: None,
+                        data: EventData::ExecutionContext(ExecutionContext {
+                            provider_attributes,
+                            ..ExecutionContext::default()
+                        }),
+                    }),
+                    original: Some(original),
+                }];
+            }
+            Some("command_permissions") => {
+                if let Some(permission_profile) = attachment
+                    .get("allowedTools")
+                    .or_else(|| attachment.get("allowed_tools"))
+                    .cloned()
+                {
+                    return vec![Record {
+                        id: event_id,
+                        source: info.source.clone(),
+                        session,
+                        invocation: context.current_invocation.clone(),
+                        timestamp,
+                        origin,
+                        data: RecordData::Event(Event {
+                            external_id: external_id.map(str::to_owned),
+                            sequence: EventSequence::new(position.line, 0),
+                            parent,
+                            inherited_from,
+                            actor: Actor::System,
+                            agent_id: None,
+                            data: EventData::ExecutionContext(ExecutionContext {
+                                permission_profile: Some(permission_profile),
+                                ..ExecutionContext::default()
+                            }),
+                        }),
+                        original: Some(original),
+                    }];
+                }
+            }
             _ => {}
         }
     }
 
     // These entries update the separately emitted session summary or maintain
-    // Claude Code UI state; they are not ordered agent activities. `last-prompt`
+    // Claude Code UI state. They are not ordered agent activities. `last-prompt`
     // is retained as an opaque record because it is persisted provider data,
     // but it is not necessarily a new user message.
     if entry_type == Some("last-prompt") {
@@ -594,6 +954,8 @@ pub(super) fn line_records(
             .get("content")
             .cloned()
             .unwrap_or_else(|| message.clone());
+        let normalized_message_content = normalize_message_content(&content);
+        let has_message = !normalized_message_content.is_empty();
         let agent_id = value
             .get("agentId")
             .and_then(Value::as_str)
@@ -613,7 +975,7 @@ pub(super) fn line_records(
             ));
         }
         let invocation_id = context.current_invocation.clone();
-        let model_record = (role == MessageRole::Assistant)
+        let mut model_record = (role == MessageRole::Assistant)
             .then(|| {
                 model_invocation_record(
                     info,
@@ -630,34 +992,46 @@ pub(super) fn line_records(
                 )
             })
             .flatten();
-        let message_parent = model_record
+        let model_parent = model_record
             .as_ref()
             .map(|record| record.id.clone())
-            .or(parent);
-        let message_part = u32::from(model_record.is_some());
+            .or(parent.clone());
+        let has_model = model_record.is_some();
+        let message_part = u32::from(has_model);
+        if !has_message {
+            if let Some(model_record) = model_record.as_mut() {
+                model_record.original = Some(original.clone());
+            }
+        }
         records.extend(model_record);
-        records.push(Record {
-            id: event_id.clone(),
-            source: info.source.clone(),
-            session: session.clone(),
-            invocation: invocation_id.clone(),
-            timestamp,
-            origin: origin.clone(),
-            data: RecordData::Event(Event {
-                external_id: external_id.map(str::to_owned),
-                sequence: EventSequence::new(position.line, message_part),
-                parent: message_parent,
-                inherited_from,
-                actor: actor_for_message(&role),
-                agent_id: agent_id.clone(),
-                data: EventData::Message(Message {
-                    role: role.clone(),
-                    phase: None,
-                    content: normalize_message_content(&content),
+        if has_message {
+            records.push(Record {
+                id: event_id.clone(),
+                source: info.source.clone(),
+                session: session.clone(),
+                invocation: invocation_id.clone(),
+                timestamp,
+                origin: origin.clone(),
+                data: RecordData::Event(Event {
+                    external_id: external_id.map(str::to_owned),
+                    sequence: EventSequence::new(position.line, message_part),
+                    parent: model_parent.clone(),
+                    inherited_from: inherited_from.clone(),
+                    actor: actor_for_message(&role),
+                    agent_id: agent_id.clone(),
+                    data: EventData::Message(Message {
+                        role: role.clone(),
+                        phase: None,
+                        content: normalized_message_content,
+                    }),
                 }),
-            }),
-            original: Some(original),
-        });
+                original: Some(original.clone()),
+            });
+        }
+        let content_parent = has_message
+            .then(|| event_id.clone())
+            .or_else(|| model_parent.clone());
+        let content_original = (!has_message && !has_model).then(|| original.clone());
         if primary_user {
             if let Some(execution_context) = execution_context(value, message) {
                 records.push(Record {
@@ -674,7 +1048,7 @@ pub(super) fn line_records(
                     data: RecordData::Event(Event {
                         external_id: None,
                         sequence: EventSequence::new(position.line, message_part.saturating_add(1)),
-                        parent: Some(event_id.clone()),
+                        parent: content_parent.clone(),
                         inherited_from: None,
                         actor: Actor::System,
                         agent_id: None,
@@ -711,7 +1085,7 @@ pub(super) fn line_records(
                                 data: RecordData::Event(Event {
                                     external_id: Some(call_id.to_owned()),
                                     sequence,
-                                    parent: Some(event_id.clone()),
+                                    parent: content_parent.clone(),
                                     inherited_from: inherited_tool_call_record_id(
                                         info,
                                         identity.as_ref(),
@@ -731,7 +1105,7 @@ pub(super) fn line_records(
                                         locations: observed.locations.clone(),
                                     }),
                                 }),
-                                original: None,
+                                original: content_original.clone(),
                             });
                             if is_agent_tool(&observed.name) {
                                 let invocation = agent_invocation_record(
@@ -797,7 +1171,7 @@ pub(super) fn line_records(
                                         duration_ms: tool_result_duration_ms(value, block, call_id),
                                     }),
                                 }),
-                                original: None,
+                                original: content_original.clone(),
                             });
                             if let Some(observed) = observed.as_ref() {
                                 records.extend(file_change_records(
@@ -857,7 +1231,7 @@ pub(super) fn line_records(
                             data: RecordData::Event(Event {
                                 external_id: None,
                                 sequence,
-                                parent: Some(event_id.clone()),
+                                parent: content_parent.clone(),
                                 inherited_from: None,
                                 actor: Actor::Agent,
                                 agent_id: agent_id.clone(),
@@ -880,7 +1254,7 @@ pub(super) fn line_records(
                                     },
                                 }),
                             }),
-                            original: None,
+                            original: content_original.clone(),
                         });
                     }
                     _ => {}
@@ -888,7 +1262,7 @@ pub(super) fn line_records(
             }
         }
         if role == MessageRole::Assistant {
-            if let Some(reason) = terminal_invocation_reason(message) {
+            if let Some(reason) = terminal_invocation_reason(value, message) {
                 if let Some(invocation_record) =
                     finish_invocation(info, value, reason, timestamp, session, origin, context)
                 {
@@ -1167,7 +1541,7 @@ fn invocation_record_id(
 ) -> RecordId {
     RecordId::scoped(
         &info.source,
-        "turn",
+        "agent-invocation",
         event_scope
             .map(|scope| format!("{scope}:{external_id}"))
             .unwrap_or_else(|| external_id.to_owned()),
@@ -1243,21 +1617,42 @@ fn model_invocation_record(
         .get("model")
         .and_then(Value::as_str)
         .filter(|model| !model.is_empty() && *model != "<synthetic>")?;
-    let invocation_id = value
+    let request_id = value
         .get("requestId")
-        .or_else(|| message.get("id"))
-        .or_else(|| value.get("uuid"))
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty());
-    let identity = invocation_id.unwrap_or(fallback);
+    let message_id = message
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let entry_id = value
+        .get("uuid")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let invocation_id = request_id.or(message_id).or(entry_id);
+    let identity = match (message_id, request_id) {
+        (Some(message_id), Some(request_id)) => {
+            format!("message:{message_id}:request:{request_id}")
+        }
+        (Some(message_id), None) => format!("message:{message_id}"),
+        (None, Some(request_id)) => format!("request:{request_id}"),
+        (None, None) => entry_id
+            .map(|entry_id| format!("entry:{entry_id}"))
+            .unwrap_or_else(|| fallback.to_owned()),
+    };
     let scoped_identity = event_scope
         .map(|scope| format!("{scope}:{identity}"))
-        .unwrap_or_else(|| identity.to_owned());
+        .unwrap_or(identity);
     let raw_stop_reason = message
         .get("stop_reason")
         .and_then(Value::as_str)
         .filter(|reason| !reason.is_empty());
     let failed = value.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
+    let normalized_stop_reason = if failed {
+        Some(StopReason::Failed)
+    } else {
+        raw_stop_reason.map(stop_reason)
+    };
     let status = if failed {
         ModelInvocationStatus::Failed
     } else if raw_stop_reason.is_some() {
@@ -1290,18 +1685,14 @@ fn model_invocation_record(
                 status,
                 usage: message.get("usage").and_then(normalize_usage),
                 cost: cost_usd(value),
-                stop_reason: raw_stop_reason.map(stop_reason),
+                stop_reason: normalized_stop_reason,
                 duration_ms: value
                     .get("durationMs")
                     .or_else(|| message.get("duration_ms"))
                     .and_then(Value::as_i64),
                 error: failed.then(|| {
-                    value
-                        .get("error")
-                        .or_else(|| value.get("message"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("Claude Code model invocation failed")
-                        .to_owned()
+                    provider_error_message(value)
+                        .unwrap_or_else(|| "Claude Code model invocation failed".to_owned())
                 }),
             }),
         }),
@@ -1309,7 +1700,10 @@ fn model_invocation_record(
     })
 }
 
-fn terminal_invocation_reason(message: &Value) -> Option<StopReason> {
+fn terminal_invocation_reason(value: &Value, message: &Value) -> Option<StopReason> {
+    if value.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true) {
+        return Some(StopReason::Failed);
+    }
     let reason = message
         .get("stop_reason")
         .and_then(Value::as_str)
@@ -1358,11 +1752,8 @@ fn finish_invocation(
             output: None,
             artifacts: Vec::new(),
             error: failed.then(|| {
-                value
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Claude Code agent invocation failed")
-                    .to_owned()
+                provider_error_message(value)
+                    .unwrap_or_else(|| "Claude Code agent invocation failed".to_owned())
             }),
             stop_reason: Some(reason),
             trace_id: None,
@@ -1529,7 +1920,7 @@ fn merge_agent_invocation(
     incoming: Record,
 ) -> Record {
     let Some((call_id, incoming_invocation)) = (match &incoming.data {
-        RecordData::Event(item) => match &item.data {
+        RecordData::Event(event) => match &event.data {
             EventData::AgentInvocation(invocation) => {
                 Some((invocation.invocation_id.clone(), invocation.clone()))
             }
@@ -1541,8 +1932,8 @@ fn merge_agent_invocation(
     };
     let previous = context.agent_invocations.get(&call_id).cloned();
     let mut merged = previous.unwrap_or_else(|| incoming.clone());
-    if let RecordData::Event(item) = &mut merged.data {
-        if let EventData::AgentInvocation(invocation) = &mut item.data {
+    if let RecordData::Event(event) = &mut merged.data {
+        if let EventData::AgentInvocation(invocation) = &mut event.data {
             if agent_status_rank(incoming_invocation.status) >= agent_status_rank(invocation.status)
             {
                 invocation.status = incoming_invocation.status;
@@ -1655,7 +2046,7 @@ fn entry_record_id(
 ) -> RecordId {
     RecordId::scoped(
         &info.source,
-        "item",
+        "event",
         external_id
             .and_then(|external_id| event_scope.map(|scope| format!("{scope}:{external_id}")))
             .unwrap_or_else(|| fallback.to_owned()),
@@ -1673,8 +2064,9 @@ fn parent_record_id(
         .or_else(|| value.get("logicalParentUuid").and_then(Value::as_str))
         .filter(|parent_id| !parent_id.is_empty())
         .and_then(|parent_id| {
-            event_scope
-                .map(|scope| RecordId::scoped(&info.source, "item", format!("{scope}:{parent_id}")))
+            event_scope.map(|scope| {
+                RecordId::scoped(&info.source, "event", format!("{scope}:{parent_id}"))
+            })
         })
 }
 
@@ -1692,7 +2084,7 @@ fn inherited_item_record_id(
         .and_then(Value::as_str)?;
     Some(RecordId::scoped(
         &info.source,
-        "item",
+        "event",
         format!("{project_key}:{session_id}:{event_id}"),
     ))
 }
@@ -1737,7 +2129,7 @@ fn tool_call_record_id(info: &ProviderInfo, event_scope: Option<&str>, call_id: 
 }
 
 fn normalize_message_content(value: &Value) -> Vec<ContentBlock> {
-    match value {
+    let mut content: Vec<_> = match value {
         Value::Array(blocks) => blocks
             .iter()
             .filter(|block| {
@@ -1749,7 +2141,9 @@ fn normalize_message_content(value: &Value) -> Vec<ContentBlock> {
             .flat_map(normalize_content)
             .collect(),
         value => normalize_content(value),
-    }
+    };
+    content.retain(|block| !matches!(block, ContentBlock::Text { text, .. } if text.is_empty()));
+    content
 }
 
 fn is_activity_content_type(kind: &str) -> bool {
@@ -2111,7 +2505,7 @@ pub(super) fn usage_snapshots(
         .or_else(|| value.get("timestamp"))
         .and_then(Value::as_str)
         .and_then(parse_rfc3339);
-    let mut observations = vec![(
+    let mut snapshots = vec![(
         key.clone(),
         UsageSnapshot {
             usage,
@@ -2154,7 +2548,7 @@ pub(super) fn usage_snapshots(
         let advisor_message_id = message_id
             .as_ref()
             .map(|message_id| format!("{message_id}:advisor:{advisor_index}"));
-        observations.push((
+        snapshots.push((
             format!("{key}:advisor:{advisor_index}"),
             UsageSnapshot {
                 usage,
@@ -2174,7 +2568,7 @@ pub(super) fn usage_snapshots(
         ));
         advisor_index += 1;
     }
-    observations
+    snapshots
 }
 
 pub(super) fn should_replace_usage(

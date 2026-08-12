@@ -42,6 +42,38 @@ pub(super) struct RolloutInput<'a> {
     pub lineage: Option<&'a [HistorySegment]>,
 }
 
+pub(super) fn line_too_large_record(
+    source: &CodexSource,
+    info: &ProviderInfo,
+    path: &Path,
+    position: Position,
+    context: &RolloutContext,
+) -> Record {
+    let artifact = artifact_identity(source, path);
+    let position_id = position
+        .byte_start
+        .map(|offset| format!("byte:{offset}"))
+        .unwrap_or_else(|| format!("line:{}", position.line));
+    Record {
+        id: RecordId::scoped(&info.source, "unknown", format!("{artifact}:{position_id}")),
+        source: info.source.clone(),
+        session: context.session.clone(),
+        invocation: context.current_invocation.clone(),
+        timestamp: None,
+        origin: SourceRef::json_line(
+            info.source.clone(),
+            path,
+            position.line,
+            position.byte_start,
+            position.byte_end,
+        ),
+        data: RecordData::Unknown(UnknownRecord {
+            kind: Some("line_too_large".to_owned()),
+        }),
+        original: None,
+    }
+}
+
 fn history_mode(value: &str) -> HistoryMode {
     match value {
         "legacy" | "" => HistoryMode::Legacy,
@@ -410,7 +442,7 @@ pub(super) fn rollout_records(
                 // Legacy forks can contain copied parent metadata either
                 // before or after the owning metadata. The index binding,
                 // filename hint, or selected head metadata identifies the
-                // physical owner; copied metadata is context, not an unknown
+                // physical owner. Copied metadata is context, not an unknown
                 // child event.
                 return Vec::new();
             }
@@ -530,7 +562,7 @@ pub(super) fn rollout_records(
         Some("inter_agent_communication_metadata") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position_id}:fork-turn-boundary"),
             ),
             source: info.source.clone(),
@@ -557,7 +589,7 @@ pub(super) fn rollout_records(
         Some("world_state") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position_id}:world-state"),
             ),
             source: info.source.clone(),
@@ -585,7 +617,7 @@ pub(super) fn rollout_records(
         Some("compacted") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position_id}:compaction"),
             ),
             source: info.source.clone(),
@@ -925,7 +957,7 @@ fn normalize_event_msg(
         Some("context_compacted") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position}:compaction"),
             ),
             source: info.source.clone(),
@@ -950,7 +982,7 @@ fn normalize_event_msg(
         Some("thread_rolled_back") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position}:rollback"),
             ),
             source: info.source.clone(),
@@ -1134,7 +1166,7 @@ fn normalize_goal_event(
         .map(|external_id| invocation_id(info, artifact, external_id))
         .or_else(|| context.current_invocation.clone());
     vec![Record {
-        id: RecordId::scoped(&info.source, "item", format!("{artifact}:{position}:goal")),
+        id: RecordId::scoped(&info.source, "event", format!("{artifact}:{position}:goal")),
         source: info.source.clone(),
         session: context.session.clone(),
         invocation: record_invocation,
@@ -1260,10 +1292,10 @@ fn normalize_thread_name_update(
 }
 
 /// Normalizes legacy Codex presentation events that predate the structured
-/// response-item stream. They remain separate records because the provider
-/// does not persist a reliable identity linking them to a response item; a
+/// response-event stream. They remain separate records because the provider
+/// does not persist a reliable identity linking them to a response event. A
 /// content-only comparison could otherwise discard two real, identical
-/// messages from one turn.
+/// messages from one invocation.
 #[allow(clippy::too_many_arguments)]
 fn normalize_legacy_presentation(
     info: &ProviderInfo,
@@ -1821,7 +1853,7 @@ fn normalize_materialized_event(
     original: OriginalData,
     payload: &Value,
 ) -> Vec<Record> {
-    let Some(item) = payload.get("item").filter(|item| item.is_object()) else {
+    let Some(event) = payload.get("item").filter(|event| event.is_object()) else {
         return vec![unknown_record(
             info,
             artifact,
@@ -1833,8 +1865,8 @@ fn normalize_materialized_event(
             payload.get("type").and_then(Value::as_str),
         )];
     };
-    let item_kind = item.get("type").and_then(Value::as_str);
-    let event_id = string(item, "id").filter(|value| !value.is_empty());
+    let event_kind = event.get("type").and_then(Value::as_str);
+    let event_id = string(event, "id").filter(|value| !value.is_empty());
     let identity = event_id.unwrap_or(position);
     let terminal = payload.get("type").and_then(Value::as_str) == Some("item_completed");
     let event_timestamp = materialized_event_timestamp(payload, terminal).or(timestamp);
@@ -1844,7 +1876,7 @@ fn normalize_materialized_event(
         .or_else(|| context.current_invocation.clone());
     let session = context.session.clone();
 
-    match item_kind {
+    match event_kind {
         Some("UserMessage" | "user_message") => {
             vec![Record {
                 id: RecordId::scoped(&info.source, "message", format!("{artifact}:{identity}")),
@@ -1863,14 +1895,14 @@ fn normalize_materialized_event(
                     data: EventData::Message(Message {
                         role: MessageRole::User,
                         phase: None,
-                        content: normalize_content(item.get("content").unwrap_or(&Value::Null)),
+                        content: normalize_content(event.get("content").unwrap_or(&Value::Null)),
                     }),
                 }),
                 original: Some(original),
             }]
         }
         Some("HookPrompt" | "hook_prompt") => {
-            let content = item
+            let content = event
                 .get("fragments")
                 .and_then(Value::as_array)
                 .into_iter()
@@ -1919,15 +1951,15 @@ fn normalize_materialized_event(
                     agent_id: None,
                     data: EventData::Message(Message {
                         role: MessageRole::Assistant,
-                        phase: string(item, "phase").map(message_phase),
-                        content: normalize_content(item.get("content").unwrap_or(&Value::Null)),
+                        phase: string(event, "phase").map(message_phase),
+                        content: normalize_content(event.get("content").unwrap_or(&Value::Null)),
                     }),
                 }),
                 original: Some(original),
             }]
         }
         Some("Plan" | "plan") => vec![Record {
-            id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
+            id: RecordId::scoped(&info.source, "event", format!("{artifact}:{identity}")),
             source: info.source.clone(),
             session,
             invocation: record_invocation,
@@ -1941,7 +1973,7 @@ fn normalize_materialized_event(
                 actor: Actor::Agent,
                 agent_id: None,
                 data: EventData::Plan(Plan {
-                    text: optional_nonempty_string(item, "text"),
+                    text: optional_nonempty_string(event, "text"),
                     steps: Vec::new(),
                 }),
             }),
@@ -1964,9 +1996,9 @@ fn normalize_materialized_event(
                     agent_id: None,
                     data: EventData::Reasoning(Reasoning {
                         summary: normalize_reasoning_summary(
-                            item.get("summary_text").unwrap_or(&Value::Null),
+                            event.get("summary_text").unwrap_or(&Value::Null),
                         ),
-                        content: item
+                        content: event
                             .get("raw_content")
                             .and_then(Value::as_array)
                             .into_iter()
@@ -1982,22 +2014,22 @@ fn normalize_materialized_event(
         }
         Some("CommandExecution" | "command_execution") => {
             let input = serde_json::json!({
-                "command": item.get("command").cloned().unwrap_or(Value::Null),
-                "cwd": item.get("cwd").cloned().unwrap_or(Value::Null),
-                "source": item.get("source").cloned().unwrap_or(Value::Null),
-                "interaction_input": item
+                "command": event.get("command").cloned().unwrap_or(Value::Null),
+                "cwd": event.get("cwd").cloned().unwrap_or(Value::Null),
+                "source": event.get("source").cloned().unwrap_or(Value::Null),
+                "interaction_input": event
                     .get("interaction_input")
                     .cloned()
                     .unwrap_or(Value::Null),
-                "plugin_id": item.get("plugin_id").cloned().unwrap_or(Value::Null),
-                "script_path": item.get("script_path").cloned().unwrap_or(Value::Null),
+                "plugin_id": event.get("plugin_id").cloned().unwrap_or(Value::Null),
+                "script_path": event.get("script_path").cloned().unwrap_or(Value::Null),
             });
             let observed = ObservedTool::new(
                 "exec_command",
-                string(item, "plugin_id").filter(|value| !value.is_empty()),
+                string(event, "plugin_id").filter(|value| !value.is_empty()),
                 &input,
             );
-            let status = string(item, "status")
+            let status = string(event, "status")
                 .map(tool_status)
                 .unwrap_or(if terminal {
                     ToolStatus::Completed
@@ -2005,22 +2037,22 @@ fn normalize_materialized_event(
                     ToolStatus::InProgress
                 });
             let output = serde_json::json!({
-                "stdout": item.get("stdout").cloned().unwrap_or(Value::Null),
-                "stderr": item.get("stderr").cloned().unwrap_or(Value::Null),
-                "aggregated_output": item
+                "stdout": event.get("stdout").cloned().unwrap_or(Value::Null),
+                "stderr": event.get("stderr").cloned().unwrap_or(Value::Null),
+                "aggregated_output": event
                     .get("aggregated_output")
                     .cloned()
                     .unwrap_or(Value::Null),
-                "formatted_output": item
+                "formatted_output": event
                     .get("formatted_output")
                     .cloned()
                     .unwrap_or(Value::Null),
-                "exit_code": item.get("exit_code").cloned().unwrap_or(Value::Null),
+                "exit_code": event.get("exit_code").cloned().unwrap_or(Value::Null),
             });
             let content = ["aggregated_output", "formatted_output", "stdout", "stderr"]
                 .into_iter()
                 .find_map(|key| {
-                    string(item, key)
+                    string(event, key)
                         .filter(|value| !value.is_empty())
                         .map(ContentBlock::text)
                 })
@@ -2041,8 +2073,8 @@ fn normalize_materialized_event(
                     observed,
                     title: None,
                     status,
-                    error: tool_output_error(item, status),
-                    duration_ms: duration_millis(item.get("duration")),
+                    error: tool_output_error(event, status),
+                    duration_ms: duration_millis(event.get("duration")),
                     output,
                     content,
                     terminal,
@@ -2051,20 +2083,20 @@ fn normalize_materialized_event(
             )
         }
         Some("DynamicToolCall" | "dynamic_tool_call") => {
-            let input = item.get("arguments").cloned().unwrap_or(Value::Null);
+            let input = event.get("arguments").cloned().unwrap_or(Value::Null);
             let observed = ObservedTool::new(
-                string(item, "tool").unwrap_or_default(),
-                string(item, "namespace"),
+                string(event, "tool").unwrap_or_default(),
+                string(event, "namespace"),
                 &input,
             );
-            let status = string(item, "status")
+            let status = string(event, "status")
                 .map(tool_status)
                 .unwrap_or(if terminal {
                     ToolStatus::Completed
                 } else {
                     ToolStatus::InProgress
                 });
-            let output = item.get("content_items").cloned().unwrap_or(Value::Null);
+            let output = event.get("content_items").cloned().unwrap_or(Value::Null);
             materialized_tool_records(
                 info,
                 artifact,
@@ -2082,8 +2114,8 @@ fn normalize_materialized_event(
                     status,
                     content: normalize_content(&output),
                     output,
-                    error: optional_nonempty_string(item, "error"),
-                    duration_ms: duration_millis(item.get("duration")),
+                    error: optional_nonempty_string(event, "error"),
+                    duration_ms: duration_millis(event.get("duration")),
                     terminal,
                     derive_file_changes: true,
                 },
@@ -2101,7 +2133,7 @@ fn normalize_materialized_event(
                 record_invocation,
                 origin,
                 original,
-                item,
+                event,
                 terminal,
             )
         }
@@ -2117,18 +2149,18 @@ fn normalize_materialized_event(
                 record_invocation,
                 origin,
                 original,
-                item,
+                event,
             )
         }
         Some("WebSearch" | "web_search") => {
             let input = serde_json::json!({
-                "query": item.get("query").cloned().unwrap_or(Value::Null),
-                "action": item.get("action").cloned().unwrap_or(Value::Null),
+                "query": event.get("query").cloned().unwrap_or(Value::Null),
+                "action": event.get("action").cloned().unwrap_or(Value::Null),
             });
             let observed = ObservedTool::new("web_search", None, &input);
             let output = serde_json::json!({
-                "results": item.get("results").cloned().unwrap_or(Value::Null),
-                "action": item.get("action").cloned().unwrap_or(Value::Null),
+                "results": event.get("results").cloned().unwrap_or(Value::Null),
+                "action": event.get("action").cloned().unwrap_or(Value::Null),
             });
             materialized_tool_records(
                 info,
@@ -2160,9 +2192,9 @@ fn normalize_materialized_event(
         }
         Some("ImageView" | "image_view") => {
             let input =
-                serde_json::json!({ "path": item.get("path").cloned().unwrap_or(Value::Null) });
+                serde_json::json!({ "path": event.get("path").cloned().unwrap_or(Value::Null) });
             let observed = ObservedTool::new("view_image", None, &input);
-            let path = string(item, "path").filter(|value| !value.is_empty());
+            let path = string(event, "path").filter(|value| !value.is_empty());
             materialized_tool_records(
                 info,
                 artifact,
@@ -2199,7 +2231,9 @@ fn normalize_materialized_event(
                 },
             )
         }
-        Some("Extension" | "extension") if string(item, "kind") == Some("image_gen.generation") => {
+        Some("Extension" | "extension")
+            if string(event, "kind") == Some("image_gen.generation") =>
+        {
             normalize_materialized_image_generation(
                 info,
                 artifact,
@@ -2211,19 +2245,19 @@ fn normalize_materialized_event(
                 record_invocation,
                 origin,
                 original,
-                item,
+                event,
                 terminal,
             )
         }
-        Some("Extension" | "extension") if string(item, "kind") == Some("web.search") => {
+        Some("Extension" | "extension") if string(event, "kind") == Some("web.search") => {
             let input = serde_json::json!({
-                "query": item.get("query").cloned().unwrap_or(Value::Null),
-                "action": item.get("action").cloned().unwrap_or(Value::Null),
+                "query": event.get("query").cloned().unwrap_or(Value::Null),
+                "action": event.get("action").cloned().unwrap_or(Value::Null),
             });
             let observed = ObservedTool::new("web_search", Some("web"), &input);
             let output = serde_json::json!({
-                "results": item.get("results").cloned().unwrap_or(Value::Null),
-                "action": item.get("action").cloned().unwrap_or(Value::Null),
+                "results": event.get("results").cloned().unwrap_or(Value::Null),
+                "action": event.get("action").cloned().unwrap_or(Value::Null),
             });
             materialized_tool_records(
                 info,
@@ -2253,11 +2287,11 @@ fn normalize_materialized_event(
                 },
             )
         }
-        Some("Extension" | "extension") if string(item, "kind") == Some("clock.sleep") => {
+        Some("Extension" | "extension") if string(event, "kind") == Some("clock.sleep") => {
             let input = serde_json::json!({
-                "duration_ms": item
+                "duration_ms": event
                     .get("durationMs")
-                    .or_else(|| item.get("duration_ms"))
+                    .or_else(|| event.get("duration_ms"))
                     .cloned()
                     .unwrap_or(Value::Null)
             });
@@ -2283,9 +2317,9 @@ fn normalize_materialized_event(
                     output: Value::Null,
                     content: Vec::new(),
                     error: None,
-                    duration_ms: item
+                    duration_ms: event
                         .get("durationMs")
-                        .or_else(|| item.get("duration_ms"))
+                        .or_else(|| event.get("duration_ms"))
                         .and_then(Value::as_i64),
                     terminal,
                     derive_file_changes: false,
@@ -2303,7 +2337,7 @@ fn normalize_materialized_event(
             record_invocation,
             origin,
             original,
-            item,
+            event,
             terminal,
         ),
         Some("EnteredReviewMode" | "entered_review_mode")
@@ -2318,7 +2352,7 @@ fn normalize_materialized_event(
             record_invocation,
             origin,
             original,
-            item,
+            event,
         ),
         Some("FileChange" | "file_change") => normalize_materialized_file_change(
             info,
@@ -2331,7 +2365,7 @@ fn normalize_materialized_event(
             record_invocation,
             origin,
             original,
-            item,
+            event,
             terminal,
         ),
         Some("McpToolCall" | "mcp_tool_call") => normalize_materialized_mcp_call(
@@ -2345,11 +2379,11 @@ fn normalize_materialized_event(
             record_invocation,
             origin,
             original,
-            item,
+            event,
             terminal,
         ),
         Some("ContextCompaction" | "context_compaction") => vec![Record {
-            id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
+            id: RecordId::scoped(&info.source, "event", format!("{artifact}:{identity}")),
             source: info.source.clone(),
             session,
             invocation: record_invocation,
@@ -2362,7 +2396,7 @@ fn normalize_materialized_event(
                 inherited_from: None,
                 actor: Actor::System,
                 agent_id: None,
-                data: EventData::ContextCompaction(normalize_compaction(item)),
+                data: EventData::ContextCompaction(normalize_compaction(event)),
             }),
             original: Some(original),
         }],
@@ -2376,8 +2410,8 @@ fn normalize_materialized_event(
             record_invocation,
             origin,
             original,
-            item,
-            item_kind,
+            event,
+            event_kind,
         )],
     }
 }
@@ -2407,10 +2441,10 @@ fn normalize_materialized_agent_call(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
     terminal: bool,
 ) -> Vec<Record> {
-    let tool = string(item, "tool").unwrap_or_default();
+    let tool = string(event, "tool").unwrap_or_default();
     let operation = match tool {
         "spawn_agent" => AgentOperation::Spawn,
         "send_input" => AgentOperation::SendInput,
@@ -2419,7 +2453,7 @@ fn normalize_materialized_agent_call(
         "close_agent" => AgentOperation::Close,
         value => AgentOperation::Other(value.to_owned()),
     };
-    let status = match string(item, "status") {
+    let status = match string(event, "status") {
         Some("in_progress" | "inProgress") => AgentInvocationStatus::InProgress,
         Some("completed") => AgentInvocationStatus::Completed,
         Some("failed") => AgentInvocationStatus::Failed,
@@ -2427,7 +2461,7 @@ fn normalize_materialized_agent_call(
         None if terminal => AgentInvocationStatus::Completed,
         None => AgentInvocationStatus::InProgress,
     };
-    let receiver_ids = item
+    let receiver_ids = event
         .get("receiver_thread_ids")
         .and_then(Value::as_array)
         .into_iter()
@@ -2437,14 +2471,14 @@ fn normalize_materialized_agent_call(
         .map(str::to_owned)
         .collect::<Vec<_>>();
     let input = serde_json::json!({
-        "prompt": item.get("prompt").cloned().unwrap_or(Value::Null),
-        "model": item.get("model").cloned().unwrap_or(Value::Null),
-        "reasoning_effort": item
+        "prompt": event.get("prompt").cloned().unwrap_or(Value::Null),
+        "model": event.get("model").cloned().unwrap_or(Value::Null),
+        "reasoning_effort": event
             .get("reasoning_effort")
             .cloned()
             .unwrap_or(Value::Null),
     });
-    let output = item
+    let output = event
         .get("agents_states")
         .filter(|value| !value.is_null())
         .cloned();
@@ -2465,13 +2499,13 @@ fn normalize_materialized_agent_call(
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
-            agent_id: optional_nonempty_string(item, "sender_thread_id"),
+            agent_id: optional_nonempty_string(event, "sender_thread_id"),
             data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: identity.to_owned(),
                 context_id: None,
                 task_id: None,
                 operation: operation.clone(),
-                sender_id: optional_nonempty_string(item, "sender_thread_id"),
+                sender_id: optional_nonempty_string(event, "sender_thread_id"),
                 child_session: matches!(operation, AgentOperation::Spawn)
                     .then(|| receiver_ids.first().map(|id| session_id(info, id)))
                     .flatten(),
@@ -2506,12 +2540,12 @@ fn normalize_materialized_subagent_activity(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
 ) -> Vec<Record> {
-    let agent_thread_id = string(item, "agent_thread_id")
+    let agent_thread_id = string(event, "agent_thread_id")
         .filter(|value| !value.is_empty())
         .map(str::to_owned);
-    let (operation, status) = match string(item, "kind").unwrap_or_default() {
+    let (operation, status) = match string(event, "kind").unwrap_or_default() {
         "started" => (AgentOperation::Spawn, AgentInvocationStatus::InProgress),
         "interacted" => (
             AgentOperation::Other("interacted".to_owned()),
@@ -2543,7 +2577,7 @@ fn normalize_materialized_subagent_activity(
             parent: None,
             inherited_from: None,
             actor: Actor::Agent,
-            agent_id: optional_nonempty_string(item, "agent_path"),
+            agent_id: optional_nonempty_string(event, "agent_path"),
             data: EventData::AgentInvocation(AgentInvocation {
                 invocation_id: identity.to_owned(),
                 context_id: None,
@@ -2582,16 +2616,17 @@ fn normalize_materialized_mode_change(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
 ) -> Vec<Record> {
     let entered = matches!(
-        item.get("type").and_then(Value::as_str),
+        event.get("type").and_then(Value::as_str),
         Some("EnteredReviewMode" | "entered_review_mode")
     );
     let description = if entered {
-        optional_nonempty_string(item, "user_facing_hint")
+        optional_nonempty_string(event, "user_facing_hint")
     } else {
-        item.get("review_output")
+        event
+            .get("review_output")
             .and_then(|review| optional_nonempty_string(review, "overall_explanation"))
     };
     vec![Record {
@@ -2638,40 +2673,40 @@ fn normalize_materialized_image_generation(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
     terminal: bool,
 ) -> Vec<Record> {
-    let status = string(item, "status")
+    let status = string(event, "status")
         .map(tool_status)
         .unwrap_or(if terminal {
             ToolStatus::Completed
         } else {
             ToolStatus::InProgress
         });
-    let saved_path = string(item, "saved_path")
-        .or_else(|| string(item, "savedPath"))
+    let saved_path = string(event, "saved_path")
+        .or_else(|| string(event, "savedPath"))
         .filter(|value| !value.is_empty());
-    let result = string(item, "result").filter(|value| !value.is_empty());
+    let result = string(event, "result").filter(|value| !value.is_empty());
     let input = serde_json::json!({
-        "prompt": item
+        "prompt": event
             .get("revised_prompt")
-            .or_else(|| item.get("revisedPrompt"))
+            .or_else(|| event.get("revisedPrompt"))
             .cloned()
             .unwrap_or(Value::Null),
-        "saved_path": item
+        "saved_path": event
             .get("saved_path")
-            .or_else(|| item.get("savedPath"))
+            .or_else(|| event.get("savedPath"))
             .cloned()
             .unwrap_or(Value::Null),
     });
     let output = serde_json::json!({
-        "result": item.get("result").cloned().unwrap_or(Value::Null),
-        "saved_path": item
+        "result": event.get("result").cloned().unwrap_or(Value::Null),
+        "saved_path": event
             .get("saved_path")
-            .or_else(|| item.get("savedPath"))
+            .or_else(|| event.get("savedPath"))
             .cloned()
             .unwrap_or(Value::Null),
-        "status": item.get("status").cloned().unwrap_or(Value::Null),
+        "status": event.get("status").cloned().unwrap_or(Value::Null),
     });
     let mut records = materialized_tool_records(
         info,
@@ -2752,10 +2787,10 @@ fn normalize_materialized_file_change(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
     terminal: bool,
 ) -> Vec<Record> {
-    let status = string(item, "status")
+    let status = string(event, "status")
         .map(tool_status)
         .unwrap_or(if terminal {
             ToolStatus::Completed
@@ -2763,16 +2798,16 @@ fn normalize_materialized_file_change(
             ToolStatus::InProgress
         });
     let input = serde_json::json!({
-        "changes": item.get("changes").cloned().unwrap_or(Value::Null)
+        "changes": event.get("changes").cloned().unwrap_or(Value::Null)
     });
     let output = serde_json::json!({
-        "stdout": item.get("stdout").cloned().unwrap_or(Value::Null),
-        "stderr": item.get("stderr").cloned().unwrap_or(Value::Null),
-        "changes": item.get("changes").cloned().unwrap_or(Value::Null),
+        "stdout": event.get("stdout").cloned().unwrap_or(Value::Null),
+        "stderr": event.get("stderr").cloned().unwrap_or(Value::Null),
+        "changes": event.get("changes").cloned().unwrap_or(Value::Null),
     });
     let content = ["stdout", "stderr"]
         .into_iter()
-        .filter_map(|key| string(item, key))
+        .filter_map(|key| string(event, key))
         .filter(|value| !value.is_empty())
         .map(ContentBlock::text)
         .collect();
@@ -2793,14 +2828,14 @@ fn normalize_materialized_file_change(
             status,
             output,
             content,
-            error: tool_output_error(item, status),
+            error: tool_output_error(event, status),
             duration_ms: None,
             terminal,
             derive_file_changes: false,
         },
     );
 
-    let mut changes = item
+    let mut changes = event
         .get("changes")
         .and_then(Value::as_object)
         .into_iter()
@@ -2858,28 +2893,28 @@ fn normalize_materialized_mcp_call(
     invocation: Option<RecordId>,
     origin: SourceRef,
     original: OriginalData,
-    item: &Value,
+    event: &Value,
     terminal: bool,
 ) -> Vec<Record> {
-    let input = item.get("arguments").cloned().unwrap_or(Value::Null);
+    let input = event.get("arguments").cloned().unwrap_or(Value::Null);
     let observed = ObservedTool::new(
-        string(item, "tool").unwrap_or_default(),
-        string(item, "server"),
+        string(event, "tool").unwrap_or_default(),
+        string(event, "server"),
         &input,
     );
-    let status = string(item, "status")
+    let status = string(event, "status")
         .map(tool_status)
         .unwrap_or(if terminal {
             ToolStatus::Completed
         } else {
             ToolStatus::InProgress
         });
-    let output = item
+    let output = event
         .get("result")
         .cloned()
-        .or_else(|| item.get("error").cloned())
+        .or_else(|| event.get("error").cloned())
         .unwrap_or(Value::Null);
-    let error = item.get("error").and_then(|error| {
+    let error = event.get("error").and_then(|error| {
         error
             .as_str()
             .map(str::to_owned)
@@ -2906,17 +2941,17 @@ fn normalize_materialized_mcp_call(
         MaterializedTool {
             call_id: identity.to_owned(),
             observed,
-            title: optional_nonempty_string(item, "appName")
-                .or_else(|| optional_nonempty_string(item, "app_name")),
+            title: optional_nonempty_string(event, "appName")
+                .or_else(|| optional_nonempty_string(event, "app_name")),
             status,
-            content: item
+            content: event
                 .get("result")
                 .and_then(|result| result.get("content"))
                 .map(normalize_content)
                 .unwrap_or_default(),
             output,
             error,
-            duration_ms: duration_millis(item.get("duration")),
+            duration_ms: duration_millis(event.get("duration")),
             terminal,
             derive_file_changes: true,
         },
@@ -3874,7 +3909,7 @@ fn normalize_plan_event(
         })
         .collect();
     vec![Record {
-        id: RecordId::scoped(&info.source, "item", format!("{artifact}:{position}:plan")),
+        id: RecordId::scoped(&info.source, "event", format!("{artifact}:{position}:plan")),
         source: info.source.clone(),
         session: context.session.clone(),
         invocation: context.current_invocation.clone(),
@@ -3916,7 +3951,11 @@ fn normalize_terminal_invocation(
         .map(|value| invocation_id(info, artifact, value))
         .or_else(|| context.current_invocation.clone())
         .unwrap_or_else(|| {
-            RecordId::scoped(&info.source, "turn", format!("{artifact}:{position}"))
+            RecordId::scoped(
+                &info.source,
+                "agent-invocation",
+                format!("{artifact}:{position}"),
+            )
         });
     let error = payload
         .get("error")
@@ -4042,7 +4081,7 @@ fn normalize_response_item(
                     .filter(|value| !value.is_empty())
                     .map(str::to_owned),
             );
-            let invocation_id = payload
+            let task_id = payload
                 .get("internal_chat_message_metadata_passthrough")
                 .and_then(|metadata| string(metadata, "turn_id"))
                 .map(str::to_owned);
@@ -4058,7 +4097,7 @@ fn normalize_response_item(
                 timestamp,
                 origin,
                 data: RecordData::Event(Event {
-                    external_id: string(payload, "id").map(str::to_owned),
+                    external_id: Some(event_id.clone()),
                     sequence,
                     parent: None,
                     inherited_from: None,
@@ -4067,7 +4106,7 @@ fn normalize_response_item(
                     data: EventData::AgentInvocation(AgentInvocation {
                         invocation_id: event_id,
                         context_id: context.session_external_id.clone(),
-                        task_id: invocation_id,
+                        task_id,
                         operation: AgentOperation::SendInput,
                         sender_id: sender,
                         receiver_ids,
@@ -4207,7 +4246,7 @@ fn normalize_response_item(
             };
             if context.terminal_tool_results.contains(call_id) {
                 // Codex commonly writes a richer terminal event first and
-                // then repeats its output as a response item. Keep the
+                // then repeats its output as a response event. Keep the
                 // terminal record instead of replacing it with a less
                 // informative projection.
                 return Vec::new();
@@ -4506,7 +4545,7 @@ fn normalize_response_item(
         Some("compaction" | "compaction_summary" | "context_compaction") => vec![Record {
             id: RecordId::scoped(
                 &info.source,
-                "item",
+                "event",
                 format!("{artifact}:{position}:compaction"),
             ),
             source: info.source.clone(),
@@ -4525,7 +4564,7 @@ fn normalize_response_item(
             }),
             original: Some(original),
         }],
-        item_kind => vec![unknown_event_record(
+        event_kind => vec![unknown_event_record(
             info,
             artifact,
             position,
@@ -4536,7 +4575,7 @@ fn normalize_response_item(
             origin,
             original,
             payload,
-            item_kind,
+            event_kind,
         )],
     }
 }
@@ -4574,7 +4613,7 @@ fn unknown_event_record(
         .map(str::to_owned);
     let identity = external_id.as_deref().unwrap_or(position);
     Record {
-        id: RecordId::scoped(&info.source, "item", format!("{artifact}:{identity}")),
+        id: RecordId::scoped(&info.source, "event", format!("{artifact}:{identity}")),
         source: info.source.clone(),
         session,
         invocation,
@@ -4625,7 +4664,11 @@ fn unknown_record(
 }
 
 fn invocation_id(info: &ProviderInfo, artifact: &str, external_id: &str) -> RecordId {
-    RecordId::scoped(&info.source, "turn", format!("{artifact}:{external_id}"))
+    RecordId::scoped(
+        &info.source,
+        "agent-invocation",
+        format!("{artifact}:{external_id}"),
+    )
 }
 
 fn artifact_identity(source: &CodexSource, path: &Path) -> String {
