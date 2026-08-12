@@ -5,29 +5,45 @@ mod repository;
 
 #[cfg(not(feature = "e2e"))]
 pub use ingestion::AgentDataMonitor;
-pub use model::{AnalyticsSnapshot, SessionDetail, SessionPage, SessionPageRequest};
+pub use model::{SessionDetail, SessionPage, SessionPageRequest, SkillAnalysis};
 
 use crate::database::Database;
 
-#[tauri::command]
-pub fn get_analytics_snapshot(
-    database: tauri::State<'_, Database>,
-) -> Result<AnalyticsSnapshot, String> {
-    repository::analytics_snapshot(&database).map_err(|error| error.to_string())
+fn join_error(error: impl std::fmt::Display) -> String {
+    format!("analytics query task failed: {error}")
 }
 
 #[tauri::command]
-pub fn get_session_page(
+pub async fn get_skill_analysis(
+    database: tauri::State<'_, Database>,
+) -> Result<SkillAnalysis, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || repository::skill_analysis(&database))
+        .await
+        .map_err(join_error)?
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn get_session_page(
     database: tauri::State<'_, Database>,
     request: SessionPageRequest,
 ) -> Result<SessionPage, String> {
-    repository::session_page(&database, request).map_err(|error| error.to_string())
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || repository::session_page(&database, request))
+        .await
+        .map_err(join_error)?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub fn get_session_detail(
+pub async fn get_session_detail(
     database: tauri::State<'_, Database>,
     session_id: String,
 ) -> Result<Option<SessionDetail>, String> {
-    repository::session_detail(&database, &session_id).map_err(|error| error.to_string())
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || repository::session_detail(&database, &session_id))
+        .await
+        .map_err(join_error)?
+        .map_err(|error| error.to_string())
 }

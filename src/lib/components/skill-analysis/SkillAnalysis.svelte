@@ -3,7 +3,8 @@ import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 import SearchIcon from '@lucide/svelte/icons/search';
 import SparklesIcon from '@lucide/svelte/icons/sparkles';
 import { onMount } from 'svelte';
-import { type AnalyticsSnapshot, getAnalyticsSnapshot, type SkillSummary } from '$lib/analytics';
+import { getSkillAnalysis, type SkillAnalysisData, type SkillSummary } from '$lib/analytics';
+import DataPagination from '$lib/components/data-pagination/DataPagination.svelte';
 import * as Alert from '$lib/components/ui/alert';
 import { Badge } from '$lib/components/ui/badge';
 import { Button } from '$lib/components/ui/button';
@@ -20,25 +21,34 @@ import {
 } from '$lib/components/ui/table';
 import { i18nManager } from '$lib/i18n.svelte';
 import { logWarn } from '$lib/logger';
+import { createTrailingRefresh } from '$lib/trailing-refresh';
 
-let snapshot = $state.raw<AnalyticsSnapshot | null>(null);
+let { active = true }: { active?: boolean } = $props();
+
+let analysis = $state.raw<SkillAnalysisData | null>(null);
 let loading = $state(true);
 let error = $state('');
 let query = $state('');
+let page = $state(1);
+let pageSize = $state(50);
 let requestSequence = 0;
+let refreshWhenActive = $state(false);
+const skillRefresh = createTrailingRefresh(loadSkills);
 
 const normalizedQuery = $derived(query.trim().toLocaleLowerCase());
-const visibleSkills = $derived.by(() => {
-  const skills = snapshot?.skills ?? [];
+const filteredSkills = $derived.by(() => {
+  const skills = analysis?.skills ?? [];
   if (!normalizedQuery) return skills;
   return skills.filter((skill) => skill.name.toLocaleLowerCase().includes(normalizedQuery));
 });
+const pageCount = $derived(Math.max(1, Math.ceil(filteredSkills.length / pageSize)));
+const visibleSkills = $derived(filteredSkills.slice((page - 1) * pageSize, page * pageSize));
 
 const totalInvocations = $derived(
-  (snapshot?.skills ?? []).reduce((total, skill) => total + skill.invocationCount, 0)
+  (analysis?.skills ?? []).reduce((total, skill) => total + skill.invocationCount, 0)
 );
 const successfulInvocations = $derived(
-  (snapshot?.skills ?? []).reduce((total, skill) => total + skill.succeededCount, 0)
+  (analysis?.skills ?? []).reduce((total, skill) => total + skill.succeededCount, 0)
 );
 const overallSuccessRate = $derived(
   totalInvocations === 0 ? null : successfulInvocations / totalInvocations
@@ -46,12 +56,17 @@ const overallSuccessRate = $derived(
 
 async function loadSkills() {
   const sequence = ++requestSequence;
-  loading = snapshot === null;
+  loading = true;
   error = '';
   try {
-    const result = await getAnalyticsSnapshot();
+    const result = await getSkillAnalysis();
     if (sequence !== requestSequence) return;
-    snapshot = result;
+    analysis = result;
+    const matchingSkillCount = normalizedQuery
+      ? result.skills.filter((skill) => skill.name.toLocaleLowerCase().includes(normalizedQuery))
+          .length
+      : result.skills.length;
+    page = Math.min(page, Math.max(1, Math.ceil(matchingSkillCount / pageSize)));
   } catch (cause) {
     if (sequence !== requestSequence) return;
     error = cause instanceof Error ? cause.message : String(cause);
@@ -64,13 +79,15 @@ onMount(() => {
   let disposed = false;
   let unlisten: (() => void) | undefined;
 
-  void loadSkills();
+  skillRefresh.request(true);
   void (async () => {
     const { isTauri } = await import('@tauri-apps/api/core');
     if (!isTauri()) return;
     const { listen } = await import('@tauri-apps/api/event');
     const stopListening = await listen('analytics-updated', () => {
-      if (!disposed) void loadSkills();
+      if (disposed) return;
+      if (active) skillRefresh.request();
+      else refreshWhenActive = true;
     });
     if (disposed) stopListening();
     else unlisten = stopListening;
@@ -79,12 +96,36 @@ onMount(() => {
   return () => {
     disposed = true;
     requestSequence += 1;
+    skillRefresh.cancel();
     unlisten?.();
   };
 });
 
+export function activate() {
+  if (refreshWhenActive) {
+    refreshWhenActive = false;
+    skillRefresh.request();
+  }
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function updateQuery(event: Event) {
+  query = (event.currentTarget as HTMLInputElement).value;
+  page = 1;
+}
+
+function goToPage(value: number) {
+  if (value < 1 || value > pageCount || value === page) return;
+  page = value;
+}
+
+function setPageSize(value: number) {
+  if (value === pageSize) return;
+  pageSize = value;
+  page = 1;
 }
 
 function formatPercent(value: number | null): string {
@@ -111,7 +152,11 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
 }
 </script>
 
-<div class="flex min-w-0 flex-1 flex-col" data-testid="skill-analysis">
+<div
+  class="flex min-w-0 flex-1 flex-col"
+  data-testid="skill-analysis"
+  aria-busy={loading}
+>
   <section class="border-b bg-muted/15 px-5 py-5 sm:px-6" aria-labelledby="skill-overview-title">
     <div class="flex items-center gap-2">
       <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -132,25 +177,37 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
         <dt class="text-[11px] font-medium text-muted-foreground">
           {i18nManager.t('dashboard.summary.skills')}
         </dt>
-        <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
-          {formatNumber(snapshot?.skills.length ?? 0)}
-        </dd>
+        {#if analysis}
+          <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
+            {formatNumber(analysis.skills.length)}
+          </dd>
+        {:else}
+          <Skeleton class="mt-2 h-6 w-14" />
+        {/if}
       </div>
       <div class="bg-card px-4 py-3.5">
         <dt class="text-[11px] font-medium text-muted-foreground">
           {i18nManager.t('dashboard.skill.invocations')}
         </dt>
-        <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
-          {formatNumber(totalInvocations)}
-        </dd>
+        {#if analysis}
+          <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
+            {formatNumber(totalInvocations)}
+          </dd>
+        {:else}
+          <Skeleton class="mt-2 h-6 w-16" />
+        {/if}
       </div>
       <div class="bg-card px-4 py-3.5">
         <dt class="text-[11px] font-medium text-muted-foreground">
           {i18nManager.t('dashboard.skill.success_rate')}
         </dt>
-        <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
-          {formatPercent(overallSuccessRate)}
-        </dd>
+        {#if analysis}
+          <dd class="mt-1.5 text-xl font-semibold tracking-tight tabular-nums">
+            {formatPercent(overallSuccessRate)}
+          </dd>
+        {:else}
+          <Skeleton class="mt-2 h-6 w-12" />
+        {/if}
       </div>
     </dl>
   </section>
@@ -162,7 +219,8 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
         aria-hidden="true"
       />
       <Input
-        bind:value={query}
+        value={query}
+        oninput={updateQuery}
         class="h-9 bg-muted/20 pl-9 shadow-none"
         aria-label={i18nManager.t('dashboard.search.label')}
         placeholder={i18nManager.t('dashboard.search.skills')}
@@ -177,13 +235,13 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
         <Alert.Title>{i18nManager.t('dashboard.sync.error')}</Alert.Title>
         <Alert.Description>{error}</Alert.Description>
         <Alert.Action>
-          <Button variant="outline" size="sm" onclick={() => void loadSkills()}>
+          <Button variant="outline" size="sm" onclick={() => skillRefresh.request(true)}>
             {i18nManager.t('sessions.retry')}
           </Button>
         </Alert.Action>
       </Alert.Root>
     </div>
-  {:else if loading}
+  {:else if loading && !analysis}
     <div class="flex-1" role="status">
       <span class="sr-only">{i18nManager.t('dashboard.loading')}</span>
       {#each ['a', 'b', 'c', 'd', 'e'] as item (item)}
@@ -194,7 +252,7 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
         </div>
       {/each}
     </div>
-  {:else if visibleSkills.length === 0}
+  {:else if filteredSkills.length === 0}
     <Empty.Root class="min-h-[24rem]">
       <Empty.Header>
         <Empty.Media variant="icon"><SparklesIcon aria-hidden="true" /></Empty.Media>
@@ -205,7 +263,10 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
       </Empty.Header>
     </Empty.Root>
   {:else}
-    <div class="min-h-0 flex-1 overflow-auto">
+    <div class="relative min-h-0 flex-1 overflow-auto">
+      {#if loading}
+        <Skeleton class="sticky top-0 z-20 h-0.5 rounded-none" />
+      {/if}
       <Table class="min-w-[56rem]">
         <TableHeader class="sticky top-0 z-10 bg-muted/40 backdrop-blur-sm">
           <TableRow class="hover:bg-transparent">
@@ -253,5 +314,17 @@ function successVariant(skill: SkillSummary): 'success' | 'warning' | 'outline' 
         </TableBody>
       </Table>
     </div>
+    <DataPagination
+      idPrefix="skills"
+      {page}
+      {pageSize}
+      totalCount={filteredSkills.length}
+      totalLabel={i18nManager.t('dashboard.pagination.results', {
+        count: filteredSkills.length,
+      })}
+      {loading}
+      onPageChange={goToPage}
+      onPageSizeChange={setPageSize}
+    />
   {/if}
 </div>

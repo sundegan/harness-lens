@@ -5,12 +5,15 @@ use rusqlite::types::Type;
 use rusqlite::Transaction;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
+#[cfg(test)]
+use super::model::{AnalyticsSnapshot, OverallSummary, SessionSummary};
 use super::model::{
-    AnalyticsSnapshot, OverallSummary, SessionDetail, SessionEventItem, SessionListItem,
-    SessionPage, SessionPageRequest, SessionSummary, SkillSummary, SyncStatus,
+    SessionDetail, SessionEventItem, SessionListItem, SessionPage, SessionPageRequest,
+    SkillAnalysis, SkillSummary,
 };
 use crate::database::{Database, DatabaseError};
 
+#[cfg(any(not(feature = "e2e"), test))]
 pub(super) const PROVIDER: &str = "codex";
 
 pub(super) fn now_ms() -> i64 {
@@ -115,22 +118,29 @@ pub(super) fn save_batch_state(
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn analytics_snapshot(database: &Database) -> Result<AnalyticsSnapshot, DatabaseError> {
     let connection = database.connect()?;
     let transaction = connection
         .unchecked_transaction()
         .map_err(|source| DatabaseError::sqlite("begin the analytics snapshot", source))?;
     let snapshot = AnalyticsSnapshot {
-        sync: query_sync_status(&transaction)?,
         summary: query_overall_summary(&transaction)?,
         sessions: query_sessions(&transaction)?,
         skills: query_skills(&transaction)?,
-        generated_at_ms: now_ms(),
     };
     transaction
         .commit()
         .map_err(|source| DatabaseError::sqlite("finish the analytics snapshot", source))?;
     Ok(snapshot)
+}
+
+pub(super) fn skill_analysis(database: &Database) -> Result<SkillAnalysis, DatabaseError> {
+    let connection = database.connect()?;
+    let analysis = SkillAnalysis {
+        skills: query_skills(&connection)?,
+    };
+    Ok(analysis)
 }
 
 pub(super) fn session_page(
@@ -174,6 +184,24 @@ pub(super) fn session_page(
     let mut statement = connection
         .prepare(
             "
+            WITH page_sessions AS MATERIALIZED (
+                SELECT *
+                FROM agent_sessions sessions
+                WHERE (
+                    ?1 = ''
+                    OR sessions.title LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                    OR sessions.project_name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                    OR sessions.cwd LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                    OR sessions.source_session_id LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                    OR sessions.model LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                    OR sessions.git_branch LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+                )
+                  AND (?3 IS NULL OR sessions.archived = ?3)
+                ORDER BY
+                    COALESCE(sessions.updated_at_ms, sessions.created_at_ms, 0) DESC,
+                    sessions.id DESC
+                LIMIT ?4 OFFSET ?5
+            )
             SELECT
                 sessions.id,
                 sessions.source_session_id,
@@ -183,14 +211,26 @@ pub(super) fn session_page(
                 sessions.cwd,
                 sessions.created_at_ms,
                 sessions.updated_at_ms,
-                CASE
-                    WHEN COALESCE(usage.tokens_used, 0) > 0
-                    THEN usage.tokens_used
-                    ELSE COALESCE(sessions.tokens_used, 0)
-                END,
-                COALESCE(invocations.invocation_count, 0),
-                COALESCE(skills.skill_count, 0),
-                COALESCE(events.event_count, 0),
+                COALESCE(NULLIF(MAX((
+                        SELECT SUM(usage.delta_tokens)
+                        FROM token_usage_records usage
+                        WHERE usage.session_id = sessions.id
+                    ), 0), 0), sessions.tokens_used, 0),
+                (
+                    SELECT COUNT(*)
+                    FROM agent_invocations invocations
+                    WHERE invocations.session_id = sessions.id
+                ),
+                (
+                    SELECT COUNT(*)
+                    FROM skill_invocations skills
+                    WHERE skills.session_id = sessions.id
+                ),
+                (
+                    SELECT COUNT(*)
+                    FROM session_events events
+                    WHERE events.session_id = sessions.id
+                ),
                 sessions.archived,
                 COALESCE((
                     SELECT latest.status
@@ -205,41 +245,10 @@ pub(super) fn session_page(
                 sessions.model_provider,
                 sessions.agent_version,
                 sessions.git_branch
-            FROM agent_sessions sessions
-            LEFT JOIN (
-                SELECT session_id, COUNT(*) AS invocation_count
-                FROM agent_invocations
-                GROUP BY session_id
-            ) invocations ON invocations.session_id = sessions.id
-            LEFT JOIN (
-                SELECT session_id, COUNT(*) AS skill_count
-                FROM skill_invocations
-                GROUP BY session_id
-            ) skills ON skills.session_id = sessions.id
-            LEFT JOIN (
-                SELECT session_id, COUNT(*) AS event_count
-                FROM session_events
-                GROUP BY session_id
-            ) events ON events.session_id = sessions.id
-            LEFT JOIN (
-                SELECT session_id, COALESCE(SUM(delta_tokens), 0) AS tokens_used
-                FROM token_usage_records
-                GROUP BY session_id
-            ) usage ON usage.session_id = sessions.id
-            WHERE (
-                ?1 = ''
-                OR sessions.title LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-                OR sessions.project_name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-                OR sessions.cwd LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-                OR sessions.source_session_id LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-                OR sessions.model LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-                OR sessions.git_branch LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-            )
-              AND (?3 IS NULL OR sessions.archived = ?3)
+            FROM page_sessions sessions
             ORDER BY
                 COALESCE(sessions.updated_at_ms, sessions.created_at_ms, 0) DESC,
                 sessions.id DESC
-            LIMIT ?4 OFFSET ?5
             ",
         )
         .map_err(|source| DatabaseError::sqlite("prepare the paginated session query", source))?;
@@ -371,11 +380,11 @@ fn query_session_list_item(
                 sessions.cwd,
                 sessions.created_at_ms,
                 sessions.updated_at_ms,
-                CASE
-                    WHEN COALESCE(usage.tokens_used, 0) > 0
-                    THEN usage.tokens_used
-                    ELSE COALESCE(sessions.tokens_used, 0)
-                END,
+                COALESCE(NULLIF(MAX((
+                        SELECT SUM(usage.delta_tokens)
+                        FROM token_usage_records usage
+                        WHERE usage.session_id = sessions.id
+                    ), 0), 0), sessions.tokens_used, 0),
                 COALESCE((
                     SELECT COUNT(*)
                     FROM agent_invocations
@@ -406,11 +415,6 @@ fn query_session_list_item(
                 sessions.agent_version,
                 sessions.git_branch
             FROM agent_sessions sessions
-            LEFT JOIN (
-                SELECT session_id, COALESCE(SUM(delta_tokens), 0) AS tokens_used
-                FROM token_usage_records
-                GROUP BY session_id
-            ) usage ON usage.session_id = sessions.id
             WHERE sessions.id = ?1
             ",
             [session_id],
@@ -450,37 +454,7 @@ fn escape_like(value: &str) -> String {
         .replace('_', "\\_")
 }
 
-fn query_sync_status(connection: &Connection) -> Result<SyncStatus, DatabaseError> {
-    connection
-        .query_row(
-            "
-            SELECT
-                status,
-                phase,
-                processed_records,
-                diagnostic_count,
-                last_error,
-                updated_at_ms
-            FROM provider_sync_state
-            WHERE provider = ?1
-            ",
-            [PROVIDER],
-            |row| {
-                Ok(SyncStatus {
-                    status: row.get(0)?,
-                    phase: row.get(1)?,
-                    processed_records: row.get(2)?,
-                    diagnostic_count: row.get(3)?,
-                    last_error: row.get(4)?,
-                    updated_at_ms: row.get(5)?,
-                })
-            },
-        )
-        .optional()
-        .map(|status| status.unwrap_or_default())
-        .map_err(|source| DatabaseError::sqlite("query the analytics sync status", source))
-}
-
+#[cfg(test)]
 fn query_overall_summary(connection: &Connection) -> Result<OverallSummary, DatabaseError> {
     connection
         .query_row(
@@ -512,6 +486,7 @@ fn query_overall_summary(connection: &Connection) -> Result<OverallSummary, Data
         .map_err(|source| DatabaseError::sqlite("query the analytics summary", source))
 }
 
+#[cfg(test)]
 fn query_sessions(connection: &Connection) -> Result<Vec<SessionSummary>, DatabaseError> {
     let mut statement = connection
         .prepare(
@@ -575,6 +550,7 @@ fn query_sessions(connection: &Connection) -> Result<Vec<SessionSummary>, Databa
         .map_err(|source| DatabaseError::sqlite("read session summaries", source))
 }
 
+#[cfg(test)]
 fn map_session(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
     Ok(SessionSummary {
         id: row.get(0)?,

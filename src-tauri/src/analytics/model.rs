@@ -1,40 +1,22 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[cfg(test)]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalyticsSnapshot {
-    pub sync: SyncStatus,
     pub summary: OverallSummary,
     pub sessions: Vec<SessionSummary>,
     pub skills: Vec<SkillSummary>,
-    pub generated_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncStatus {
-    pub status: String,
-    pub phase: String,
-    pub processed_records: i64,
-    pub diagnostic_count: i64,
-    pub last_error: Option<String>,
-    pub updated_at_ms: Option<i64>,
+pub struct SkillAnalysis {
+    pub skills: Vec<SkillSummary>,
 }
 
-impl Default for SyncStatus {
-    fn default() -> Self {
-        Self {
-            status: "not_started".to_owned(),
-            phase: "idle".to_owned(),
-            processed_records: 0,
-            diagnostic_count: 0,
-            last_error: None,
-            updated_at_ms: None,
-        }
-    }
-}
-
+#[cfg(test)]
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverallSummary {
@@ -48,6 +30,7 @@ pub struct OverallSummary {
     pub unknown_invocation_count: i64,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {

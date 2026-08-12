@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -11,11 +11,11 @@ use super::migrations::current_schema_version;
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Database {
     pub(super) path: PathBuf,
     pub(super) backup_dir: PathBuf,
-    pub(super) maintenance_lock: Mutex<()>,
+    pub(super) maintenance_lock: Arc<Mutex<()>>,
 }
 
 impl Database {
@@ -29,7 +29,7 @@ impl Database {
         let database = Self {
             path,
             backup_dir,
-            maintenance_lock: Mutex::new(()),
+            maintenance_lock: Arc::new(Mutex::new(())),
         };
         database.initialize_storage()?;
         Ok(database)

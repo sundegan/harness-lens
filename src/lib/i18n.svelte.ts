@@ -54,9 +54,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'sessions.activity.events': 'events',
     'sessions.activity.skills': '{count} Skill calls',
     'sessions.pagination.results': '{count} sessions',
-    'sessions.pagination.page': 'Page {page} of {total}',
-    'sessions.pagination.previous': 'Previous page',
-    'sessions.pagination.next': 'Next page',
     'sessions.detail.back': 'Back to sessions',
     'sessions.detail.loading': 'Loading session history…',
     'sessions.detail.load_error': 'Session history could not be loaded',
@@ -137,9 +134,18 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.skill.success_rate': 'Success',
     'dashboard.skill.average_duration': 'Avg time',
     'dashboard.skill.average_tokens': 'Avg tokens',
+    'dashboard.pagination.results': '{count} skills',
     'dashboard.empty.skills': 'No Skill calls were detected.',
     'dashboard.empty.filtered': 'No results match the current filters.',
     'dashboard.sync.error': 'Sync error',
+
+    // Pagination
+    'pagination.rows_per_page': 'Rows per page',
+    'pagination.navigation': 'Pagination',
+    'pagination.previous': 'Previous page',
+    'pagination.next': 'Next page',
+    'pagination.page_input': 'Page number',
+    'pagination.go': 'Go',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -260,9 +266,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'sessions.activity.events': '条事件',
     'sessions.activity.skills': '{count} 次 Skill 调用',
     'sessions.pagination.results': '共 {count} 个会话',
-    'sessions.pagination.page': '第 {page} / {total} 页',
-    'sessions.pagination.previous': '上一页',
-    'sessions.pagination.next': '下一页',
     'sessions.detail.back': '返回会话列表',
     'sessions.detail.loading': '正在加载会话记录…',
     'sessions.detail.load_error': '无法加载会话记录',
@@ -340,9 +343,18 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.skill.success_rate': '成功率',
     'dashboard.skill.average_duration': '平均耗时',
     'dashboard.skill.average_tokens': '平均 Token',
+    'dashboard.pagination.results': '共 {count} 个 Skill',
     'dashboard.empty.skills': '未检测到 Skill 调用。',
     'dashboard.empty.filtered': '没有符合当前筛选条件的结果。',
     'dashboard.sync.error': '同步失败',
+
+    // Pagination
+    'pagination.rows_per_page': '每页行数',
+    'pagination.navigation': '分页导航',
+    'pagination.previous': '上一页',
+    'pagination.next': '下一页',
+    'pagination.page_input': '页码',
+    'pagination.go': '跳转',
 
     // About Dialog
     'about.title': 'HarnessLens',
@@ -434,9 +446,18 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.skill.success_rate': '成功率',
     'dashboard.skill.average_duration': '平均耗時',
     'dashboard.skill.average_tokens': '平均 Token',
+    'dashboard.pagination.results': '共 {count} 個 Skill',
     'dashboard.empty.skills': '未偵測到 Skill 呼叫。',
     'dashboard.empty.filtered': '沒有符合目前篩選條件的結果。',
     'dashboard.sync.error': '同步失敗',
+
+    // Pagination
+    'pagination.rows_per_page': '每頁行數',
+    'pagination.navigation': '分頁導覽',
+    'pagination.previous': '上一頁',
+    'pagination.next': '下一頁',
+    'pagination.page_input': '頁碼',
+    'pagination.go': '跳轉',
 
     // About Dialog
     'about.title': 'HarnessLens',

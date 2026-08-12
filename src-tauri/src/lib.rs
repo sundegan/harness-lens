@@ -59,7 +59,7 @@ pub fn run() {
             commands::set_window_theme,
             commands::desktop_platform,
             commands::set_tray_menu_labels,
-            analytics::get_analytics_snapshot,
+            analytics::get_skill_analysis,
             analytics::get_session_page,
             analytics::get_session_detail,
             settings::load_settings,

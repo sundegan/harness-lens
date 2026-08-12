@@ -12,7 +12,9 @@ use serde_json::{json, Value};
 
 use super::{apply_batch, skill_names_from_tool_output};
 use crate::analytics::model::SessionPageRequest;
-use crate::analytics::repository::{analytics_snapshot, session_detail, session_page};
+use crate::analytics::repository::{
+    analytics_snapshot, session_detail, session_page, skill_analysis,
+};
 use crate::database::Database;
 
 static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
@@ -429,6 +431,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
 
     apply_batch(&database, &batch, "ready", "watching").unwrap();
     let snapshot = analytics_snapshot(&database).unwrap();
+    let skill_analysis = skill_analysis(&database).unwrap();
 
     assert_eq!(snapshot.summary.session_count, 1);
     assert_eq!(snapshot.summary.total_tokens, 260);
@@ -439,6 +442,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
     assert_eq!(snapshot.sessions[0].skill_invocation_count, 3);
     assert_eq!(snapshot.sessions[0].status, "failed");
     assert!(snapshot.skills.iter().all(|skill| skill.name != "missing"));
+    assert_eq!(skill_analysis.skills.len(), snapshot.skills.len());
 
     let research = snapshot
         .skills

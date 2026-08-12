@@ -7,6 +7,7 @@ import SkillAnalysis from '$lib/components/skill-analysis/SkillAnalysis.svelte';
 import * as Sidebar from '$lib/components/ui/sidebar';
 import { i18nManager } from '$lib/i18n.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
+import { cn } from '$lib/utils';
 
 type MainModuleId = 'sessions' | 'skills';
 type MainModule = {
@@ -26,11 +27,19 @@ const modules = [
 ] as const satisfies ReadonlyArray<MainModule>;
 
 let activeModule = $state<MainModuleId>('sessions');
+let skillModuleMounted = $state(false);
+let sessionBrowser = $state<{ activate(): void }>();
+let skillAnalysis = $state<{ activate(): void }>();
 
-const activeModuleConfig = $derived(
-  modules.find((module) => module.id === activeModule) ?? modules[0]
-);
-const activeModuleLabel = $derived(i18nManager.t(activeModuleConfig.labelKey));
+function activateModule(module: MainModuleId) {
+  activeModule = module;
+  if (module === 'skills') {
+    skillModuleMounted = true;
+    skillAnalysis?.activate();
+  } else {
+    sessionBrowser?.activate();
+  }
+}
 </script>
 
 <svelte:head>
@@ -74,7 +83,7 @@ const activeModuleLabel = $derived(i18nManager.t(activeModuleConfig.labelKey));
               aria-current={isActive ? 'page' : undefined}
               aria-pressed={isActive}
               data-testid={`main-nav-${module.id}`}
-              onclick={() => (activeModule = module.id)}
+              onclick={() => activateModule(module.id)}
             >
               {#if module.id === 'sessions'}
                 <MessageSquareIcon strokeWidth={1.8} aria-hidden="true" />
@@ -109,13 +118,20 @@ const activeModuleLabel = $derived(i18nManager.t(activeModuleConfig.labelKey));
 
   <Sidebar.Inset id="main-workspace" class="min-h-0 min-w-0 overflow-hidden">
     <div class="min-h-0 flex-1 overflow-auto bg-background">
-      {#if activeModule === 'sessions'}
-        <section class="flex min-h-full w-full bg-card" aria-label={activeModuleLabel}>
-          <SessionBrowser />
-        </section>
-      {:else}
-        <section class="flex min-h-full w-full bg-card" aria-label={activeModuleLabel}>
-          <SkillAnalysis />
+      <section
+        class={cn('min-h-full w-full bg-card', activeModule === 'sessions' ? 'flex' : 'hidden')}
+        aria-label={i18nManager.t('main.nav.sessions')}
+        aria-hidden={activeModule !== 'sessions'}
+      >
+        <SessionBrowser bind:this={sessionBrowser} active={activeModule === 'sessions'} />
+      </section>
+      {#if skillModuleMounted}
+        <section
+          class={cn('min-h-full w-full bg-card', activeModule === 'skills' ? 'flex' : 'hidden')}
+          aria-label={i18nManager.t('main.nav.skills')}
+          aria-hidden={activeModule !== 'skills'}
+        >
+          <SkillAnalysis bind:this={skillAnalysis} active={activeModule === 'skills'} />
         </section>
       {/if}
     </div>

@@ -2,8 +2,6 @@
 import ActivityIcon from '@lucide/svelte/icons/activity';
 import ArchiveIcon from '@lucide/svelte/icons/archive';
 import BoxesIcon from '@lucide/svelte/icons/boxes';
-import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
-import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 import Clock3Icon from '@lucide/svelte/icons/clock-3';
 import GitBranchIcon from '@lucide/svelte/icons/git-branch';
@@ -12,6 +10,7 @@ import Layers3Icon from '@lucide/svelte/icons/layers-3';
 import SearchIcon from '@lucide/svelte/icons/search';
 import WorkflowIcon from '@lucide/svelte/icons/workflow';
 import { onMount } from 'svelte';
+import DataPagination from '$lib/components/data-pagination/DataPagination.svelte';
 import SessionDetailView from '$lib/components/session-history/SessionDetail.svelte';
 import * as Alert from '$lib/components/ui/alert';
 import { Badge } from '$lib/components/ui/badge';
@@ -37,11 +36,12 @@ import {
   type SessionListItem,
   type SessionPage,
 } from '$lib/session-history';
+import { createTrailingRefresh } from '$lib/trailing-refresh';
+
+let { active = true }: { active?: boolean } = $props();
 
 type ArchiveFilter = 'all' | 'current' | 'archived';
 type StatusBadgeVariant = 'success' | 'warning' | 'outline' | 'destructive';
-
-const PAGE_SIZE = 25;
 
 let pageData = $state.raw<SessionPage | null>(null);
 let selectedDetail = $state.raw<SessionDetail | null>(null);
@@ -50,15 +50,16 @@ let detailLoading = $state(false);
 let error = $state('');
 let detailError = $state('');
 let page = $state(1);
+let pageSize = $state(25);
 let queryInput = $state('');
 let appliedQuery = $state('');
 let archiveFilter = $state<ArchiveFilter>('all');
 let requestSequence = 0;
 let detailRequestSequence = 0;
+let refreshWhenActive = $state(false);
+const pageRefresh = createTrailingRefresh(loadPage);
 
-const pageCount = $derived(
-  Math.max(1, Math.ceil((pageData?.total ?? 0) / (pageData?.pageSize ?? PAGE_SIZE)))
-);
+const pageCount = $derived(Math.max(1, Math.ceil((pageData?.total ?? 0) / pageSize)));
 const pageRuns = $derived(
   (pageData?.items ?? []).reduce((total, item) => total + item.invocationCount, 0)
 );
@@ -73,13 +74,15 @@ onMount(() => {
   let disposed = false;
   let unlisten: (() => void) | undefined;
 
-  void loadPage();
+  pageRefresh.request(true);
   void (async () => {
     const { isTauri } = await import('@tauri-apps/api/core');
     if (!isTauri()) return;
     const { listen } = await import('@tauri-apps/api/event');
     const stopListening = await listen('analytics-updated', () => {
-      if (!disposed) void loadPage();
+      if (disposed) return;
+      if (active) pageRefresh.request();
+      else refreshWhenActive = true;
     });
     if (disposed) stopListening();
     else unlisten = stopListening;
@@ -89,9 +92,17 @@ onMount(() => {
     disposed = true;
     requestSequence += 1;
     detailRequestSequence += 1;
+    pageRefresh.cancel();
     unlisten?.();
   };
 });
+
+export function activate() {
+  if (refreshWhenActive) {
+    refreshWhenActive = false;
+    pageRefresh.request();
+  }
+}
 
 function archivedValue(): boolean | null {
   if (archiveFilter === 'current') return false;
@@ -106,13 +117,14 @@ async function loadPage() {
   try {
     const result = await getSessionPage({
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
       query: appliedQuery || null,
       archived: archivedValue(),
     });
     if (sequence !== requestSequence) return;
     pageData = result;
     page = result.page;
+    pageSize = result.pageSize;
   } catch (cause) {
     if (sequence !== requestSequence) return;
     error = cause instanceof Error ? cause.message : String(cause);
@@ -153,20 +165,32 @@ function submitSearch(event: SubmitEvent) {
   event.preventDefault();
   appliedQuery = queryInput.trim();
   page = 1;
-  void loadPage();
+  refreshPageImmediately();
 }
 
 function setArchiveFilter(value: ArchiveFilter) {
   if (archiveFilter === value) return;
   archiveFilter = value;
   page = 1;
-  void loadPage();
+  refreshPageImmediately();
 }
 
 function goToPage(value: number) {
   if (value < 1 || value > pageCount || value === page) return;
   page = value;
-  void loadPage();
+  refreshPageImmediately();
+}
+
+function setPageSize(value: number) {
+  if (value === pageSize) return;
+  pageSize = value;
+  page = 1;
+  refreshPageImmediately();
+}
+
+function refreshPageImmediately() {
+  requestSequence += 1;
+  pageRefresh.request(true);
 }
 
 function handleRowKeydown(event: KeyboardEvent, session: SessionListItem) {
@@ -270,7 +294,11 @@ function statusDotClass(status: string): string {
     </Empty.Content>
   </Empty.Root>
 {:else}
-  <div class="flex min-w-0 flex-1 flex-col" data-testid="session-browser">
+  <div
+    class="flex min-w-0 flex-1 flex-col"
+    data-testid="session-browser"
+    aria-busy={loading}
+  >
     <section class="border-b bg-muted/15 px-5 py-5 sm:px-6" aria-labelledby="session-index-title">
       <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
@@ -402,7 +430,7 @@ function statusDotClass(status: string): string {
           <Alert.Title>{i18nManager.t('sessions.load_error')}</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
           <Alert.Action>
-            <Button variant="outline" size="sm" onclick={() => void loadPage()}>
+            <Button variant="outline" size="sm" onclick={refreshPageImmediately}>
               {i18nManager.t('sessions.retry')}
             </Button>
           </Alert.Action>
@@ -449,9 +477,7 @@ function statusDotClass(status: string): string {
     {:else}
       <div class="relative min-h-0 flex-1">
         {#if loading}
-          <div class="absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-muted">
-            <div class="h-full w-1/3 animate-pulse bg-primary motion-reduce:animate-none"></div>
-          </div>
+          <Skeleton class="absolute inset-x-0 top-0 z-20 h-0.5 rounded-none" />
         {/if}
         <Table class="min-w-[60rem]">
           <TableHeader class="sticky top-0 z-10 bg-muted/40 backdrop-blur-sm">
@@ -553,39 +579,18 @@ function statusDotClass(status: string): string {
         </Table>
       </div>
 
-      <footer class="flex flex-col gap-3 border-t bg-muted/10 px-5 py-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <p>
-          {i18nManager.t('sessions.pagination.results', {
-            count: pageData?.total ?? 0,
-          })}
-        </p>
-        <div class="flex items-center gap-2">
-          <span class="mr-1 rounded-md bg-muted/50 px-2 py-1 font-medium text-foreground">
-            {i18nManager.t('sessions.pagination.page', {
-              page,
-              total: pageCount,
-            })}
-          </span>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            disabled={loading || page <= 1}
-            aria-label={i18nManager.t('sessions.pagination.previous')}
-            onclick={() => goToPage(page - 1)}
-          >
-            <ChevronLeftIcon aria-hidden="true" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            disabled={loading || page >= pageCount}
-            aria-label={i18nManager.t('sessions.pagination.next')}
-            onclick={() => goToPage(page + 1)}
-          >
-            <ChevronRightIcon aria-hidden="true" />
-          </Button>
-        </div>
-      </footer>
+      <DataPagination
+        idPrefix="sessions"
+        {page}
+        {pageSize}
+        totalCount={pageData?.total ?? 0}
+        totalLabel={i18nManager.t('sessions.pagination.results', {
+          count: pageData?.total ?? 0,
+        })}
+        {loading}
+        onPageChange={goToPage}
+        onPageSizeChange={setPageSize}
+      />
     {/if}
   </div>
 {/if}
