@@ -1,6 +1,6 @@
 #![cfg(feature = "claude-code")]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 #[cfg(feature = "claude-code-watch")]
@@ -12,11 +12,11 @@ use coding_agent_data::providers::claude_code::{ClaudeCodeProvider, ClaudeCodeSo
 #[cfg(feature = "claude-code-watch")]
 use coding_agent_data::WatchProvider;
 use coding_agent_data::{
-    Actor, AdapterCoverage, AgentInvocationStatus, ApprovalPolicy, Change, ContentBlock, EventData,
-    FileChangeKind, HookStatus, MessageRole, ModeChangeKind, ModelInvocationStatus, NoticeLevel,
-    Provider, QueueOperation, ReasoningVisibility, Record, RecordData, RecordId,
-    SessionRelationKind, SourceCoverage, SourceLocation, StopReason, Timestamp, ToolKind,
-    ToolStatus,
+    Actor, AdapterCoverage, AgentInvocationStatus, ApprovalPolicy, CapabilityCoverage, Change,
+    ContentBlock, EventData, FileChangeKind, HookStatus, MessageRole, ModeChangeKind,
+    ModelInvocationStatus, NoticeLevel, Provider, QueueOperation, ReasoningVisibility, Record,
+    RecordData, RecordId, SessionRelationKind, SourceCoverage, SourceLocation, StopReason,
+    Timestamp, ToolKind, ToolStatus, STANDARD_CAPABILITIES,
 };
 use tempfile::TempDir;
 
@@ -25,6 +25,21 @@ struct Fixture {
     source: ClaudeCodeSource,
     main_transcript: std::path::PathBuf,
     subagent_transcript: std::path::PathBuf,
+}
+
+fn assert_complete_coverage(coverage: &[CapabilityCoverage]) {
+    let actual = coverage
+        .iter()
+        .map(|entry| entry.capability)
+        .collect::<BTreeSet<_>>();
+    let expected = STANDARD_CAPABILITIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(coverage.len(), STANDARD_CAPABILITIES.len());
+    assert_eq!(actual, expected);
+    assert!(coverage.iter().all(CapabilityCoverage::is_consistent));
 }
 
 impl Fixture {
@@ -1820,6 +1835,7 @@ fn provider_info_is_stable_and_source_scoped() {
     assert_eq!(first.info().id.as_str(), "claude-code");
     assert_eq!(first.info().name, "Claude Code");
     assert_ne!(first.info().source, second.info().source);
+    assert_complete_coverage(first.coverage());
     let input_queue = first
         .coverage()
         .iter()
@@ -1834,4 +1850,25 @@ fn provider_info_is_stable_and_source_scoped() {
         .expect("file-audit coverage");
     assert_eq!(file_audit.source, SourceCoverage::NotPersisted);
     assert_eq!(file_audit.adapter, AdapterCoverage::NotApplicable);
+    let hooks = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "hooks")
+        .expect("hooks coverage");
+    assert_eq!(hooks.source, SourceCoverage::Persisted);
+    assert_eq!(hooks.adapter, AdapterCoverage::PartiallyNormalized);
+    let approval = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "approval")
+        .expect("approval coverage");
+    assert_eq!(approval.source, SourceCoverage::PartiallyPersisted);
+    assert_eq!(approval.adapter, AdapterCoverage::PartiallyNormalized);
+    let rate_limit = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "rate_limit")
+        .expect("rate-limit coverage");
+    assert_eq!(rate_limit.source, SourceCoverage::Unknown);
+    assert_eq!(rate_limit.adapter, AdapterCoverage::Unknown);
 }

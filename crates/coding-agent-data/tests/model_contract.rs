@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
 use coding_agent_data::{
-    Actor, AgentInvocation, AgentInvocationStatus, AgentOperation, Batch, Change, Checkpoint,
-    ContentAnnotations, ContentAudience, ContentBlock, ContentIcon, ContentIconTheme,
-    ContentPriority, Diagnostic, Error, Event, EventData, EventSequence, FileChangeKind,
-    HistoryMode, HistoryPosition, HistorySegment, ModeChangeKind, ProviderId, ProviderInfo,
-    QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId, Session,
-    SessionHistory, SessionRelation, SessionRelationKind, SourceId, SourceLocation, SourceRef,
-    StopReason, Timestamp, ToolKind, UnknownRecord, UsageReport,
+    Actor, AdapterCoverage, AgentInvocation, AgentInvocationStatus, AgentOperation, Batch,
+    CapabilityCoverage, Change, Checkpoint, ContentAnnotations, ContentAudience, ContentBlock,
+    ContentIcon, ContentIconTheme, ContentPriority, Diagnostic, Error, Event, EventData,
+    EventSequence, FileChangeKind, HistoryMode, HistoryPosition, HistorySegment, ModeChangeKind,
+    ProviderId, ProviderInfo, QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData,
+    RecordId, Session, SessionHistory, SessionRelation, SessionRelationKind, SourceCoverage,
+    SourceId, SourceLocation, SourceRef, StopReason, Timestamp, ToolKind, UnknownRecord,
+    UsageReport,
 };
 
 fn provider_info() -> ProviderInfo {
@@ -20,6 +21,57 @@ fn provider_info() -> ProviderInfo {
 
 fn checkpoint() -> Checkpoint {
     Checkpoint::from_state(&provider_info(), &serde_json::json!({})).unwrap()
+}
+
+#[test]
+fn capability_coverage_rejects_contradictory_source_and_adapter_states() {
+    assert!(CapabilityCoverage::new(
+        "persisted",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    )
+    .is_consistent());
+    assert!(CapabilityCoverage::new(
+        "partial",
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
+    )
+    .is_consistent());
+    assert!(CapabilityCoverage::new(
+        "not-persisted",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    )
+    .is_consistent());
+    assert!(
+        CapabilityCoverage::new("unknown", SourceCoverage::Unknown, AdapterCoverage::Unknown,)
+            .is_consistent()
+    );
+    assert!(CapabilityCoverage::new(
+        "adapter-not-audited",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Unknown,
+    )
+    .is_consistent());
+
+    assert!(!CapabilityCoverage::new(
+        "missing-source",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::Normalized,
+    )
+    .is_consistent());
+    assert!(!CapabilityCoverage::new(
+        "unknown-source",
+        SourceCoverage::Unknown,
+        AdapterCoverage::RawOnly,
+    )
+    .is_consistent());
+    assert!(!CapabilityCoverage::new(
+        "missing-adapter",
+        SourceCoverage::Persisted,
+        AdapterCoverage::NotApplicable,
+    )
+    .is_consistent());
 }
 
 #[test]

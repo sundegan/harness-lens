@@ -1,6 +1,6 @@
 #![cfg(feature = "codex")]
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 #[cfg(feature = "codex-watch")]
@@ -12,12 +12,12 @@ use coding_agent_data::providers::codex::{CodexProvider, CodexSource};
 #[cfg(feature = "codex-watch")]
 use coding_agent_data::WatchProvider;
 use coding_agent_data::{
-    Actor, AdapterCoverage, AgentInvocationStatus, AgentOperation, ApprovalPolicy, Change,
-    ContentAudience, ContentBlock, ContentIconTheme, ContentPriority, DataQuality, EventData,
-    FileChangeKind, GoalStatus, HistoryMode, MessageRole, ModeChangeKind, NoticeLevel,
-    PlanStepStatus, Provider, RateLimitReason, RateLimitScope, ReasoningVisibility, Record,
-    RecordData, RecordId, SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason,
-    TokenUsage, ToolKind, ToolStatus,
+    Actor, AdapterCoverage, AgentInvocationStatus, AgentOperation, ApprovalPolicy,
+    CapabilityCoverage, Change, ContentAudience, ContentBlock, ContentIconTheme, ContentPriority,
+    DataQuality, EventData, FileChangeKind, GoalStatus, HistoryMode, MessageRole, ModeChangeKind,
+    NoticeLevel, PlanStepStatus, Provider, RateLimitReason, RateLimitScope, ReasoningVisibility,
+    Record, RecordData, RecordId, SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason,
+    TokenUsage, ToolKind, ToolStatus, STANDARD_CAPABILITIES,
 };
 use rusqlite::{params, Connection};
 use tempfile::TempDir;
@@ -27,6 +27,21 @@ struct Fixture {
     source: CodexSource,
     database_path: std::path::PathBuf,
     rollout_path: std::path::PathBuf,
+}
+
+fn assert_complete_coverage(coverage: &[CapabilityCoverage]) {
+    let actual = coverage
+        .iter()
+        .map(|entry| entry.capability)
+        .collect::<BTreeSet<_>>();
+    let expected = STANDARD_CAPABILITIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(coverage.len(), STANDARD_CAPABILITIES.len());
+    assert_eq!(actual, expected);
+    assert!(coverage.iter().all(CapabilityCoverage::is_consistent));
 }
 
 impl Fixture {
@@ -3904,6 +3919,7 @@ fn provider_info_is_stable_and_source_scoped() {
     assert_eq!(first.info().id.as_str(), "codex");
     assert_eq!(first.info().name, "Codex");
     assert_ne!(first.info().source, second.info().source);
+    assert_complete_coverage(first.coverage());
     let model_invocation = first
         .coverage()
         .iter()
@@ -3918,4 +3934,32 @@ fn provider_info_is_stable_and_source_scoped() {
         .expect("world-state coverage");
     assert_eq!(world_state.source, SourceCoverage::Persisted);
     assert_eq!(world_state.adapter, AdapterCoverage::Normalized);
+    let hooks = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "hooks")
+        .expect("hooks coverage");
+    assert_eq!(hooks.source, SourceCoverage::PartiallyPersisted);
+    assert_eq!(hooks.adapter, AdapterCoverage::PartiallyNormalized);
+    let notice = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "notice")
+        .expect("notice coverage");
+    assert_eq!(notice.source, SourceCoverage::NotPersisted);
+    assert_eq!(notice.adapter, AdapterCoverage::NotApplicable);
+    let retry = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "retry")
+        .expect("retry coverage");
+    assert_eq!(retry.source, SourceCoverage::NotPersisted);
+    assert_eq!(retry.adapter, AdapterCoverage::NotApplicable);
+    let rollback = first
+        .coverage()
+        .iter()
+        .find(|coverage| coverage.capability == "rollback")
+        .expect("rollback coverage");
+    assert_eq!(rollback.source, SourceCoverage::Persisted);
+    assert_eq!(rollback.adapter, AdapterCoverage::Normalized);
 }

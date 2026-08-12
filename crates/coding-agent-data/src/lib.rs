@@ -61,5 +61,8 @@ pub use model::{
     SpendLimit, StopReason, TaskArtifact, Timestamp, TokenUsage, ToolCall, ToolKind, ToolLocation,
     ToolResult, ToolStatus, UnknownEvent, UnknownRecord, UsageReport, WorldState,
 };
-pub use provider::{AdapterCoverage, CapabilityCoverage, Provider, SourceCoverage, WatchProvider};
+pub use provider::{
+    AdapterCoverage, CapabilityCoverage, Provider, SourceCoverage, WatchProvider,
+    STANDARD_CAPABILITIES,
+};
 pub use subscription::Subscription;

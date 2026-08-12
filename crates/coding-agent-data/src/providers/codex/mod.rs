@@ -26,9 +26,25 @@ pub use watch::CodexWatchOptions;
 /// Stable identifier for the Codex provider.
 pub const PROVIDER_ID: &str = "codex";
 
+/// Coverage of Codex's durable local sources, rather than every runtime event.
+///
+/// Runtime-event persistence follows Codex's
+/// [rollout persistence policy](https://github.com/openai/codex/blob/main/codex-rs/rollout/src/policy.rs).
+/// Adapter coverage below describes how this crate maps the resulting durable
+/// records into the provider-neutral model.
 const COVERAGE: &[CapabilityCoverage] = &[
     CapabilityCoverage::new(
         "session",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "session_relation",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "session_history",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
@@ -43,7 +59,17 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
+        "plan",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
         "tool_execution",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "file_change",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
@@ -55,6 +81,11 @@ const COVERAGE: &[CapabilityCoverage] = &[
     CapabilityCoverage::new(
         "model_invocation",
         SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "task_artifact",
+        SourceCoverage::NotApplicable,
         AdapterCoverage::NotApplicable,
     ),
     CapabilityCoverage::new(
@@ -78,7 +109,27 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::NotApplicable,
     ),
     CapabilityCoverage::new(
+        "user_input_request",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
         "hooks",
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
+    ),
+    CapabilityCoverage::new(
+        "execution_context",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "mode_change",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "notice",
         SourceCoverage::NotPersisted,
         AdapterCoverage::NotApplicable,
     ),
@@ -96,6 +147,26 @@ const COVERAGE: &[CapabilityCoverage] = &[
         "approval",
         SourceCoverage::NotPersisted,
         AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "retry",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "model_reroute",
+        SourceCoverage::NotPersisted,
+        AdapterCoverage::NotApplicable,
+    ),
+    CapabilityCoverage::new(
+        "rollback",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "fork_invocation_boundary",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
         "streaming_delta",

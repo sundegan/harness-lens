@@ -6,6 +6,9 @@ use crate::{Batch, Checkpoint, ProviderInfo, Result};
 pub enum SourceCoverage {
     /// The source durably stores observations for this capability.
     Persisted,
+    /// The source durably stores only part of the capability, such as terminal
+    /// results without the complete runtime lifecycle.
+    PartiallyPersisted,
     /// The runtime may expose the capability, but its inspected source does
     /// not durably store those observations.
     NotPersisted,
@@ -22,6 +25,10 @@ pub enum SourceCoverage {
 pub enum AdapterCoverage {
     /// Durable source data is represented by provider-neutral semantic types.
     Normalized,
+    /// Some durable observations are represented by provider-neutral semantic
+    /// types, while other observations remain raw, use a less specific type,
+    /// or are not retained.
+    PartiallyNormalized,
     /// Durable source data is retained only through original or unknown data.
     RawOnly,
     /// Durable source data exists but is not retained by this adapter.
@@ -29,7 +36,50 @@ pub enum AdapterCoverage {
     /// No adapter mapping is meaningful because the source does not persist
     /// the capability or the capability does not apply.
     NotApplicable,
+    /// Adapter behavior has not been established because the source format or
+    /// capability has not been verified.
+    Unknown,
 }
+
+/// Standard capability labels declared by the built-in providers.
+///
+/// Source coverage and adapter coverage are separate: a runtime feature may be
+/// absent from durable storage, and durable source data may still be only
+/// partially normalized. Built-in providers declare every label exactly once
+/// so consumers can compare their coverage without treating an omitted row as
+/// an implicit coverage state.
+pub const STANDARD_CAPABILITIES: &[&str] = &[
+    "session",
+    "session_relation",
+    "session_history",
+    "message",
+    "reasoning",
+    "plan",
+    "tool_execution",
+    "file_change",
+    "agent_invocation",
+    "model_invocation",
+    "task_artifact",
+    "usage",
+    "rate_limit",
+    "compaction",
+    "input_queue",
+    "user_input_request",
+    "hooks",
+    "execution_context",
+    "mode_change",
+    "notice",
+    "world_state",
+    "goals",
+    "approval",
+    "retry",
+    "model_reroute",
+    "rollback",
+    "fork_invocation_boundary",
+    "streaming_delta",
+    "os_file_audit",
+    "unknown_provider_data",
+];
 
 /// Source and adapter coverage for one stable capability label.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,6 +105,24 @@ impl CapabilityCoverage {
             adapter,
         }
     }
+
+    /// Returns whether the source and adapter states form a meaningful pair.
+    ///
+    /// A capability that is absent from durable storage cannot have an adapter
+    /// mapping. Unknown source behavior must not be presented as a known
+    /// adapter result. A known durable source may still have unknown adapter
+    /// coverage until its mapping has been audited.
+    pub const fn is_consistent(&self) -> bool {
+        match self.source {
+            SourceCoverage::NotPersisted | SourceCoverage::NotApplicable => {
+                matches!(self.adapter, AdapterCoverage::NotApplicable)
+            }
+            SourceCoverage::Unknown => matches!(self.adapter, AdapterCoverage::Unknown),
+            SourceCoverage::Persisted | SourceCoverage::PartiallyPersisted => {
+                !matches!(self.adapter, AdapterCoverage::NotApplicable)
+            }
+        }
+    }
 }
 
 /// Reads one coding-agent data source.
@@ -66,6 +134,8 @@ pub trait Provider: Send + Sync {
     ///
     /// This intentionally distinguishes runtime capabilities from data that
     /// is actually available in the provider's inspected local source.
+    /// Built-in providers return one declaration for each
+    /// [`STANDARD_CAPABILITIES`] label.
     fn coverage(&self) -> &'static [CapabilityCoverage] {
         &[]
     }

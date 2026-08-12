@@ -27,6 +27,16 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
+        "session_relation",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "session_history",
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
+    ),
+    CapabilityCoverage::new(
         "message",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
@@ -36,8 +46,14 @@ const COVERAGE: &[CapabilityCoverage] = &[
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
+    CapabilityCoverage::new("plan", SourceCoverage::Unknown, AdapterCoverage::Unknown),
     CapabilityCoverage::new(
         "tool_execution",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "file_change",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
@@ -52,14 +68,19 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
+        "task_artifact",
+        SourceCoverage::Unknown,
+        AdapterCoverage::Unknown,
+    ),
+    CapabilityCoverage::new(
         "usage",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
         "rate_limit",
-        SourceCoverage::Persisted,
-        AdapterCoverage::RawOnly,
+        SourceCoverage::Unknown,
+        AdapterCoverage::Unknown,
     ),
     CapabilityCoverage::new(
         "compaction",
@@ -72,7 +93,27 @@ const COVERAGE: &[CapabilityCoverage] = &[
         AdapterCoverage::Normalized,
     ),
     CapabilityCoverage::new(
+        "user_input_request",
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
+    ),
+    CapabilityCoverage::new(
         "hooks",
+        SourceCoverage::Persisted,
+        AdapterCoverage::PartiallyNormalized,
+    ),
+    CapabilityCoverage::new(
+        "execution_context",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "mode_change",
+        SourceCoverage::Persisted,
+        AdapterCoverage::Normalized,
+    ),
+    CapabilityCoverage::new(
+        "notice",
         SourceCoverage::Persisted,
         AdapterCoverage::Normalized,
     ),
@@ -88,13 +129,29 @@ const COVERAGE: &[CapabilityCoverage] = &[
     ),
     CapabilityCoverage::new(
         "approval",
-        SourceCoverage::Persisted,
-        AdapterCoverage::RawOnly,
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
+    ),
+    CapabilityCoverage::new("retry", SourceCoverage::Unknown, AdapterCoverage::Unknown),
+    CapabilityCoverage::new(
+        "model_reroute",
+        SourceCoverage::Unknown,
+        AdapterCoverage::Unknown,
+    ),
+    CapabilityCoverage::new(
+        "rollback",
+        SourceCoverage::Unknown,
+        AdapterCoverage::Unknown,
+    ),
+    CapabilityCoverage::new(
+        "fork_invocation_boundary",
+        SourceCoverage::NotApplicable,
+        AdapterCoverage::NotApplicable,
     ),
     CapabilityCoverage::new(
         "streaming_delta",
-        SourceCoverage::Persisted,
-        AdapterCoverage::RawOnly,
+        SourceCoverage::PartiallyPersisted,
+        AdapterCoverage::PartiallyNormalized,
     ),
     CapabilityCoverage::new(
         "os_file_audit",
