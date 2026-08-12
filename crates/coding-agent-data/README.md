@@ -1,3 +1,9 @@
+<div align="center">
+
+<p><a href="README.md"><strong>English</strong></a> | <a href="README_ZH.md">中文</a></p>
+
+</div>
+
 # coding-agent-data
 
 `coding-agent-data` is a Rust library that provides a unified API and data
@@ -19,6 +25,10 @@ records in ways that fit their needs.
   references, while retaining original data for provider-specific use cases.
 - Opaque, serializable checkpoints for bounded, incremental scans.
 - Optional filesystem monitoring with debounce and periodic reconciliation.
+
+## Glossary
+
+[English glossary and semantic guide](./GLOSSARY.md)
 
 ## Supported providers
 
@@ -72,7 +82,7 @@ fn apply_batch_atomically(batch: &Batch) -> Result<()> {
 ```
 
 Pass `None` only when starting from the beginning. Apply each batch and persist
-its checkpoint in the same transaction; only then pass that checkpoint to the
+its checkpoint in the same transaction. Only then pass that checkpoint to the
 next `scan`. When `has_more` is `true`, scan again immediately. After catch-up,
 providers with the corresponding watch feature can start `WatchProvider::watch`
 from the last applied checkpoint.
