@@ -1,11 +1,15 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
+import SettingsDialog from '$lib/components/settings-dialog.svelte';
 import { i18nManager } from '$lib/i18n.svelte';
 import { installFrontendErrorLogging, logWarn } from '$lib/logger';
+import AboutDialog from '$lib/menu/AboutDialog.svelte';
 import TitleBar from '$lib/menu/TitleBar.svelte';
+import { settingsDialogManager } from '$lib/settings-dialog.svelte';
 import { themeManager } from '$lib/theme.svelte';
 import { appUpdateManager } from '$lib/update.svelte';
+import { cn } from '$lib/utils';
 import '../app.css';
 
 const syncTrayMenuLabels = async (labels: { showMain: string; settings: string; quit: string }) => {
@@ -28,20 +32,20 @@ $effect(() => {
   });
 });
 
-// Reactively track theme manager theme state to ensure native integration updates
-$effect(() => {
-  // Explicitly read the theme state to establish reactive tracking in Svelte 5
-  const _ = themeManager.theme;
-  void themeManager.updateTheme();
-});
-
 onMount(() => {
+  let disposed = false;
   const unlisteners: Array<() => void> = [];
+  const registerUnlistener = (unlisten: () => void) => {
+    if (disposed) unlisten();
+    else unlisteners.push(unlisten);
+  };
 
   void themeManager.init();
   void i18nManager.init();
   void appUpdateManager.init();
-  void installFrontendErrorLogging().then((unlisten) => unlisteners.push(unlisten));
+  void installFrontendErrorLogging()
+    .then(registerUnlistener)
+    .catch((error) => logWarn('Failed to install frontend error logging', error));
 
   void (async () => {
     if (import.meta.env.VITE_WDIO_TAURI === '1') {
@@ -55,23 +59,25 @@ onMount(() => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     const appWindow = getCurrentWindow();
 
-    isWindowInactive = !(await appWindow.isFocused());
+    const windowInactive = !(await appWindow.isFocused());
+    if (disposed) return;
+    isWindowInactive = windowInactive;
     const unlistenFocus = await appWindow.onFocusChanged(({ payload: focused }) => {
-      isWindowInactive = !focused;
+      if (!disposed) isWindowInactive = !focused;
     });
-    unlisteners.push(unlistenFocus);
+    registerUnlistener(unlistenFocus);
 
     const unlistenUpdate = await listen('check-for-updates', () => {
       void goto('/settings');
       void appUpdateManager.checkForUpdates();
     });
-    unlisteners.push(unlistenUpdate);
+    registerUnlistener(unlistenUpdate);
 
     const unlistenSettings = await listen('open-settings', () => {
-      void goto('/settings');
+      if (!disposed) settingsDialogManager.show();
     });
-    unlisteners.push(unlistenSettings);
-  })();
+    registerUnlistener(unlistenSettings);
+  })().catch((error) => logWarn('Failed to initialize desktop window listeners', error));
 
   // Prevent default browser context menu globally to eliminate web feeling
   const handleContextMenu = (e: MouseEvent) => {
@@ -114,6 +120,7 @@ onMount(() => {
   document.addEventListener('gesturechange', handleGesture);
 
   return () => {
+    disposed = true;
     document.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('wheel', handleWheel);
     document.removeEventListener('keydown', handleKeydown);
@@ -127,138 +134,21 @@ let { children } = $props();
 let isWindowInactive = $state(false);
 </script>
 
-<div class={`macos-window-frame ${isWindowInactive ? 'is-inactive' : ''}`}>
-  <div class="app-window">
+<div
+  class={cn(
+    'size-full bg-transparent',
+    isWindowInactive &&
+      '[--window-edge:color-mix(in_oklch,var(--foreground)_8%,transparent)] [--window-focus-ring:transparent] [--window-inner-highlight:color-mix(in_oklch,var(--foreground)_4%,transparent)]'
+  )}
+>
+  <div
+    class="flex size-full flex-col overflow-hidden rounded-[calc(var(--radius)*1.4)] border border-[var(--window-edge)] bg-background bg-clip-padding shadow-[0_0_0_1px_var(--window-focus-ring),inset_0_0_0_1px_var(--window-inner-highlight)]"
+  >
     <TitleBar />
-    <div class="content-region">
+    <AboutDialog />
+    <SettingsDialog bind:open={settingsDialogManager.open} />
+    <div class="min-h-0 flex-1 overflow-auto bg-background">
       {@render children()}
     </div>
   </div>
 </div>
-
-<style>
-  :global(:root) {
-    --bg-color: #f7f8f8;
-    --text-color: #1f2933;
-    --text-muted: #667085;
-    --dialog-bg: #ffffff;
-    --dialog-border: rgb(15 23 42 / 12%);
-    --dialog-shadow: 0 24px 80px rgb(15 23 42 / 28%);
-    --close-btn-color: #98a2b3;
-    --close-btn-hover-bg: #f3f4f6;
-    --close-btn-hover-border: #d0d5dd;
-    --row-bg: #f9fafb;
-    --row-border: #e4e7ec;
-    --github-hover-bg: #eff6ff;
-    --github-hover-border: #2f80ed;
-    --github-hover-text: #2f80ed;
-    --footer-color: #98a2b3;
-    --backdrop-bg: rgb(8 11 16 / 42%);
-    --titlebar-bg: #ffffff;
-    --titlebar-border: rgb(15 23 42 / 10%);
-    --window-edge: rgb(15 23 42 / 18%);
-    --window-inner-highlight: rgb(255 255 255 / 70%);
-    --window-focus-ring: rgb(15 23 42 / 8%);
-  }
-
-  :global(html.dark) {
-    --bg-color: #0f172a;
-    --text-color: #f8fafc;
-    --text-muted: #94a3b8;
-    --dialog-bg: #1e293b;
-    --dialog-border: rgb(255 255 255 / 12%);
-    --dialog-shadow: 0 24px 80px rgb(0 0 0 / 60%);
-    --close-btn-color: #64748b;
-    --close-btn-hover-bg: #334155;
-    --close-btn-hover-border: #475569;
-    --row-bg: #1e293b;
-    --row-border: #334155;
-    --github-hover-bg: #1e293b;
-    --github-hover-border: #3b82f6;
-    --github-hover-text: #60a5fa;
-    --footer-color: #64748b;
-    --backdrop-bg: rgb(0 0 0 / 60%);
-    --titlebar-bg: #111827;
-    --titlebar-border: rgb(255 255 255 / 10%);
-    --window-edge: rgb(255 255 255 / 18%);
-    --window-inner-highlight: rgb(255 255 255 / 8%);
-    --window-focus-ring: rgb(0 0 0 / 40%);
-  }
-
-  :global(html),
-  :global(body),
-  :global(#app-root) {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    font-family:
-      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: var(--text-color);
-    background: transparent;
-    transition: background-color 0.2s ease, color 0.2s ease;
-    overscroll-behavior: none; /* Disables elastic overscroll bounce globally */
-    user-select: none; /* Prevents text selection on UI elements globally */
-    -webkit-user-select: none;
-    overflow: hidden;
-  }
-
-  .macos-window-frame {
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    background: transparent;
-  }
-
-  .app-window {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    flex-direction: column;
-    overflow: hidden;
-    border: 1px solid var(--window-edge);
-    border-radius: 10px;
-    background: var(--bg-color);
-    background-clip: padding-box;
-    box-shadow: 0 0 0 1px var(--window-focus-ring), inset 0 0 0 1px var(--window-inner-highlight);
-  }
-
-  .macos-window-frame.is-inactive {
-    --window-edge: rgb(15 23 42 / 9%);
-    --window-inner-highlight: rgb(255 255 255 / 28%);
-    --window-focus-ring: transparent;
-    --titlebar-bg: #f3f4f6;
-    --titlebar-border: rgb(15 23 42 / 7%);
-  }
-
-  :global(html.dark) .macos-window-frame.is-inactive {
-    --window-edge: rgb(255 255 255 / 9%);
-    --window-inner-highlight: rgb(255 255 255 / 5%);
-    --titlebar-bg: #0f172a;
-    --titlebar-border: rgb(255 255 255 / 7%);
-  }
-
-  .content-region {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    background: var(--bg-color);
-  }
-
-  /* Re-enable text selection for input fields, textareas, editable areas, and code/log containers */
-  :global(input),
-  :global(textarea),
-  :global([contenteditable="true"]),
-  :global(pre),
-  :global(code),
-  :global(.selectable-text) {
-    -webkit-user-select: text;
-    user-select: text;
-  }
-
-  /* Prevent image and drag actions that show browser selection outlines */
-  :global(img),
-  :global(a) {
-    -webkit-user-drag: none;
-  }
-</style>

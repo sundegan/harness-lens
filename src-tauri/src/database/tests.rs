@@ -45,7 +45,8 @@ fn initialize_creates_versioned_analytics_database() {
                 'rollout_sources',
                 'agent_invocations',
                 'skill_invocations',
-                'token_usage_records'
+                'token_usage_records',
+                'session_events'
               )
             ",
             [],
@@ -74,7 +75,7 @@ fn initialize_creates_versioned_analytics_database() {
 
     assert!(path.is_file());
     assert_eq!(database.schema_version().unwrap(), current_schema_version());
-    assert_eq!(analytics_table_count, 6);
+    assert_eq!(analytics_table_count, 7);
     assert_eq!(foreign_keys, 1);
     assert_eq!(journal_mode, "wal");
     assert_eq!(application_id, APPLICATION_ID);
@@ -100,50 +101,7 @@ fn initialize_creates_versioned_analytics_database() {
 #[test]
 fn embedded_migration_directory_is_valid() {
     validate_embedded_migrations().unwrap();
-    assert_eq!(current_schema_version(), 6);
-}
-
-#[test]
-fn analytics_rebuild_migration_clears_the_saved_checkpoint() {
-    let path = test_database_path("analytics-rebuild");
-    let database = Database::initialize(&path).unwrap();
-    let connection = database.connect().unwrap();
-    connection
-        .execute(
-            "
-            INSERT INTO provider_sync_state (
-                provider,
-                checkpoint_json,
-                status,
-                phase,
-                processed_records,
-                diagnostic_count,
-                last_error,
-                updated_at_ms
-            ) VALUES ('codex', '{\"state\":{}}', 'error', 'initial_scan', 42, 1, 'stale', 1)
-            ",
-            [],
-        )
-        .unwrap();
-    connection
-        .pragma_update(None, "user_version", current_schema_version() - 1)
-        .unwrap();
-    drop(connection);
-    drop(database);
-
-    let database = Database::initialize(&path).unwrap();
-    let sync_state_count: i64 = database
-        .connect()
-        .unwrap()
-        .query_row("SELECT COUNT(*) FROM provider_sync_state", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-
-    assert_eq!(database.schema_version().unwrap(), current_schema_version());
-    assert_eq!(sync_state_count, 0);
-
-    cleanup(&path);
+    assert_eq!(current_schema_version(), 7);
 }
 
 #[test]

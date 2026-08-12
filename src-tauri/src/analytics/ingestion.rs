@@ -14,7 +14,7 @@ use std::time::Duration;
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::providers::codex::CodexProvider;
 use coding_agent_data::{
-    AgentInvocation, AgentInvocationStatus, Batch, Change, DataQuality, EventData, Record,
+    AgentInvocation, AgentInvocationStatus, Batch, Change, DataQuality, Event, EventData, Record,
     RecordData, Session, ToolCall, ToolResult, ToolStatus, UsageReport,
 };
 #[cfg(not(feature = "e2e"))]
@@ -279,6 +279,9 @@ fn apply_batch(
                     })?
                     .flatten();
                 transaction
+                    .execute("DELETE FROM session_events WHERE id = ?1", [id.as_str()])
+                    .map_err(|error| format!("failed to delete a session event: {error}"))?;
+                transaction
                     .execute(
                         "DELETE FROM token_usage_records WHERE id = ?1",
                         [id.as_str()],
@@ -286,9 +289,7 @@ fn apply_batch(
                     .map_err(|error| format!("failed to delete a usage record: {error}"))?;
                 transaction
                     .execute("DELETE FROM agent_invocations WHERE id = ?1", [id.as_str()])
-                    .map_err(|error| {
-                        format!("failed to delete an agent invocation record: {error}")
-                    })?;
+                    .map_err(|error| format!("failed to delete a invocation record: {error}"))?;
                 transaction
                     .execute(
                         "DELETE FROM agent_sessions WHERE provider = ?1 AND id = ?2",
@@ -334,11 +335,16 @@ fn import_record(transaction: &Transaction<'_>, record: &Record) -> Result<(), S
             import_agent_invocation(transaction, record, invocation)
         }
         RecordData::UsageReport(usage) => import_usage(transaction, record, usage),
-        RecordData::Event(item) => match &item.data {
-            EventData::ToolCall(call) => remember_skill_read_call(transaction, record, call),
-            EventData::ToolResult(result) => complete_skill_read_call(transaction, record, result),
-            _ => Ok(()),
-        },
+        RecordData::Event(event) => {
+            import_event(transaction, record, event)?;
+            match &event.data {
+                EventData::ToolCall(call) => remember_skill_read_call(transaction, record, call),
+                EventData::ToolResult(result) => {
+                    complete_skill_read_call(transaction, record, result)
+                }
+                _ => Ok(()),
+            }
+        }
         RecordData::Unknown(_) => Ok(()),
         _ => Ok(()),
     }
@@ -369,6 +375,11 @@ fn import_session(
     let created_at_ms = session.created_at.map(|timestamp| timestamp.as_millis());
     let updated_at_ms = session.updated_at.map(|timestamp| timestamp.as_millis());
     let metadata_present = i64::from(session.quality == DataQuality::Complete);
+    let data_quality = match session.quality {
+        DataQuality::Complete => "complete",
+        DataQuality::Partial => "partial",
+        _ => "partial",
+    };
 
     if let Some(path) = rollout_path.as_deref() {
         transaction
@@ -399,8 +410,20 @@ fn import_session(
                 updated_at_ms,
                 tokens_used,
                 archived,
-                metadata_present
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                metadata_present,
+                model,
+                model_provider,
+                agent_version,
+                agent_name,
+                agent_role,
+                git_branch,
+                git_commit,
+                git_remote_url,
+                data_quality
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+            )
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 project_name = excluded.project_name,
@@ -410,7 +433,16 @@ fn import_session(
                 updated_at_ms = excluded.updated_at_ms,
                 tokens_used = excluded.tokens_used,
                 archived = excluded.archived,
-                metadata_present = excluded.metadata_present
+                metadata_present = excluded.metadata_present,
+                model = excluded.model,
+                model_provider = excluded.model_provider,
+                agent_version = excluded.agent_version,
+                agent_name = excluded.agent_name,
+                agent_role = excluded.agent_role,
+                git_branch = excluded.git_branch,
+                git_commit = excluded.git_commit,
+                git_remote_url = excluded.git_remote_url,
+                data_quality = excluded.data_quality
             ",
             params![
                 id,
@@ -424,7 +456,16 @@ fn import_session(
                 updated_at_ms,
                 session.total_tokens,
                 session.archived as i64,
-                metadata_present
+                metadata_present,
+                session.model.as_deref(),
+                session.model_provider.as_deref(),
+                session.agent_version.as_deref(),
+                session.agent_name.as_deref(),
+                session.agent_role.as_deref(),
+                session.git_branch.as_deref(),
+                session.git_commit.as_deref(),
+                session.git_remote_url.as_deref(),
+                data_quality
             ],
         )
         .map_err(|error| format!("failed to import session metadata: {error}"))?;
@@ -438,6 +479,110 @@ fn import_session(
         )?;
     }
     Ok(())
+}
+
+fn import_event(
+    transaction: &Transaction<'_>,
+    record: &Record,
+    event: &Event,
+) -> Result<(), String> {
+    let path = record.origin.path.to_string_lossy();
+    let session_id = if let Some(session_id) = &record.session {
+        Some(session_id.as_str().to_owned())
+    } else {
+        transaction
+            .query_row(
+                "SELECT session_id FROM rollout_sources WHERE path = ?1",
+                [&path],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("failed to find the session event owner: {error}"))?
+            .flatten()
+    };
+    let Some(session_id) = session_id else {
+        return Ok(());
+    };
+    let event_json = serde_json::to_string(event)
+        .map_err(|error| format!("failed to serialize a normalized session event: {error}"))?;
+    let position = i64::try_from(event.sequence.position).unwrap_or(i64::MAX);
+    let part = i64::from(event.sequence.part);
+    let logical_ordinal = event
+        .sequence
+        .logical_ordinal
+        .map(|value| i64::try_from(value).unwrap_or(i64::MAX));
+
+    transaction
+        .execute(
+            "
+            INSERT INTO session_events (
+                id,
+                provider,
+                session_id,
+                invocation_id,
+                source_path,
+                timestamp_ms,
+                sequence_position,
+                sequence_part,
+                logical_ordinal,
+                event_type,
+                event_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(id) DO UPDATE SET
+                session_id = excluded.session_id,
+                invocation_id = excluded.invocation_id,
+                source_path = excluded.source_path,
+                timestamp_ms = excluded.timestamp_ms,
+                sequence_position = excluded.sequence_position,
+                sequence_part = excluded.sequence_part,
+                logical_ordinal = excluded.logical_ordinal,
+                event_type = excluded.event_type,
+                event_json = excluded.event_json
+            ",
+            params![
+                record.id.as_str(),
+                repository::PROVIDER,
+                session_id,
+                record.invocation.as_ref().map(|id| id.as_str()),
+                path,
+                record.timestamp.map(|timestamp| timestamp.as_millis()),
+                position,
+                part,
+                logical_ordinal,
+                event_type(&event.data),
+                event_json
+            ],
+        )
+        .map_err(|error| format!("failed to import a normalized session event: {error}"))?;
+    Ok(())
+}
+
+fn event_type(data: &EventData) -> &'static str {
+    match data {
+        EventData::Message(_) => "message",
+        EventData::Reasoning(_) => "reasoning",
+        EventData::Plan(_) => "plan",
+        EventData::ToolCall(_) => "tool_call",
+        EventData::ToolResult(_) => "tool_result",
+        EventData::ApprovalRequest(_) => "approval_request",
+        EventData::ApprovalDecision(_) => "approval_decision",
+        EventData::ModelInvocation(_) => "model_invocation",
+        EventData::AgentInvocation(_) => "agent_invocation",
+        EventData::FileChange(_) => "file_change",
+        EventData::WorldState(_) => "world_state",
+        EventData::Goal(_) => "goal",
+        EventData::ForkInvocationBoundary(_) => "fork_invocation_boundary",
+        EventData::InputQueue(_) => "input_queue",
+        EventData::ContextCompaction(_) => "context_compaction",
+        EventData::ExecutionContext(_) => "execution_context",
+        EventData::ModeChange(_) => "mode_change",
+        EventData::Notice(_) => "notice",
+        EventData::HookResult(_) => "hook_result",
+        EventData::Retry(_) => "retry",
+        EventData::Rollback(_) => "rollback",
+        EventData::Unknown(_) => "unknown",
+        _ => "unknown",
+    }
 }
 
 fn import_agent_invocation(
@@ -777,7 +922,9 @@ fn import_terminal_invocation(
                 ",
                 params![invocation_id, session_id, path, started_at_ms],
             )
-            .map_err(|error| format!("failed to recover a turn without a start event: {error}"))?;
+            .map_err(|error| {
+                format!("failed to recover a invocation without a start event: {error}")
+            })?;
     }
     let updated = transaction
         .execute(
@@ -840,7 +987,7 @@ fn update_skill_metrics(transaction: &Transaction<'_>, invocation_id: &str) -> R
             [invocation_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
-        .map_err(|error| format!("failed to read turn metrics: {error}"))?;
+        .map_err(|error| format!("failed to read invocation metrics: {error}"))?;
     transaction
         .execute(
             "
@@ -893,7 +1040,7 @@ fn refresh_invocation_tokens(
             ",
             [invocation_id],
         )
-        .map_err(|error| format!("failed to update turn token usage: {error}"))?;
+        .map_err(|error| format!("failed to update invocation token usage: {error}"))?;
     if updated > 0 {
         update_skill_metrics(transaction, invocation_id)?;
     }
@@ -927,6 +1074,9 @@ fn reset_rollout_source(transaction: &Transaction<'_>, path: &Path) -> Result<()
 
 fn clear_rollout_records(transaction: &Transaction<'_>, path: &str) -> Result<(), String> {
     transaction
+        .execute("DELETE FROM session_events WHERE source_path = ?1", [path])
+        .map_err(|error| format!("failed to clear rollout session events: {error}"))?;
+    transaction
         .execute(
             "DELETE FROM token_usage_records WHERE source_path = ?1",
             [path],
@@ -937,7 +1087,7 @@ fn clear_rollout_records(transaction: &Transaction<'_>, path: &str) -> Result<()
             "DELETE FROM agent_invocations WHERE source_path = ?1",
             [path],
         )
-        .map_err(|error| format!("failed to clear rollout turns: {error}"))?;
+        .map_err(|error| format!("failed to clear rollout invocations: {error}"))?;
     Ok(())
 }
 
@@ -986,10 +1136,20 @@ fn upsert_rollout_source(
         if let Some(session_id) = session_id {
             transaction
                 .execute(
+                    "UPDATE session_events SET session_id = ?2 WHERE source_path = ?1",
+                    params![path, session_id],
+                )
+                .map_err(|error| {
+                    format!("failed to update rollout session event ownership: {error}")
+                })?;
+            transaction
+                .execute(
                     "UPDATE agent_invocations SET session_id = ?2 WHERE source_path = ?1",
                     params![path, session_id],
                 )
-                .map_err(|error| format!("failed to update rollout turn ownership: {error}"))?;
+                .map_err(|error| {
+                    format!("failed to update rollout invocation ownership: {error}")
+                })?;
             transaction
                 .execute(
                     "UPDATE token_usage_records SET session_id = ?2 WHERE source_path = ?1",
@@ -1027,6 +1187,9 @@ fn upsert_rollout_source(
                       AND NOT EXISTS (
                           SELECT 1 FROM token_usage_records WHERE session_id = ?1
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM session_events WHERE session_id = ?1
+                      )
                     ",
                     [previous_session_id],
                 )
@@ -1043,9 +1206,9 @@ fn current_invocation(
     transaction
         .query_row(
             "
-            SELECT turns.id, turns.session_id, turns.started_at_ms
+            SELECT invocations.id, invocations.session_id, invocations.started_at_ms
             FROM rollout_sources sources
-            JOIN agent_invocations turns ON turns.id = sources.current_invocation_id
+            JOIN agent_invocations invocations ON invocations.id = sources.current_invocation_id
             WHERE sources.path = ?1
             ",
             [path],
@@ -1090,8 +1253,8 @@ fn collect_tool_output_text<'a>(value: &'a Value, texts: &mut Vec<&'a str>) {
     match value {
         Value::String(text) => texts.push(text),
         Value::Array(items) => {
-            for item in items {
-                collect_tool_output_text(item, texts);
+            for event in items {
+                collect_tool_output_text(event, texts);
             }
         }
         Value::Object(object) => {
@@ -1108,10 +1271,10 @@ fn collect_tool_output_text<'a>(value: &'a Value, texts: &mut Vec<&'a str>) {
 fn value_contains_text(value: &Value, needle: &str) -> bool {
     match value {
         Value::String(text) => text.contains(needle),
-        Value::Array(items) => items.iter().any(|item| value_contains_text(item, needle)),
+        Value::Array(items) => items.iter().any(|event| value_contains_text(event, needle)),
         Value::Object(object) => object
             .values()
-            .any(|item| value_contains_text(item, needle)),
+            .any(|event| value_contains_text(event, needle)),
         _ => false,
     }
 }

@@ -7,55 +7,128 @@ import { loadSettings, saveSetting } from '$lib/settings';
 const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   en: {
     // Shared / Navigation
-    'nav.back': 'Back to Analytics',
     'nav.general': 'General',
     'nav.appearance': 'Appearance',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens analyzes the effectiveness of AI coding harness usage, providing clear data to guide harness improvements.',
+    'main.nav.label': 'Main navigation',
+    'main.nav.sessions': 'Session browser',
+    'main.nav.skills': 'Skill analysis',
+    'main.nav.skills_desc': 'Trace skill usage and outcomes',
+    'main.nav.settings': 'Configuration',
+    'main.skip_to_content': 'Skip to workspace',
+
+    // Session History
+    'sessions.search': 'Search sessions',
+    'sessions.search_placeholder': 'Search title, project, model, or branch',
+    'sessions.search_action': 'Search',
+    'sessions.filter.label': 'Archive status',
+    'sessions.filter.all': 'All',
+    'sessions.filter.current': 'Current',
+    'sessions.filter.archived': 'Archived',
+    'sessions.loading': 'Loading sessions…',
+    'sessions.load_error': 'Sessions could not be loaded',
+    'sessions.retry': 'Try again',
+    'sessions.empty': 'No sessions found',
+    'sessions.empty_desc': 'Session history will appear here after local data is indexed.',
+    'sessions.empty_filtered': 'Try a different search or archive filter.',
+    'sessions.untitled': 'Untitled session',
+    'sessions.unknown_project': 'Unknown project',
+    'sessions.unknown': 'Unknown',
+    'sessions.column.session': 'Session',
+    'sessions.column.model': 'Model',
+    'sessions.column.activity': 'Activity',
+    'sessions.column.updated': 'Updated',
+    'sessions.column.runs': 'Runs',
+    'sessions.column.tokens': 'Tokens',
+    'sessions.column.status': 'Status',
+    'sessions.overview.title': 'Session index',
+    'sessions.overview.description': 'Normalized local coding-agent sessions',
+    'sessions.overview.indexed_at': 'Indexed at {time}',
+    'sessions.overview.results': 'Matching sessions',
+    'sessions.overview.runs': 'Runs on this page',
+    'sessions.overview.events': 'Events on this page',
+    'sessions.overview.tokens': 'Tokens on this page',
+    'sessions.activity.runs': 'runs',
+    'sessions.activity.events': 'events',
+    'sessions.activity.skills': '{count} Skill calls',
+    'sessions.pagination.results': '{count} sessions',
+    'sessions.pagination.page': 'Page {page} of {total}',
+    'sessions.pagination.previous': 'Previous page',
+    'sessions.pagination.next': 'Next page',
+    'sessions.detail.back': 'Back to sessions',
+    'sessions.detail.loading': 'Loading session history…',
+    'sessions.detail.load_error': 'Session history could not be loaded',
+    'sessions.detail.not_found': 'This session is no longer available.',
+    'sessions.detail.provider': 'Provider',
+    'sessions.detail.updated': 'Last activity',
+    'sessions.detail.events': 'Events',
+    'sessions.detail.skills': 'Skills',
+    'sessions.detail.session_label': 'Session record',
+    'sessions.detail.timeline_title': 'Execution record',
+    'sessions.detail.timeline_description':
+      'Messages, tool calls, reasoning, and runtime events in source order',
+    'sessions.detail.run_count': '{count} runs',
+    'sessions.detail.group_items': '{count} items',
+    'sessions.detail.invocation': 'Run {count}',
+    'sessions.detail.session_events': 'Session events',
+    'sessions.detail.no_events': 'No normalized events',
+    'sessions.detail.no_events_desc':
+      'Metadata is available, but no conversation or tool events were indexed for this session.',
+    'sessions.detail.empty_message': 'Empty message',
+    'sessions.detail.image': '[Image]',
+    'sessions.detail.audio': '[Audio]',
+    'sessions.detail.attachment': '[Attachment]',
+    'sessions.detail.role.user': 'You',
+    'sessions.detail.role.assistant': 'Assistant',
+    'sessions.detail.role.developer': 'Developer instructions',
+    'sessions.detail.role.system': 'System',
+    'sessions.detail.role.tool': 'Tool',
+    'sessions.detail.role.unknown': 'Message',
+    'sessions.detail.tool_details': 'Show input and output',
+    'sessions.detail.input': 'Input',
+    'sessions.detail.output': 'Output',
+    'sessions.detail.no_tool_result': 'No terminal tool result was recorded.',
+    'sessions.detail.reasoning': 'Reasoning',
+    'sessions.detail.no_reasoning': 'No visible reasoning content.',
+    'sessions.detail.other_events': '{count} runtime events',
+    'sessions.detail.other_events_desc':
+      'Plans, context changes, approvals, and other technical events',
+    'sessions.status.succeeded': 'Succeeded',
+    'sessions.status.failed': 'Failed',
+    'sessions.status.cancelled': 'Cancelled',
+    'sessions.status.in_progress': 'In progress',
+    'sessions.status.active': 'Active',
+    'sessions.status.unknown': 'Unknown',
+    'sessions.status.pending': 'Pending',
+    'sessions.status.awaiting_approval': 'Awaiting approval',
+    'sessions.status.completed': 'Completed',
+    'sessions.status.declined': 'Declined',
+    'sessions.event.plan': 'Plan update',
+    'sessions.event.approval_request': 'Approval request',
+    'sessions.event.approval_decision': 'Approval decision',
+    'sessions.event.model_invocation': 'Model invocation',
+    'sessions.event.agent_invocation': 'Agent invocation',
+    'sessions.event.file_change': 'File change',
+    'sessions.event.world_state': 'World state',
+    'sessions.event.goal': 'Goal update',
+    'sessions.event.fork_invocation_boundary': 'Fork boundary',
+    'sessions.event.input_queue': 'Input queue',
+    'sessions.event.context_compaction': 'Context compaction',
+    'sessions.event.execution_context': 'Execution context',
+    'sessions.event.mode_change': 'Mode change',
+    'sessions.event.notice': 'Notice',
+    'sessions.event.hook_result': 'Hook result',
+    'sessions.event.retry': 'Retry',
+    'sessions.event.rollback': 'Rollback',
+    'sessions.event.unknown': 'Provider event',
 
     // Analytics Dashboard
-    'dashboard.eyebrow': 'Local Codex analytics',
-    'dashboard.title': 'Coding Agent analytics',
-    'dashboard.subtitle': 'Analyze local sessions, turns, token usage, and skill calls.',
-    'dashboard.refresh': 'Refresh analytics',
     'dashboard.loading': 'Loading local analytics…',
-    'dashboard.summary.label': 'Analytics summary',
-    'dashboard.summary.sessions': 'Sessions',
-    'dashboard.summary.tokens': 'Session tokens',
     'dashboard.summary.skills': 'Skill calls',
-    'dashboard.turns.label': 'Turn outcomes',
-    'dashboard.turns.succeeded': '{count} succeeded',
-    'dashboard.turns.failed': '{count} failed',
-    'dashboard.turns.cancelled': '{count} cancelled',
-    'dashboard.turns.active': '{count} active',
-    'dashboard.turns.unknown': '{count} unknown',
-    'dashboard.views.label': 'Analytics views',
-    'dashboard.views.sessions': 'Sessions',
-    'dashboard.views.skills': 'Skills',
-    'dashboard.filter.label': 'Session scope',
-    'dashboard.filter.all': 'All',
-    'dashboard.filter.current': 'Current',
-    'dashboard.filter.archived': 'Archived',
     'dashboard.search.label': 'Search analytics',
-    'dashboard.search.sessions': 'Search sessions or projects',
     'dashboard.search.skills': 'Search skills',
-    'dashboard.pagination.label': 'Analytics pagination',
-    'dashboard.pagination.previous': 'Previous page',
-    'dashboard.pagination.next': 'Next page',
-    'dashboard.pagination.page': 'Page {page} of {total}',
-    'dashboard.session.name': 'Session',
-    'dashboard.session.updated': 'Last activity',
-    'dashboard.session.duration': 'Active time',
-    'dashboard.session.tokens': 'Tokens',
-    'dashboard.session.turns': 'Turns',
-    'dashboard.session.skills': 'Skills',
-    'dashboard.session.status': 'Latest outcome',
-    'dashboard.session.untitled': 'Untitled session',
-    'dashboard.session.unknown_project': 'Unknown project',
-    'dashboard.session.wall_duration': 'Elapsed from creation to last activity: {duration}',
     'dashboard.skill.name': 'Skill',
     'dashboard.skill.invocations': 'Runs',
     'dashboard.skill.outcomes': 'Success / fail / cancel / other',
@@ -63,38 +136,16 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
       '{succeeded} succeeded, {failed} failed, {cancelled} cancelled, {unknown} active or unknown',
     'dashboard.skill.success_rate': 'Success',
     'dashboard.skill.average_duration': 'Avg time',
-    'dashboard.skill.max_duration': 'Max time',
     'dashboard.skill.average_tokens': 'Avg tokens',
-    'dashboard.skill.max_tokens': 'Max tokens',
-    'dashboard.empty.sessions': 'No Codex sessions have been imported yet.',
     'dashboard.empty.skills': 'No Skill calls were detected.',
     'dashboard.empty.filtered': 'No results match the current filters.',
-    'dashboard.method':
-      'A Skill call is counted when a tool successfully reads its SKILL.md; repeated reads in the same turn count once. Status, time, and tokens use the containing turn.',
-    'dashboard.sync.not_started': 'Waiting to scan',
-    'dashboard.sync.syncing': 'Scanning local data',
-    'dashboard.sync.ready': 'Watching for changes',
     'dashboard.sync.error': 'Sync error',
-    'dashboard.sync.unavailable': 'Codex data unavailable',
-    'dashboard.sync.processed': '{count} records processed',
-    'dashboard.sync.updated': 'Updated {date}',
-    'dashboard.status.succeeded': 'Succeeded',
-    'dashboard.status.failed': 'Failed',
-    'dashboard.status.cancelled': 'Cancelled',
-    'dashboard.status.active': 'Active',
-    'dashboard.status.unknown': 'Unknown',
-    'dashboard.duration.seconds': '{value}s',
-    'dashboard.duration.minutes': '{value}m',
-    'dashboard.duration.hours': '{value}h',
-    'dashboard.duration.days': '{value}d',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'Measure and improve AI coding workflows.',
     'about.version': 'Version',
     'about.unknown': 'Unknown',
-    'about.star': 'Star on GitHub',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Close',
 
     // Control Bar
@@ -104,6 +155,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': 'Settings',
     'control.pin': 'Pin Window',
     'control.unpin': 'Unpin Window',
+    'control.window_controls': 'Window controls',
+    'control.minimize': 'Minimize',
+    'control.maximize': 'Maximize',
+    'control.restore': 'Restore',
+    'control.close': 'Close',
 
     // Tray Menu
     'tray.show_main': 'Show HarnessLens',
@@ -112,9 +168,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'General Settings',
-    'settings.general.auto_check': 'Check for Updates Automatically',
-    'settings.general.auto_check_desc': 'Check for new versions of the application upon startup',
-    'settings.general.app_update': 'Application Update',
 
     // Settings Appearance
     'settings.appearance.title': 'App Theme',
@@ -126,7 +179,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': 'App Language',
-    'settings.language.select': 'Language Selection',
     'settings.language.desc': 'Choose between System default, English, or other languages',
     'settings.language.lang_system': 'System Default',
     'settings.language.lang_en': 'English',
@@ -137,7 +189,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': 'Checking for updates...',
     'update.status.installing': 'Installing update...',
@@ -162,55 +213,125 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   zh: {
     // Shared / Navigation
-    'nav.back': '返回分析面板',
     'nav.general': '通用设置',
     'nav.appearance': '外观设置',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens是AI Coding Harness的使用效能分析工具，为Harness改进提供直观的数据依据。',
+    'main.nav.label': '主导航',
+    'main.nav.sessions': '会话浏览',
+    'main.nav.skills': 'Skill 分析',
+    'main.nav.skills_desc': '追踪 Skill 使用和结果',
+    'main.nav.settings': '配置',
+    'main.skip_to_content': '跳转到工作区',
+
+    // Session History
+    'sessions.search': '搜索会话',
+    'sessions.search_placeholder': '搜索标题、项目、模型或分支',
+    'sessions.search_action': '搜索',
+    'sessions.filter.label': '归档状态',
+    'sessions.filter.all': '全部',
+    'sessions.filter.current': '当前',
+    'sessions.filter.archived': '已归档',
+    'sessions.loading': '正在加载会话…',
+    'sessions.load_error': '无法加载会话',
+    'sessions.retry': '重试',
+    'sessions.empty': '没有找到会话',
+    'sessions.empty_desc': '本地数据完成索引后，会话历史会显示在这里。',
+    'sessions.empty_filtered': '请尝试其他搜索词或归档筛选条件。',
+    'sessions.untitled': '未命名会话',
+    'sessions.unknown_project': '未知项目',
+    'sessions.unknown': '未知',
+    'sessions.column.session': '会话',
+    'sessions.column.model': '模型',
+    'sessions.column.activity': '活动',
+    'sessions.column.updated': '最近活动',
+    'sessions.column.runs': '执行',
+    'sessions.column.tokens': 'Token',
+    'sessions.column.status': '状态',
+    'sessions.overview.title': '会话索引',
+    'sessions.overview.description': '基于本地数据规范化后的 Coding Agent 会话',
+    'sessions.overview.indexed_at': '{time} 完成索引',
+    'sessions.overview.results': '匹配会话',
+    'sessions.overview.runs': '本页执行',
+    'sessions.overview.events': '本页事件',
+    'sessions.overview.tokens': '本页 Token',
+    'sessions.activity.runs': '次执行',
+    'sessions.activity.events': '条事件',
+    'sessions.activity.skills': '{count} 次 Skill 调用',
+    'sessions.pagination.results': '共 {count} 个会话',
+    'sessions.pagination.page': '第 {page} / {total} 页',
+    'sessions.pagination.previous': '上一页',
+    'sessions.pagination.next': '下一页',
+    'sessions.detail.back': '返回会话列表',
+    'sessions.detail.loading': '正在加载会话记录…',
+    'sessions.detail.load_error': '无法加载会话记录',
+    'sessions.detail.not_found': '该会话已不存在。',
+    'sessions.detail.provider': '数据源',
+    'sessions.detail.updated': '最近活动',
+    'sessions.detail.events': '事件',
+    'sessions.detail.skills': 'Skill',
+    'sessions.detail.session_label': '会话记录',
+    'sessions.detail.timeline_title': '执行记录',
+    'sessions.detail.timeline_description': '按原始顺序展示消息、工具调用、推理和运行事件',
+    'sessions.detail.run_count': '共 {count} 次执行',
+    'sessions.detail.group_items': '{count} 条记录',
+    'sessions.detail.invocation': '第 {count} 次执行',
+    'sessions.detail.session_events': '会话级事件',
+    'sessions.detail.no_events': '暂无规范化事件',
+    'sessions.detail.no_events_desc': '会话元数据已收录，但还没有索引到对话或工具事件。',
+    'sessions.detail.empty_message': '空消息',
+    'sessions.detail.image': '[图片]',
+    'sessions.detail.audio': '[音频]',
+    'sessions.detail.attachment': '[附件]',
+    'sessions.detail.role.user': '你',
+    'sessions.detail.role.assistant': '助手',
+    'sessions.detail.role.developer': '开发者指令',
+    'sessions.detail.role.system': '系统',
+    'sessions.detail.role.tool': '工具',
+    'sessions.detail.role.unknown': '消息',
+    'sessions.detail.tool_details': '查看输入和输出',
+    'sessions.detail.input': '输入',
+    'sessions.detail.output': '输出',
+    'sessions.detail.no_tool_result': '没有记录到工具的最终结果。',
+    'sessions.detail.reasoning': '推理过程',
+    'sessions.detail.no_reasoning': '没有可展示的推理内容。',
+    'sessions.detail.other_events': '{count} 条运行事件',
+    'sessions.detail.other_events_desc': '计划、上下文变更、授权及其他技术事件',
+    'sessions.status.succeeded': '成功',
+    'sessions.status.failed': '失败',
+    'sessions.status.cancelled': '已取消',
+    'sessions.status.in_progress': '执行中',
+    'sessions.status.active': '执行中',
+    'sessions.status.unknown': '未知',
+    'sessions.status.pending': '等待执行',
+    'sessions.status.awaiting_approval': '等待授权',
+    'sessions.status.completed': '已完成',
+    'sessions.status.declined': '已拒绝',
+    'sessions.event.plan': '计划更新',
+    'sessions.event.approval_request': '授权请求',
+    'sessions.event.approval_decision': '授权结果',
+    'sessions.event.model_invocation': '模型调用',
+    'sessions.event.agent_invocation': 'Agent 调用',
+    'sessions.event.file_change': '文件变更',
+    'sessions.event.world_state': '运行状态',
+    'sessions.event.goal': '目标更新',
+    'sessions.event.fork_invocation_boundary': '分支调用边界',
+    'sessions.event.input_queue': '输入队列',
+    'sessions.event.context_compaction': '上下文压缩',
+    'sessions.event.execution_context': '执行上下文',
+    'sessions.event.mode_change': '模式变更',
+    'sessions.event.notice': '运行通知',
+    'sessions.event.hook_result': 'Hook 结果',
+    'sessions.event.retry': '重试',
+    'sessions.event.rollback': '回滚',
+    'sessions.event.unknown': '原始事件',
 
     // Analytics Dashboard
-    'dashboard.eyebrow': '本机 Codex 分析',
-    'dashboard.title': 'Coding Agent 分析',
-    'dashboard.subtitle': '分析本机会话、轮次、Token 用量和 Skill 调用。',
-    'dashboard.refresh': '刷新分析数据',
     'dashboard.loading': '正在加载本机分析数据…',
-    'dashboard.summary.label': '分析概览',
-    'dashboard.summary.sessions': '会话数',
-    'dashboard.summary.tokens': '会话 Token',
     'dashboard.summary.skills': 'Skill 调用',
-    'dashboard.turns.label': '轮次结果',
-    'dashboard.turns.succeeded': '成功 {count}',
-    'dashboard.turns.failed': '失败 {count}',
-    'dashboard.turns.cancelled': '取消 {count}',
-    'dashboard.turns.active': '执行中 {count}',
-    'dashboard.turns.unknown': '未知 {count}',
-    'dashboard.views.label': '分析视图',
-    'dashboard.views.sessions': '会话',
-    'dashboard.views.skills': 'Skills',
-    'dashboard.filter.label': '会话范围',
-    'dashboard.filter.all': '全部',
-    'dashboard.filter.current': '当前',
-    'dashboard.filter.archived': '已归档',
     'dashboard.search.label': '搜索分析数据',
-    'dashboard.search.sessions': '搜索会话或项目',
     'dashboard.search.skills': '搜索 Skill',
-    'dashboard.pagination.label': '分析数据分页',
-    'dashboard.pagination.previous': '上一页',
-    'dashboard.pagination.next': '下一页',
-    'dashboard.pagination.page': '第 {page} / {total} 页',
-    'dashboard.session.name': '会话',
-    'dashboard.session.updated': '最后活动',
-    'dashboard.session.duration': '执行时间',
-    'dashboard.session.tokens': 'Token',
-    'dashboard.session.turns': '轮次',
-    'dashboard.session.skills': 'Skill',
-    'dashboard.session.status': '最近结果',
-    'dashboard.session.untitled': '未命名会话',
-    'dashboard.session.unknown_project': '未知项目',
-    'dashboard.session.wall_duration': '从创建到最后活动的跨度：{duration}',
     'dashboard.skill.name': 'Skill',
     'dashboard.skill.invocations': '调用次数',
     'dashboard.skill.outcomes': '成功 / 失败 / 取消 / 其他',
@@ -218,38 +339,16 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
       '成功 {succeeded}，失败 {failed}，取消 {cancelled}，执行中或未知 {unknown}',
     'dashboard.skill.success_rate': '成功率',
     'dashboard.skill.average_duration': '平均耗时',
-    'dashboard.skill.max_duration': '最长耗时',
     'dashboard.skill.average_tokens': '平均 Token',
-    'dashboard.skill.max_tokens': '最大 Token',
-    'dashboard.empty.sessions': '尚未导入 Codex 会话。',
     'dashboard.empty.skills': '未检测到 Skill 调用。',
     'dashboard.empty.filtered': '没有符合当前筛选条件的结果。',
-    'dashboard.method':
-      '工具成功读取 SKILL.md 时记为一次 Skill 调用，同一轮重复读取只统计一次。状态、耗时和 Token 使用所在轮次的数据。',
-    'dashboard.sync.not_started': '等待扫描',
-    'dashboard.sync.syncing': '正在扫描本机数据',
-    'dashboard.sync.ready': '正在监听数据变化',
     'dashboard.sync.error': '同步失败',
-    'dashboard.sync.unavailable': 'Codex 数据不可用',
-    'dashboard.sync.processed': '已处理 {count} 条记录',
-    'dashboard.sync.updated': '更新于 {date}',
-    'dashboard.status.succeeded': '成功',
-    'dashboard.status.failed': '失败',
-    'dashboard.status.cancelled': '已取消',
-    'dashboard.status.active': '执行中',
-    'dashboard.status.unknown': '未知',
-    'dashboard.duration.seconds': '{value} 秒',
-    'dashboard.duration.minutes': '{value} 分钟',
-    'dashboard.duration.hours': '{value} 小时',
-    'dashboard.duration.days': '{value} 天',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': '度量并改进 AI Coding 工作流。',
     'about.version': '版本',
     'about.unknown': '未知',
-    'about.star': '去 GitHub 点赞',
-    'about.copyright': '版权所有 © 2026 HarnessLens',
     'about.close': '关闭',
 
     // Control Bar
@@ -259,6 +358,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': '设置',
     'control.pin': '置顶窗口',
     'control.unpin': '取消置顶窗口',
+    'control.window_controls': '窗口控制',
+    'control.minimize': '最小化',
+    'control.maximize': '最大化',
+    'control.restore': '还原',
+    'control.close': '关闭',
 
     // Tray Menu
     'tray.show_main': '显示窗口',
@@ -267,9 +371,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '通用设置',
-    'settings.general.auto_check': '自动检查更新',
-    'settings.general.auto_check_desc': '启动应用时自动检查是否有新版本',
-    'settings.general.app_update': '应用更新',
 
     // Settings Appearance
     'settings.appearance.title': '应用主题',
@@ -281,7 +382,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': '应用语言',
-    'settings.language.select': '语言选择',
     'settings.language.desc': '在系统默认、英文或其他语言之间选择',
     'settings.language.lang_system': '系统默认',
     'settings.language.lang_en': 'English',
@@ -292,7 +392,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': '正在检查更新...',
     'update.status.installing': '正在安装更新...',
@@ -316,55 +415,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   zh_tw: {
     // Shared / Navigation
-    'nav.back': '返回分析面板',
     'nav.general': '通用設定',
     'nav.appearance': '外觀設定',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens是AI Coding Harness的使用效能分析工具，為Harness改進提供直觀的數據依據。',
 
     // Analytics Dashboard
-    'dashboard.eyebrow': '本機 Codex 分析',
-    'dashboard.title': 'Coding Agent 分析',
-    'dashboard.subtitle': '分析本機工作階段、輪次、Token 用量和 Skill 呼叫。',
-    'dashboard.refresh': '重新整理分析資料',
     'dashboard.loading': '正在載入本機分析資料…',
-    'dashboard.summary.label': '分析概覽',
-    'dashboard.summary.sessions': '工作階段數',
-    'dashboard.summary.tokens': '工作階段 Token',
     'dashboard.summary.skills': 'Skill 呼叫',
-    'dashboard.turns.label': '輪次結果',
-    'dashboard.turns.succeeded': '成功 {count}',
-    'dashboard.turns.failed': '失敗 {count}',
-    'dashboard.turns.cancelled': '取消 {count}',
-    'dashboard.turns.active': '執行中 {count}',
-    'dashboard.turns.unknown': '未知 {count}',
-    'dashboard.views.label': '分析檢視',
-    'dashboard.views.sessions': '工作階段',
-    'dashboard.views.skills': 'Skills',
-    'dashboard.filter.label': '工作階段範圍',
-    'dashboard.filter.all': '全部',
-    'dashboard.filter.current': '目前',
-    'dashboard.filter.archived': '已封存',
     'dashboard.search.label': '搜尋分析資料',
-    'dashboard.search.sessions': '搜尋工作階段或專案',
     'dashboard.search.skills': '搜尋 Skill',
-    'dashboard.pagination.label': '分析資料分頁',
-    'dashboard.pagination.previous': '上一頁',
-    'dashboard.pagination.next': '下一頁',
-    'dashboard.pagination.page': '第 {page} / {total} 頁',
-    'dashboard.session.name': '工作階段',
-    'dashboard.session.updated': '最後活動',
-    'dashboard.session.duration': '執行時間',
-    'dashboard.session.tokens': 'Token',
-    'dashboard.session.turns': '輪次',
-    'dashboard.session.skills': 'Skill',
-    'dashboard.session.status': '最近結果',
-    'dashboard.session.untitled': '未命名工作階段',
-    'dashboard.session.unknown_project': '未知專案',
-    'dashboard.session.wall_duration': '從建立到最後活動的跨度：{duration}',
     'dashboard.skill.name': 'Skill',
     'dashboard.skill.invocations': '呼叫次數',
     'dashboard.skill.outcomes': '成功 / 失敗 / 取消 / 其他',
@@ -372,38 +433,16 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
       '成功 {succeeded}，失敗 {failed}，取消 {cancelled}，執行中或未知 {unknown}',
     'dashboard.skill.success_rate': '成功率',
     'dashboard.skill.average_duration': '平均耗時',
-    'dashboard.skill.max_duration': '最長耗時',
     'dashboard.skill.average_tokens': '平均 Token',
-    'dashboard.skill.max_tokens': '最大 Token',
-    'dashboard.empty.sessions': '尚未匯入 Codex 工作階段。',
     'dashboard.empty.skills': '未偵測到 Skill 呼叫。',
     'dashboard.empty.filtered': '沒有符合目前篩選條件的結果。',
-    'dashboard.method':
-      '工具成功讀取 SKILL.md 時記為一次 Skill 呼叫，同一輪重複讀取只統計一次。狀態、耗時和 Token 使用所在輪次的資料。',
-    'dashboard.sync.not_started': '等待掃描',
-    'dashboard.sync.syncing': '正在掃描本機資料',
-    'dashboard.sync.ready': '正在監聽資料變更',
     'dashboard.sync.error': '同步失敗',
-    'dashboard.sync.unavailable': 'Codex 資料不可用',
-    'dashboard.sync.processed': '已處理 {count} 筆記錄',
-    'dashboard.sync.updated': '更新於 {date}',
-    'dashboard.status.succeeded': '成功',
-    'dashboard.status.failed': '失敗',
-    'dashboard.status.cancelled': '已取消',
-    'dashboard.status.active': '執行中',
-    'dashboard.status.unknown': '未知',
-    'dashboard.duration.seconds': '{value} 秒',
-    'dashboard.duration.minutes': '{value} 分鐘',
-    'dashboard.duration.hours': '{value} 小時',
-    'dashboard.duration.days': '{value} 天',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': '度量並改進 AI Coding 工作流。',
     'about.version': '版本',
     'about.unknown': '未知',
-    'about.star': '去 GitHub 點贊',
-    'about.copyright': '版權所有 © 2026 HarnessLens',
     'about.close': '關閉',
 
     // Control Bar
@@ -413,6 +452,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': '設定',
     'control.pin': '置頂視窗',
     'control.unpin': '取消置頂視窗',
+    'control.window_controls': '視窗控制',
+    'control.minimize': '最小化',
+    'control.maximize': '最大化',
+    'control.restore': '還原',
+    'control.close': '關閉',
 
     // Tray Menu
     'tray.show_main': '顯示 HarnessLens',
@@ -421,9 +465,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '通用設定',
-    'settings.general.auto_check': '自動檢查更新',
-    'settings.general.auto_check_desc': '啟動應用時自動檢查是否有新版本',
-    'settings.general.app_update': '應用更新',
 
     // Settings Appearance
     'settings.appearance.title': '應用主題',
@@ -435,7 +476,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': '應用語言',
-    'settings.language.select': '語言選擇',
     'settings.language.desc': '在系統預設、英文或其他語言之間選擇',
     'settings.language.lang_system': '系統預設',
     'settings.language.lang_en': 'English',
@@ -446,7 +486,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': '正在檢查更新...',
     'update.status.installing': '正在安裝更新...',
@@ -470,22 +509,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   ja: {
     // Shared / Navigation
-    'nav.back': '分析に戻る',
     'nav.general': '一般設定',
     'nav.appearance': '外観設定',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLensはAI Coding Harnessの利用効率を分析し、Harness改善のための分かりやすいデータ根拠を提供するツールです。',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'AI Coding ワークフローを測定し、改善します。',
     'about.version': 'バージョン',
     'about.unknown': '不明',
-    'about.star': 'GitHub でスター',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': '閉じる',
 
     // Control Bar
@@ -495,6 +529,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': '設定',
     'control.pin': 'ウィンドウを固定',
     'control.unpin': 'ウィンドウの固定を解除',
+    'control.window_controls': 'ウィンドウ操作',
+    'control.minimize': '最小化',
+    'control.maximize': '最大化',
+    'control.restore': '元に戻す',
+    'control.close': '閉じる',
 
     // Tray Menu
     'tray.show_main': 'HarnessLensを表示',
@@ -503,9 +542,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '一般設定',
-    'settings.general.auto_check': 'アップデートを自動的に確認',
-    'settings.general.auto_check_desc': '起動時に新しいバージョンを自動的に確認します',
-    'settings.general.app_update': 'アプリのアップデート',
 
     // Settings Appearance
     'settings.appearance.title': 'テーマ',
@@ -517,7 +553,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': '言語',
-    'settings.language.select': '言語の選択',
     'settings.language.desc': 'システムデフォルト、英語、日本語、その他の言語から選択します',
     'settings.language.lang_system': 'システムデフォルト',
     'settings.language.lang_en': 'English',
@@ -528,7 +563,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': 'アップデートを確認中...',
     'update.status.installing': 'アップデートをインストール中...',
@@ -552,22 +586,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   ko: {
     // Shared / Navigation
-    'nav.back': '분석으로 돌아가기',
     'nav.general': '일반 설정',
     'nav.appearance': '화면 설정',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens는 AI 코딩 하니스의 사용 효율을 분석하고 하니스 개선을 위한 직관적인 데이터 근거를 제공하는 도구입니다.',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'AI 코딩 워크플로를 측정하고 개선합니다.',
     'about.version': '버전',
     'about.unknown': '알 수 없음',
-    'about.star': 'GitHub 스타하기',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': '닫기',
 
     // Control Bar
@@ -577,6 +606,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': '설정',
     'control.pin': '창 고정',
     'control.unpin': '창 고정 해제',
+    'control.window_controls': '창 제어',
+    'control.minimize': '최소화',
+    'control.maximize': '최대화',
+    'control.restore': '복원',
+    'control.close': '닫기',
 
     // Tray Menu
     'tray.show_main': 'HarnessLens 표시',
@@ -585,9 +619,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '일반 설정',
-    'settings.general.auto_check': '업데이트 자동 확인',
-    'settings.general.auto_check_desc': '시작할 때 새로운 버전을 자동으로 확인합니다',
-    'settings.general.app_update': '애플리케이션 업데이트',
 
     // Settings Appearance
     'settings.appearance.title': '앱 테마',
@@ -599,7 +630,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': '앱 언어',
-    'settings.language.select': '언어 선택',
     'settings.language.desc': '시스템 기본, 영어, 한국어 또는 기타 언어 중에서 선택합니다',
     'settings.language.lang_system': '시스템 기본',
     'settings.language.lang_en': 'English',
@@ -610,7 +640,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': '업데이트 확인 중...',
     'update.status.installing': '업데이트 설치 중...',
@@ -635,22 +664,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   es: {
     // Shared / Navigation
-    'nav.back': 'Volver a análisis',
     'nav.general': 'General',
     'nav.appearance': 'Apariencia',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens es una herramienta de análisis de la eficacia de uso de los harnesses de programación con IA que aporta datos claros para mejorarlos.',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'Mide y mejora los flujos de trabajo de coding con IA.',
     'about.version': 'Versión',
     'about.unknown': 'Desconocido',
-    'about.star': 'Destacar en GitHub',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Cerrar',
 
     // Control Bar
@@ -660,6 +684,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': 'Configuración',
     'control.pin': 'Fijar ventana',
     'control.unpin': 'Desfijar ventana',
+    'control.window_controls': 'Controles de ventana',
+    'control.minimize': 'Minimizar',
+    'control.maximize': 'Maximizar',
+    'control.restore': 'Restaurar',
+    'control.close': 'Cerrar',
 
     // Tray Menu
     'tray.show_main': 'Mostrar HarnessLens',
@@ -668,9 +697,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Configuración General',
-    'settings.general.auto_check': 'Buscar actualizaciones automáticamente',
-    'settings.general.auto_check_desc': 'Buscar nuevas versiones de la aplicación al iniciar',
-    'settings.general.app_update': 'Actualización de la aplicación',
 
     // Settings Appearance
     'settings.appearance.title': 'Tema de la aplicación',
@@ -682,7 +708,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': 'Idioma de la aplicación',
-    'settings.language.select': 'Selección de idioma',
     'settings.language.desc':
       'Elegir entre predeterminado del sistema, inglés, español u otros idiomas',
     'settings.language.lang_system': 'Sistema predeterminado',
@@ -694,7 +719,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': 'Buscando actualizaciones...',
     'update.status.installing': 'Instalando actualización...',
@@ -719,22 +743,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   fr: {
     // Shared / Navigation
-    'nav.back': 'Retour aux analyses',
     'nav.general': 'Général',
     'nav.appearance': 'Apparence',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      "HarnessLens est un outil d'analyse de l'efficacité d'utilisation des harnesses de coding assisté par IA, fournissant des données claires pour les améliorer.",
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'Mesurez et améliorez les workflows de coding assisté par IA.',
     'about.version': 'Version',
     'about.unknown': 'Inconnu',
-    'about.star': 'Ajouter une étoile sur GitHub',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Fermer',
 
     // Control Bar
@@ -744,6 +763,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': 'Paramètres',
     'control.pin': 'Épingler la fenêtre',
     'control.unpin': 'Désélectionner la fenêtre',
+    'control.window_controls': 'Commandes de la fenêtre',
+    'control.minimize': 'Réduire',
+    'control.maximize': 'Agrandir',
+    'control.restore': 'Restaurer',
+    'control.close': 'Fermer',
 
     // Tray Menu
     'tray.show_main': 'Afficher HarnessLens',
@@ -752,9 +776,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Paramètres généraux',
-    'settings.general.auto_check': 'Vérifier automatiquement les mises à jour',
-    'settings.general.auto_check_desc': 'Vérifier les nouvelles versions au démarrage',
-    'settings.general.app_update': "Mise à jour de l'application",
 
     // Settings Appearance
     'settings.appearance.title': "Thème de l'application",
@@ -767,7 +788,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': "Langue de l'application",
-    'settings.language.select': 'Sélection de la langue',
     'settings.language.desc':
       "Choisir entre la langue système par défaut, l'anglais, le français ou d'autres langues",
     'settings.language.lang_system': 'Système par défaut',
@@ -779,7 +799,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': 'Recherche de mises à jour...',
     'update.status.installing': 'Installation de la mise à jour...',
@@ -804,22 +823,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
   },
   de: {
     // Shared / Navigation
-    'nav.back': 'Zurück zu Analytics',
     'nav.general': 'Allgemein',
     'nav.appearance': 'Aussehen',
 
     // Main Page
     'main.title': 'HarnessLens',
-    'main.desc':
-      'HarnessLens ist ein Werkzeug zur Analyse der Nutzungseffizienz von AI-Coding-Harnesses und liefert anschauliche Daten für deren Verbesserung.',
 
     // About Dialog
     'about.title': 'HarnessLens',
     'about.desc': 'AI-Coding-Workflows messen und verbessern.',
     'about.version': 'Version',
     'about.unknown': 'Unbekannt',
-    'about.star': 'Stern auf GitHub geben',
-    'about.copyright': 'Copyright © 2026 HarnessLens',
     'about.close': 'Schließen',
 
     // Control Bar
@@ -829,6 +843,11 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'control.settings': 'Einstellungen',
     'control.pin': 'Fenster anheften',
     'control.unpin': 'Fenster lösen',
+    'control.window_controls': 'Fenstersteuerung',
+    'control.minimize': 'Minimieren',
+    'control.maximize': 'Maximieren',
+    'control.restore': 'Wiederherstellen',
+    'control.close': 'Schließen',
 
     // Tray Menu
     'tray.show_main': 'HarnessLens anzeigen',
@@ -837,9 +856,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Allgemeine Einstellungen',
-    'settings.general.auto_check': 'Automatisch nach Updates suchen',
-    'settings.general.auto_check_desc': 'Beim Systemstart nach neuen Versionen suchen',
-    'settings.general.app_update': 'Anwendungs-Update',
 
     // Settings Appearance
     'settings.appearance.title': 'Design der Anwendung',
@@ -852,7 +868,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings Language
     'settings.language.title': 'Sprache der Anwendung',
-    'settings.language.select': 'Sprachauswahl',
     'settings.language.desc':
       'Wählen Sie zwischen Systemstandard, Englisch, Deutsch oder anderen Sprachen',
     'settings.language.lang_system': 'Systemstandard',
@@ -864,7 +879,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-
     // Update Statuses
     'update.status.checking': 'Suche nach Updates...',
     'update.status.installing': 'Update wird installiert...',

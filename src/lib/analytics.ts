@@ -2,7 +2,12 @@ export type AnalyticsSyncState = 'not_started' | 'syncing' | 'ready' | 'error' |
 
 export type AnalyticsSyncPhase = 'idle' | 'discovery' | 'initial_scan' | 'watching';
 
-export type AnalyticsTurnStatus = 'in_progress' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
+export type AnalyticsInvocationStatus =
+  | 'in_progress'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'unknown';
 
 export interface AnalyticsSnapshot {
   sync: AnalyticsSyncStatus;
@@ -25,11 +30,11 @@ export interface OverallSummary {
   sessionCount: number;
   totalTokens: number;
   skillInvocationCount: number;
-  succeededTurnCount: number;
-  failedTurnCount: number;
-  cancelledTurnCount: number;
-  activeTurnCount: number;
-  unknownTurnCount: number;
+  succeededInvocationCount: number;
+  failedInvocationCount: number;
+  cancelledInvocationCount: number;
+  activeInvocationCount: number;
+  unknownInvocationCount: number;
 }
 
 export interface SessionSummary {
@@ -41,10 +46,10 @@ export interface SessionSummary {
   observedDurationMs: number;
   wallDurationMs: number | null;
   tokensUsed: number;
-  turnCount: number;
+  invocationCount: number;
   skillInvocationCount: number;
   archived: boolean;
-  status: AnalyticsTurnStatus;
+  status: AnalyticsInvocationStatus;
 }
 
 export interface SkillSummary {
@@ -83,11 +88,11 @@ function emptySnapshot(): AnalyticsSnapshot {
       sessionCount: 0,
       totalTokens: 0,
       skillInvocationCount: 0,
-      succeededTurnCount: 0,
-      failedTurnCount: 0,
-      cancelledTurnCount: 0,
-      activeTurnCount: 0,
-      unknownTurnCount: 0,
+      succeededInvocationCount: 0,
+      failedInvocationCount: 0,
+      cancelledInvocationCount: 0,
+      activeInvocationCount: 0,
+      unknownInvocationCount: 0,
     },
     sessions: [],
     skills: [],

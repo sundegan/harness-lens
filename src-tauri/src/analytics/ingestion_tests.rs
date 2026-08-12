@@ -4,14 +4,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use coding_agent_data::{
     Actor, AgentInvocation, AgentInvocationStatus, Batch, Change, Checkpoint, DataQuality, Event,
-    EventData, EventSequence, Record, RecordData, RecordId, Session, SourceId, SourceLocation,
-    SourceRef, StopReason, Timestamp, TokenUsage, ToolCall, ToolKind, ToolResult, ToolStatus,
-    UsageReport,
+    EventData, EventSequence, Message, MessageRole, Record, RecordData, RecordId, Session,
+    SourceId, SourceLocation, SourceRef, StopReason, Timestamp, TokenUsage, ToolCall, ToolKind,
+    ToolResult, ToolStatus, UsageReport,
 };
 use serde_json::{json, Value};
 
 use super::{apply_batch, skill_names_from_tool_output};
-use crate::analytics::repository::analytics_snapshot;
+use crate::analytics::model::SessionPageRequest;
+use crate::analytics::repository::{analytics_snapshot, session_detail, session_page};
 use crate::database::Database;
 
 static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
@@ -71,6 +72,10 @@ fn session_record(external_id: &str, title: &str, transcript: &Path, total_token
     session.created_at = Some(Timestamp::from_seconds(1_700_000_000));
     session.updated_at = Some(Timestamp::from_seconds(1_700_000_100));
     session.total_tokens = Some(total_tokens);
+    session.model = Some("gpt-5-codex".to_owned());
+    session.model_provider = Some("openai".to_owned());
+    session.agent_version = Some("1.0.0".to_owned());
+    session.git_branch = Some("main".to_owned());
     session.quality = DataQuality::Complete;
     let mut record = Record::new(
         session_id(external_id),
@@ -85,6 +90,46 @@ fn session_record(external_id: &str, title: &str, transcript: &Path, total_token
         RecordData::Session(session),
     );
     record.timestamp = Some(Timestamp::from_seconds(1_700_000_100));
+    record
+}
+
+fn message_record(
+    transcript: &Path,
+    session: &str,
+    invocation: &str,
+    position: u64,
+    role: MessageRole,
+    text: &str,
+) -> Record {
+    let event = Event::new(
+        EventSequence::new(position, 0),
+        match &role {
+            MessageRole::User => Actor::User,
+            MessageRole::Assistant => Actor::Agent,
+            MessageRole::System | MessageRole::Developer => Actor::System,
+            MessageRole::Tool => Actor::Tool,
+            _ => Actor::Agent,
+        },
+        EventData::Message(Message {
+            role,
+            phase: None,
+            content: vec![coding_agent_data::ContentBlock::text(text)],
+        }),
+    );
+    let mut record = Record::new(
+        RecordId::new(format!(
+            "{SOURCE_ID}:message:{}:{position}",
+            transcript.to_string_lossy()
+        )),
+        SourceId::new(SOURCE_ID),
+        origin(transcript),
+        RecordData::Event(event),
+    );
+    record.session = Some(session_id(session));
+    record.invocation = Some(invocation_id(transcript, invocation));
+    record.timestamp = Some(Timestamp::from_seconds(
+        1_700_000_000 + i64::try_from(position).unwrap(),
+    ));
     record
 }
 
@@ -182,7 +227,7 @@ fn tool_call_record(
     call_id: &str,
     input: Value,
 ) -> Record {
-    let mut item = Event::new(
+    let mut event = Event::new(
         EventSequence::new(1, 0),
         Actor::Agent,
         EventData::ToolCall(ToolCall {
@@ -196,12 +241,12 @@ fn tool_call_record(
             locations: Vec::new(),
         }),
     );
-    item.external_id = Some(call_id.to_owned());
+    event.external_id = Some(call_id.to_owned());
     let mut record = Record::new(
         RecordId::new(format!("{SOURCE_ID}:tool-call:{call_id}")),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Event(item),
+        RecordData::Event(event),
     );
     record.session = Some(session_id(session));
     record.invocation = Some(invocation_id(transcript, invocation));
@@ -216,7 +261,7 @@ fn tool_result_record(
     output: Value,
     success: bool,
 ) -> Record {
-    let mut item = Event::new(
+    let mut event = Event::new(
         EventSequence::new(2, 0),
         Actor::Tool,
         EventData::ToolResult(ToolResult {
@@ -233,13 +278,13 @@ fn tool_result_record(
             duration_ms: None,
         }),
     );
-    item.external_id = Some(call_id.to_owned());
-    item.parent = Some(RecordId::new(format!("{SOURCE_ID}:tool-call:{call_id}")));
+    event.external_id = Some(call_id.to_owned());
+    event.parent = Some(RecordId::new(format!("{SOURCE_ID}:tool-call:{call_id}")));
     let mut record = Record::new(
         RecordId::new(format!("{SOURCE_ID}:tool-result:{call_id}")),
         SourceId::new(SOURCE_ID),
         origin(transcript),
-        RecordData::Event(item),
+        RecordData::Event(event),
     );
     record.session = Some(session_id(session));
     record.invocation = Some(invocation_id(transcript, invocation));
@@ -268,7 +313,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
@@ -276,14 +321,14 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1",
                 skill_input("octocode-research"),
             )),
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1",
                 skill_output("---\nname: octocode-research\ndescription: Research\n---\n"),
                 true,
@@ -291,14 +336,14 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1-repeat",
                 skill_input("octocode-research"),
             )),
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1-repeat",
                 skill_output("---\nname: octocode-research\ndescription: Research\n---\n"),
                 true,
@@ -306,14 +351,14 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(usage_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 150,
                 Some(150),
             )),
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
@@ -321,7 +366,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_020, None, None),
                 None,
@@ -329,7 +374,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 "call-2",
                 json!({
                     "cmd": "sed /skills/octocode-research/SKILL.md && sed /skills/tauri-codegen/SKILL.md"
@@ -338,7 +383,7 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 "call-2",
                 skill_output(
                     "---\nname: octocode-research\ndescription: Research\n---\n\
@@ -349,14 +394,14 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 "call-failed",
                 skill_input("missing"),
             )),
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 "call-failed",
                 skill_output("---\nname: missing\ndescription: Missing\n---\n"),
                 false,
@@ -364,14 +409,14 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
             Change::upsert(usage_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 260,
                 Some(110),
             )),
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-2",
+                "invocation-2",
                 AgentInvocationStatus::Failed,
                 (1_700_000_020, Some(1_700_000_040), Some(20_000)),
                 Some("tool failed"),
@@ -388,9 +433,9 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
     assert_eq!(snapshot.summary.session_count, 1);
     assert_eq!(snapshot.summary.total_tokens, 260);
     assert_eq!(snapshot.summary.skill_invocation_count, 3);
-    assert_eq!(snapshot.summary.succeeded_turn_count, 1);
-    assert_eq!(snapshot.summary.failed_turn_count, 1);
-    assert_eq!(snapshot.sessions[0].turn_count, 2);
+    assert_eq!(snapshot.summary.succeeded_invocation_count, 1);
+    assert_eq!(snapshot.summary.failed_invocation_count, 1);
+    assert_eq!(snapshot.sessions[0].invocation_count, 2);
     assert_eq!(snapshot.sessions[0].skill_invocation_count, 3);
     assert_eq!(snapshot.sessions[0].status, "failed");
     assert!(snapshot.skills.iter().all(|skill| skill.name != "missing"));
@@ -422,6 +467,107 @@ fn imports_skill_reads_and_turn_metrics_from_normalized_records() {
 }
 
 #[test]
+fn stores_paginated_sessions_and_normalized_event_history() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let mut changes = Vec::new();
+
+    for index in 0..12 {
+        let session = format!("session-{index:02}");
+        let transcript = database_path
+            .parent()
+            .unwrap()
+            .join(format!("{session}.jsonl"));
+        changes.push(Change::upsert(session_record(
+            &session,
+            &format!("Session {index:02}"),
+            &transcript,
+            i64::from(index),
+        )));
+        if index == 0 {
+            changes.extend([
+                Change::upsert(message_record(
+                    &transcript,
+                    &session,
+                    "invocation-1",
+                    0,
+                    MessageRole::User,
+                    "Show the session history",
+                )),
+                Change::upsert(tool_call_record(
+                    &transcript,
+                    &session,
+                    "invocation-1",
+                    "call-history",
+                    json!({"cmd": "pwd"}),
+                )),
+                Change::upsert(tool_result_record(
+                    &transcript,
+                    &session,
+                    "invocation-1",
+                    "call-history",
+                    json!({"output": "/tmp/harness-lens"}),
+                    true,
+                )),
+            ]);
+        }
+    }
+
+    let batch = Batch {
+        changes,
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &batch, "ready", "watching").unwrap();
+
+    let second_page = session_page(
+        &database,
+        SessionPageRequest {
+            page: 2,
+            page_size: 10,
+            query: None,
+            archived: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(second_page.total, 12);
+    assert_eq!(second_page.page, 2);
+    assert_eq!(second_page.items.len(), 2);
+
+    let filtered = session_page(
+        &database,
+        SessionPageRequest {
+            page: 1,
+            page_size: 10,
+            query: Some("Session 00".to_owned()),
+            archived: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(filtered.total, 1);
+    assert_eq!(filtered.items[0].event_count, 3);
+    assert_eq!(filtered.items[0].model.as_deref(), Some("gpt-5-codex"));
+    assert_eq!(filtered.items[0].git_branch.as_deref(), Some("main"));
+
+    let detail = session_detail(&database, session_id("session-00").as_str())
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.data_quality, "complete");
+    assert_eq!(
+        detail
+            .events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        ["message", "tool_call", "tool_result"]
+    );
+    assert_eq!(detail.events[0].event["data"]["type"], "message");
+
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
 fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
     let database_path = test_database_path();
     let database = Database::initialize(&database_path).unwrap();
@@ -433,7 +579,7 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
             Change::upsert(invocation_record(
                 &parent,
                 "parent",
-                "parent-turn",
+                "parent-invocation",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
@@ -441,21 +587,21 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
             Change::upsert(usage_record(
                 &parent,
                 "parent",
-                "parent-turn",
+                "parent-invocation",
                 100,
                 Some(100),
             )),
             Change::upsert(usage_record(
                 &parent,
                 "parent",
-                "parent-turn",
+                "parent-invocation",
                 150,
                 Some(50),
             )),
             Change::upsert(invocation_record(
                 &parent,
                 "parent",
-                "parent-turn",
+                "parent-invocation",
                 AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
@@ -464,17 +610,23 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
             Change::upsert(invocation_record(
                 &child,
                 "child",
-                "child-turn",
+                "child-invocation",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_020, None, None),
                 None,
             )),
-            Change::upsert(usage_record(&child, "child", "child-turn", 100, None)),
-            Change::upsert(usage_record(&child, "child", "child-turn", 150, Some(50))),
+            Change::upsert(usage_record(&child, "child", "child-invocation", 100, None)),
+            Change::upsert(usage_record(
+                &child,
+                "child",
+                "child-invocation",
+                150,
+                Some(50),
+            )),
             Change::upsert(invocation_record(
                 &child,
                 "child",
-                "child-turn",
+                "child-invocation",
                 AgentInvocationStatus::Completed,
                 (1_700_000_020, Some(1_700_000_030), Some(10_000)),
                 None,
@@ -503,7 +655,7 @@ fn fork_replay_does_not_inflate_session_turn_or_global_tokens() {
         .unwrap()
         .query_row(
             "SELECT total_tokens FROM agent_invocations WHERE id = ?1",
-            [invocation_id(&child, "child-turn").as_str()],
+            [invocation_id(&child, "child-invocation").as_str()],
             |row| row.get(0),
         )
         .unwrap();
@@ -543,7 +695,7 @@ fn session_tokens_fall_back_to_the_provider_total_when_no_delta_is_attributed() 
 }
 
 #[test]
-fn source_scoped_turn_ids_keep_provider_reused_ids_separate() {
+fn source_scoped_invocation_ids_keep_provider_reused_ids_separate() {
     let database_path = test_database_path();
     let database = Database::initialize(&database_path).unwrap();
     let first = database_path.parent().unwrap().join("first.jsonl");
@@ -564,7 +716,7 @@ fn source_scoped_turn_ids_keep_provider_reused_ids_separate() {
             Change::upsert(invocation_record(
                 transcript,
                 session,
-                "shared-turn-id",
+                "shared-invocation-id",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
@@ -572,7 +724,7 @@ fn source_scoped_turn_ids_keep_provider_reused_ids_separate() {
             Change::upsert(invocation_record(
                 transcript,
                 session,
-                "shared-turn-id",
+                "shared-invocation-id",
                 AgentInvocationStatus::Completed,
                 (1_700_000_000, Some(1_700_000_001), Some(1_000)),
                 None,
@@ -590,12 +742,12 @@ fn source_scoped_turn_ids_keep_provider_reused_ids_separate() {
     let snapshot = analytics_snapshot(&database).unwrap();
 
     assert_eq!(snapshot.summary.session_count, 2);
-    assert_eq!(snapshot.summary.succeeded_turn_count, 2);
+    assert_eq!(snapshot.summary.succeeded_invocation_count, 2);
     assert_eq!(
         snapshot
             .sessions
             .iter()
-            .map(|session| session.turn_count)
+            .map(|session| session.invocation_count)
             .sum::<i64>(),
         2
     );
@@ -611,7 +763,7 @@ fn terminal_turn_uses_the_stored_start_time_when_the_event_omits_it() {
     let running = invocation_record(
         &transcript,
         "session-1",
-        "turn-1",
+        "invocation-1",
         AgentInvocationStatus::InProgress,
         (1_700_000_000, None, None),
         None,
@@ -619,7 +771,7 @@ fn terminal_turn_uses_the_stored_start_time_when_the_event_omits_it() {
     let mut terminal = invocation_record(
         &transcript,
         "session-1",
-        "turn-1",
+        "invocation-1",
         AgentInvocationStatus::Completed,
         (1_700_000_000, Some(1_700_000_010), None),
         None,
@@ -678,7 +830,7 @@ fn interrupted_turns_are_counted_as_cancelled() {
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 AgentInvocationStatus::InProgress,
                 (1_700_000_000, None, None),
                 None,
@@ -686,14 +838,14 @@ fn interrupted_turns_are_counted_as_cancelled() {
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1",
                 json!({"cmd": "sed -n '1,120p' /skills/example/SKILL.md"}),
             )),
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 "call-1",
                 json!({"output": "---\nname: example\ndescription: Example\n---\n"}),
                 true,
@@ -701,7 +853,7 @@ fn interrupted_turns_are_counted_as_cancelled() {
             Change::upsert(invocation_record(
                 &transcript,
                 "session-1",
-                "turn-1",
+                "invocation-1",
                 AgentInvocationStatus::Interrupted,
                 (1_700_000_000, Some(1_700_000_010), Some(10_000)),
                 None,
@@ -715,7 +867,7 @@ fn interrupted_turns_are_counted_as_cancelled() {
     apply_batch(&database, &batch, "ready", "watching").unwrap();
     let snapshot = analytics_snapshot(&database).unwrap();
 
-    assert_eq!(snapshot.summary.cancelled_turn_count, 1);
+    assert_eq!(snapshot.summary.cancelled_invocation_count, 1);
     assert_eq!(snapshot.sessions[0].status, "cancelled");
     assert_eq!(snapshot.skills[0].cancelled_count, 1);
 
@@ -730,18 +882,24 @@ fn orphan_turn_and_usage_records_do_not_abort_the_batch() {
     let mut running = invocation_record(
         &transcript,
         "missing-session",
-        "turn-1",
+        "invocation-1",
         AgentInvocationStatus::InProgress,
         (1_700_000_000, None, None),
         None,
     );
     running.session = None;
-    let mut usage = usage_record(&transcript, "missing-session", "turn-1", 100, Some(100));
+    let mut usage = usage_record(
+        &transcript,
+        "missing-session",
+        "invocation-1",
+        100,
+        Some(100),
+    );
     usage.session = None;
     let mut terminal = invocation_record(
         &transcript,
         "missing-session",
-        "turn-1",
+        "invocation-1",
         AgentInvocationStatus::Completed,
         (1_700_000_000, Some(1_700_000_010), None),
         None,
@@ -776,21 +934,21 @@ fn skill_reads_linked_to_an_unprojected_turn_do_not_abort_the_batch() {
         changes: vec![
             Change::upsert(session_record(
                 "session-1",
-                "Orphan Skill turn",
+                "Orphan Skill invocation",
                 &transcript,
                 10,
             )),
             Change::upsert(tool_call_record(
                 &transcript,
                 "session-1",
-                "missing-turn",
+                "missing-invocation",
                 "call-1",
                 json!({"cmd": "sed -n '1,120p' /skills/example/SKILL.md"}),
             )),
             Change::upsert(tool_result_record(
                 &transcript,
                 "session-1",
-                "missing-turn",
+                "missing-invocation",
                 "call-1",
                 json!({"output": "---\nname: example\ndescription: Example\n---\n"}),
                 true,

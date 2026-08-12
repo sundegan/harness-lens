@@ -60,6 +60,8 @@ pub fn run() {
             commands::desktop_platform,
             commands::set_tray_menu_labels,
             analytics::get_analytics_snapshot,
+            analytics::get_session_page,
+            analytics::get_session_detail,
             settings::load_settings,
             settings::save_setting
         ])

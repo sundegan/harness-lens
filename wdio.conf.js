@@ -15,7 +15,7 @@ export const config = {
   connectionRetryTimeout: 120000,
   connectionRetryCount: 1,
   transformRequest: (requestOptions) => {
-    // Let fetch calculate this header; Node 26 rejects WebdriverIO's manual value.
+    // Let fetch calculate this header. Node 26 rejects WebdriverIO's manual value.
     requestOptions.headers.delete('Content-Length');
     return requestOptions;
   },

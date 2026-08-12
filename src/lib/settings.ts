@@ -18,7 +18,6 @@ function legacyLocalSettings(): Settings {
   const autoCheckUpdates =
     window.localStorage.getItem('harness-lens:auto-check-updates') ??
     window.localStorage.getItem('codex-timeline:auto-check-updates');
-
   return {
     theme,
     language,
@@ -64,6 +63,9 @@ export function saveSetting<K extends SettingKey>(key: K, value: Settings[K]): v
   void (async () => {
     const { invoke, isTauri } = await import('@tauri-apps/api/core');
     if (!isTauri()) {
+      if (typeof window !== 'undefined' && value !== undefined) {
+        window.localStorage.setItem(key, String(value));
+      }
       return;
     }
 

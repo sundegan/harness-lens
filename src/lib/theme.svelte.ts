@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { logError } from '$lib/logger';
 import { loadSettings, saveSetting } from '$lib/settings';
 
@@ -70,6 +69,8 @@ class ThemeManager {
     document.documentElement.classList.toggle('light', !dark);
 
     try {
+      const { invoke, isTauri } = await import('@tauri-apps/api/core');
+      if (!isTauri()) return;
       await invoke('set_window_theme', { isDark: dark });
     } catch (err) {
       logError('Failed to sync native window theme', err);
