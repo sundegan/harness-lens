@@ -243,7 +243,7 @@ fn reset_provider_data(database: &Database) -> Result<(), String> {
         .map_err(|error| format!("failed to reset rollout state: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM analytics_sync_state WHERE provider = ?1 OR provider LIKE ?2",
+            "DELETE FROM provider_sync_state WHERE provider = ?1 OR provider LIKE ?2",
             params![repository::PROVIDER, format!("{}:%", repository::PROVIDER)],
         )
         .map_err(|error| format!("failed to reset sync state: {error}"))?;

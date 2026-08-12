@@ -23,7 +23,7 @@ pub(super) fn load_checkpoint(database: &Database) -> Result<Option<String>, Dat
         .query_row(
             "
             SELECT checkpoint_json
-            FROM analytics_sync_state
+            FROM provider_sync_state
             WHERE provider = ?1
             ",
             [PROVIDER],
@@ -45,7 +45,7 @@ pub(super) fn update_sync_status(
         .connect()?
         .execute(
             "
-            INSERT INTO analytics_sync_state (
+            INSERT INTO provider_sync_state (
                 provider,
                 status,
                 phase,
@@ -76,7 +76,7 @@ pub(super) fn save_batch_state(
     transaction
         .execute(
             "
-            INSERT INTO analytics_sync_state (
+            INSERT INTO provider_sync_state (
                 provider,
                 checkpoint_json,
                 status,
@@ -90,9 +90,9 @@ pub(super) fn save_batch_state(
                 checkpoint_json = excluded.checkpoint_json,
                 status = excluded.status,
                 phase = excluded.phase,
-                processed_records = analytics_sync_state.processed_records
+                processed_records = provider_sync_state.processed_records
                     + excluded.processed_records,
-                diagnostic_count = analytics_sync_state.diagnostic_count
+                diagnostic_count = provider_sync_state.diagnostic_count
                     + excluded.diagnostic_count,
                 last_error = NULL,
                 updated_at_ms = excluded.updated_at_ms
@@ -140,7 +140,7 @@ fn query_sync_status(connection: &Connection) -> Result<SyncStatus, DatabaseErro
                 diagnostic_count,
                 last_error,
                 updated_at_ms
-            FROM analytics_sync_state
+            FROM provider_sync_state
             WHERE provider = ?1
             ",
             [PROVIDER],

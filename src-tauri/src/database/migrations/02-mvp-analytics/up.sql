@@ -1,4 +1,4 @@
-CREATE TABLE analytics_sync_state (
+CREATE TABLE provider_sync_state (
     provider TEXT PRIMARY KEY NOT NULL,
     checkpoint_json TEXT,
     status TEXT NOT NULL DEFAULT 'not_started',

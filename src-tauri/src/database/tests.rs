@@ -40,7 +40,7 @@ fn initialize_creates_versioned_analytics_database() {
             FROM sqlite_schema
             WHERE type = 'table'
               AND name IN (
-                'analytics_sync_state',
+                'provider_sync_state',
                 'agent_sessions',
                 'rollout_sources',
                 'session_turns',
@@ -62,7 +62,7 @@ fn initialize_creates_versioned_analytics_database() {
         .query_row("PRAGMA application_id", [], |row| row.get(0))
         .unwrap();
     let sync_state_columns: Vec<String> = connection
-        .prepare("SELECT name FROM pragma_table_info('analytics_sync_state') ORDER BY cid")
+        .prepare("SELECT name FROM pragma_table_info('provider_sync_state') ORDER BY cid")
         .unwrap()
         .query_map([], |row| row.get(0))
         .unwrap()
@@ -111,7 +111,7 @@ fn analytics_rebuild_migration_clears_the_saved_checkpoint() {
     connection
         .execute(
             "
-            INSERT INTO analytics_sync_state (
+            INSERT INTO provider_sync_state (
                 provider,
                 checkpoint_json,
                 status,
@@ -135,7 +135,7 @@ fn analytics_rebuild_migration_clears_the_saved_checkpoint() {
     let sync_state_count: i64 = database
         .connect()
         .unwrap()
-        .query_row("SELECT COUNT(*) FROM analytics_sync_state", [], |row| {
+        .query_row("SELECT COUNT(*) FROM provider_sync_state", [], |row| {
             row.get(0)
         })
         .unwrap();

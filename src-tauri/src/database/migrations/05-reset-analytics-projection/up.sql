@@ -1,9 +1,9 @@
 -- The analytics projection is derived from coding-agent-data records. Recreate
 -- its sync state without carrying the previous checkpoint forward so the
 -- application performs a full, read-only rebuild after this migration.
-DROP TABLE analytics_sync_state;
+DROP TABLE provider_sync_state;
 
-CREATE TABLE analytics_sync_state (
+CREATE TABLE provider_sync_state (
     provider TEXT PRIMARY KEY NOT NULL,
     checkpoint_json TEXT,
     status TEXT NOT NULL DEFAULT 'not_started',
