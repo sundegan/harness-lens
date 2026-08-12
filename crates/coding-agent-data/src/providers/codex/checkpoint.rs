@@ -25,7 +25,7 @@ pub(super) struct CodexCheckpoint {
     /// records once instead of silently retaining duplicated deltas.
     #[serde(default)]
     pub usage_attribution_ready: bool,
-    /// UsageReport identities retained while a reset rollout is rebuilt in bounded
+    /// Usage identities retained while a reset rollout is rebuilt in bounded
     /// batches. Keeping the old index prevents unrelated copies from being
     /// promoted before the canonical rollout reaches them again.
     #[serde(default)]
@@ -63,7 +63,7 @@ pub(super) struct RolloutContext {
     pub current_invocation: Option<RecordId>,
     #[serde(default)]
     pub current_invocation_external_id: Option<String>,
-    /// Whether the current turn was inferred from legacy message boundaries.
+    /// Whether the current invocation was inferred from legacy message boundaries.
     #[serde(default)]
     pub current_invocation_inferred: bool,
     #[serde(default)]
@@ -74,16 +74,16 @@ pub(super) struct RolloutContext {
     pub current_invocation_model_context_window: Option<i64>,
     #[serde(default)]
     pub current_invocation_time_to_first_token_ms: Option<i64>,
-    /// Latest model selected by turn context or thread settings.
+    /// Latest model selected by invocation context or thread settings.
     #[serde(default)]
     pub current_model: Option<String>,
-    /// Latest model provider selected by turn context or thread settings.
+    /// Latest model provider selected by invocation context or thread settings.
     #[serde(default)]
     pub current_model_provider: Option<String>,
     /// Latest service tier selected by thread settings.
     #[serde(default)]
     pub current_service_tier: Option<String>,
-    /// Provider-local state for turning Codex cumulative token observations
+    /// Provider-local state for converting Codex cumulative token observations
     /// into conservative additive deltas.
     #[serde(default)]
     pub usage_accounting: UsageAccountingState,
@@ -94,18 +94,18 @@ pub(super) struct RolloutContext {
     /// this physical copy currently owns their aggregate attribution.
     #[serde(default)]
     pub usage_attribution: BTreeMap<UsageFingerprint, bool>,
-    /// Calls with a rich terminal result in the current turn. Codex may emit
+    /// Calls with a rich terminal result in the current invocation. Codex may emit
     /// one or more less informative output projections for the same call.
     #[serde(default)]
     pub terminal_tool_results: BTreeSet<String>,
     /// Tool identities retained until a correlated result is observed.
     #[serde(default)]
     pub tool_calls: BTreeMap<String, ObservedTool>,
-    /// Legacy presentation records waiting for a canonical response-item
+    /// Legacy presentation records waiting for a canonical response-event
     /// projection of the same semantic kind.
     #[serde(default)]
     pub pending_legacy_presentations: BTreeMap<String, Vec<String>>,
-    /// Canonical response-item projections observed before their legacy
+    /// Canonical response-event projections observed before their legacy
     /// presentation counterpart.
     #[serde(default)]
     pub unmatched_canonical_presentations: BTreeMap<String, u64>,

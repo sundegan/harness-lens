@@ -22,7 +22,7 @@ pub(super) struct UsageAccountingState {
     /// Component-wise maximum cumulative snapshot observed in this rollout.
     #[serde(default)]
     watermark: Option<TokenUsage>,
-    /// Once a cumulative component drops, subsequent observations are bounded
+    /// Once a cumulative component drops, subsequent usage reports are bounded
     /// by the watermark so alternating lineages cannot recount their gap.
     #[serde(default)]
     saw_cumulative_drop: bool,

@@ -141,7 +141,7 @@ fn session_meta() -> &'static str {
     "{\"timestamp\":\"2026-01-02T03:04:05Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"thread-1\",\"cwd\":\"/workspace/project\",\"timestamp\":\"2026-01-02T03:04:05Z\"}}\n"
 }
 
-fn turn_started() -> &'static str {
+fn invocation_started() -> &'static str {
     "{\"timestamp\":\"2026-01-02T03:04:06Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-1\",\"started_at\":1704164646}}\n"
 }
 
@@ -208,7 +208,7 @@ fn insert_thread(fixture: &Fixture, id: &str, rollout_path: &std::path::Path, to
         .unwrap();
 }
 
-fn turn_completed() -> &'static str {
+fn invocation_completed() -> &'static str {
     "{\"timestamp\":\"2026-01-02T03:04:08Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\",\"completed_at\":1704164648}}\n"
 }
 
@@ -244,7 +244,7 @@ fn compacted_with_camel_case_fields() -> &'static str {
 }
 
 fn hosted_tool_items() -> &'static str {
-    "{\"timestamp\":\"2026-01-02T03:04:13Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"tool_search_call\",\"id\":\"search-item\",\"call_id\":\"search-1\",\"status\":\"in_progress\",\"arguments\":{\"query\":\"formatter\"}}}\n{\"timestamp\":\"2026-01-02T03:04:14Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"tool_search_output\",\"id\":\"search-output\",\"call_id\":\"search-1\",\"status\":\"completed\",\"execution\":\"search\",\"tools\":[{\"name\":\"formatter\"}]}}\n{\"timestamp\":\"2026-01-02T03:04:15Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"image_generation_call\",\"id\":\"image-1\",\"status\":\"completed\",\"revised_prompt\":\"diagram\",\"result\":\"encoded-image\"}}\n"
+    "{\"timestamp\":\"2026-01-02T03:04:13Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"tool_search_call\",\"id\":\"search-event\",\"call_id\":\"search-1\",\"status\":\"in_progress\",\"arguments\":{\"query\":\"formatter\"}}}\n{\"timestamp\":\"2026-01-02T03:04:14Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"tool_search_output\",\"id\":\"search-output\",\"call_id\":\"search-1\",\"status\":\"completed\",\"execution\":\"search\",\"tools\":[{\"name\":\"formatter\"}]}}\n{\"timestamp\":\"2026-01-02T03:04:15Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"image_generation_call\",\"id\":\"image-1\",\"status\":\"completed\",\"revised_prompt\":\"diagram\",\"result\":\"encoded-image\"}}\n"
 }
 
 fn lifecycle_events() -> &'static str {
@@ -396,7 +396,7 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
     let fixture = Fixture::new(&format!(
         "{}{}{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         token_count(),
         tool_call(),
         "{\"timestamp\":\"2026-01-02T03:04:07Z\",\"type\":\"future_event\""
@@ -436,9 +436,9 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "call-1"
                                     && call.input["path"] == "SKILL.md"
@@ -472,9 +472,9 @@ fn scan_normalizes_sessions_and_turns_and_waits_for_incomplete_json() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::AgentInvocation(invocation)
-                        if invocation.invocation_id == "turn-1"
-                            && invocation.status == AgentInvocationStatus::InProgress
+                    RecordData::AgentInvocation(execution)
+                        if execution.invocation_id == "turn-1"
+                            && execution.status == AgentInvocationStatus::InProgress
                 )
         )
     }));
@@ -527,9 +527,9 @@ fn plain_rollouts_without_a_trailing_newline_are_normalized_once() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Message(message)
                                 if message.content == vec![ContentBlock::text("done")]
                         )
@@ -818,7 +818,7 @@ fn legacy_fork_owner_is_the_filename_session_when_copied_parent_metadata_follows
 }
 
 #[test]
-fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links() {
+fn invocation_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
@@ -836,10 +836,10 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::AgentInvocation(invocation)
-                    if invocation.status == AgentInvocationStatus::Completed =>
+                RecordData::AgentInvocation(execution)
+                    if execution.status == AgentInvocationStatus::Completed =>
                 {
-                    Some((record.id.clone(), invocation))
+                    Some((record.id.clone(), execution))
                 }
                 _ => None,
             },
@@ -857,9 +857,9 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
                 if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::ExecutionContext(context)
                                     if context.cwd.as_deref()
                                         == Some(std::path::Path::new("/workspace/project"))
@@ -879,7 +879,7 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) => match &item.data {
+                RecordData::Event(event) => match &event.data {
                     EventData::ExecutionContext(context) => Some(context),
                     _ => None,
                 },
@@ -927,9 +927,9 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Reasoning(reasoning)
                                 if reasoning.visibility == ReasoningVisibility::Encrypted
                                     && reasoning.content.is_empty()
@@ -944,9 +944,9 @@ fn turn_context_and_encrypted_reasoning_are_normalized_without_losing_turn_links
                 if record.invocation.as_ref() == Some(&completed_turn.0)
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Message(message)
                                     if message.content
                                         == vec![ContentBlock::text("done")]
@@ -970,7 +970,7 @@ fn thread_settings_applied_reads_the_nested_snapshot() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) => match &item.data {
+                RecordData::Event(event) => match &event.data {
                     EventData::ExecutionContext(context) => Some(context),
                     _ => None,
                 },
@@ -1029,7 +1029,7 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         concat!(
             "{\"timestamp\":\"2026-01-02T03:04:06.050Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"thread-1\",\"turn_id\":\"turn-1\",\"completed_at_ms\":1767323046050,\"item\":{\"type\":\"UserMessage\",\"id\":\"user-1\",\"content\":[{\"type\":\"text\",\"text\":\"use the skill\",\"text_elements\":[]},{\"type\":\"skill\",\"name\":\"octocode-research\",\"path\":\"/skills/octocode-research/SKILL.md\"}]}}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.100Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"thread-1\",\"turn_id\":\"turn-1\",\"completed_at_ms\":1767323046100,\"item\":{\"type\":\"Plan\",\"id\":\"plan-1\",\"text\":\"Inspect and update\"}}}\n",
@@ -1048,9 +1048,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Message(message)
                                 if message.content.iter().any(|content|
                                     matches!(
@@ -1071,9 +1071,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
                 if record.invocation.is_some()
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Plan(plan)
                                     if plan.text.as_deref() == Some("Inspect and update")
                             )
@@ -1086,9 +1086,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "command-1"
                                     && result.status == ToolStatus::Completed
@@ -1104,9 +1104,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "mcp-1"
                                     && call.namespace.as_deref() == Some("filesystem")
@@ -1124,9 +1124,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::FileChange(change)
                                 if change.path
                                     == std::path::Path::new("src/new.rs")
@@ -1142,9 +1142,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::Spawn
                                     && invocation.status
@@ -1161,9 +1161,9 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ModeChange(change)
                                 if change.mode == "review"
                                     && change.kind == ModeChangeKind::Entered
@@ -1216,10 +1216,10 @@ fn paginated_history_preserves_lineage_and_logical_ordinals() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.sequence.position == 2
-                            && item.sequence.logical_ordinal == Some(6)
-                            && matches!(&item.data, EventData::Message(_))
+                    RecordData::Event(event)
+                        if event.sequence.position == 2
+                            && event.sequence.logical_ordinal == Some(6)
+                            && matches!(&event.data, EventData::Message(_))
                 )
         )
     }));
@@ -1305,8 +1305,8 @@ fn paginated_lineage_resolves_all_physical_segments_and_filters_subagent_context
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if item.sequence.logical_ordinal == Some(3)
+                        RecordData::Event(event)
+                            if event.sequence.logical_ordinal == Some(3)
                     )
         )
     }));
@@ -1317,8 +1317,8 @@ fn paginated_lineage_resolves_all_physical_segments_and_filters_subagent_context
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if item.sequence.logical_ordinal == Some(5)
+                        RecordData::Event(event)
+                            if event.sequence.logical_ordinal == Some(5)
                     )
         )
     }));
@@ -1440,7 +1440,7 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             "{\"timestamp\":\"2026-01-02T03:04:06Z\",\"type\":\"world_state\",\"payload\":{\"full\":true,\"state\":{\"cwd\":\"/workspace/project\",\"branch\":\"main\"}}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.100Z\",\"type\":\"inter_agent_communication_metadata\",\"payload\":{\"trigger_turn\":true}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.200Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"thread_goal_updated\",\"thread_id\":\"thread-1\",\"turn_id\":\"turn-1\",\"goal\":{\"thread_id\":\"thread-1\",\"objective\":\"finish coverage\",\"status\":\"active\",\"token_budget\":1000,\"tokens_used\":125,\"time_used_seconds\":9,\"created_at\":1767323040,\"updated_at\":1767323046}}}\n",
-            "{\"timestamp\":\"2026-01-02T03:04:06.300Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"local_shell_call\",\"id\":\"shell-item\",\"call_id\":\"shell-1\",\"status\":\"completed\",\"action\":{\"type\":\"exec\",\"command\":[\"cargo\",\"check\"],\"timeout_ms\":30000,\"working_directory\":\"/workspace/project\",\"env\":{\"RUST_LOG\":\"info\"},\"user\":null}}}\n",
+            "{\"timestamp\":\"2026-01-02T03:04:06.300Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"local_shell_call\",\"id\":\"shell-event\",\"call_id\":\"shell-1\",\"status\":\"completed\",\"action\":{\"type\":\"exec\",\"command\":[\"cargo\",\"check\"],\"timeout_ms\":30000,\"working_directory\":\"/workspace/project\",\"env\":{\"RUST_LOG\":\"info\"},\"user\":null}}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.400Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"thread-1\",\"turn_id\":\"turn-1\",\"completed_at_ms\":1767323046400,\"item\":{\"type\":\"Extension\",\"kind\":\"image_gen.generation\",\"id\":\"image-extension-1\",\"status\":\"completed\",\"revisedPrompt\":\"diagram\",\"result\":\"encoded-image\",\"savedPath\":\"/workspace/project/diagram.png\"}}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.500Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"thread-1\",\"turn_id\":\"turn-1\",\"completed_at_ms\":1767323046500,\"item\":{\"type\":\"Extension\",\"kind\":\"web.search\",\"id\":\"web-extension-1\",\"query\":\"Rust releases\",\"action\":{\"type\":\"search\",\"query\":\"Rust releases\",\"queries\":null},\"results\":[{\"title\":\"Rust\",\"url\":\"https://www.rust-lang.org\"}]}}}\n",
             "{\"timestamp\":\"2026-01-02T03:04:06.600Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"thread_settings_applied\",\"thread_settings\":{\"model\":\"gpt-5.6\",\"model_provider_id\":\"openai\",\"service_tier\":\"fast\",\"approval_policy\":\"never\",\"approvals_reviewer\":\"user\",\"permission_profile\":\"disabled\",\"cwd\":\"/workspace/project\",\"collaboration_mode\":{\"mode\":\"default\"}}}}\n",
@@ -1456,9 +1456,9 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::WorldState(state)
                                 if state.full
                                     && state.state["branch"] == "main"
@@ -1472,11 +1472,11 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ForkInvocationBoundary(boundary)
-                                if boundary.trigger_invocation
+                                    if boundary.trigger_invocation
                         )
                 )
         )
@@ -1488,9 +1488,9 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
                 if record.invocation.is_some()
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
+                        RecordData::Event(event)
                             if matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Goal(goal)
                                     if goal.objective == "finish coverage"
                                         && goal.status == GoalStatus::Active
@@ -1506,9 +1506,9 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "shell-1"
                                     && call.name == "local_shell"
@@ -1525,9 +1525,9 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "image-extension-1"
                                     && result.content.iter().any(|content|
@@ -1546,9 +1546,9 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "web-extension-1"
                                     && result.output["results"][0]["title"] == "Rust"
@@ -1616,8 +1616,8 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
                 Change::Upsert(record)
                     if matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if matches!(&item.data, EventData::Message(_))
+                        RecordData::Event(event)
+                            if matches!(&event.data, EventData::Message(_))
                     )
             )
         })
@@ -1628,10 +1628,10 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::AgentInvocation(invocation)
-                    if invocation.status == AgentInvocationStatus::Completed =>
+                RecordData::AgentInvocation(execution)
+                    if execution.status == AgentInvocationStatus::Completed =>
                 {
-                    Some((record, invocation))
+                    Some((record, execution))
                 }
                 _ => None,
             },
@@ -1646,7 +1646,7 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item) if matches!(&item.data, EventData::Message(_))
+                    RecordData::Event(event) if matches!(&event.data, EventData::Message(_))
                 ) && record.invocation.as_ref() != Some(&completed_turn.0.id)
         )
     }));
@@ -1660,8 +1660,8 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Event(item)
-                                if matches!(&item.data, EventData::Reasoning(_))
+                            RecordData::Event(event)
+                                if matches!(&event.data, EventData::Reasoning(_))
                         )
                 )
             })
@@ -1674,9 +1674,9 @@ fn legacy_presentation_events_do_not_duplicate_canonical_response_items() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Notice(notice)
                                 if notice.level == NoticeLevel::Error
                                     && notice.code.as_deref()
@@ -1701,7 +1701,7 @@ fn canonical_presentation_appended_later_deletes_the_legacy_projection() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) if matches!(&item.data, EventData::Message(_)) => {
+                RecordData::Event(event) if matches!(&event.data, EventData::Message(_)) => {
                     Some(record.id.clone())
                 }
                 _ => None,
@@ -1749,7 +1749,7 @@ fn legacy_presentation_remains_when_no_canonical_projection_ever_arrives() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) if matches!(&item.data, EventData::Message(_)) => {
+                RecordData::Event(event) if matches!(&event.data, EventData::Message(_)) => {
                     Some(record.id.clone())
                 }
                 _ => None,
@@ -1785,7 +1785,7 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
     let fixture = Fixture::new(&format!(
         "{}{}{}{}{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         tool_call(),
         tool_result(),
         message(),
@@ -1796,8 +1796,10 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
 
     let call = batch.changes.iter().find_map(|change| match change {
         Change::Upsert(record) => match &record.data {
-            RecordData::Event(item) => match &item.data {
-                EventData::ToolCall(call) if call.call_id == "call-1" => Some((record, item, call)),
+            RecordData::Event(event) => match &event.data {
+                EventData::ToolCall(call) if call.call_id == "call-1" => {
+                    Some((record, event, call))
+                }
                 _ => None,
             },
             _ => None,
@@ -1811,8 +1813,10 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
 
     let result = batch.changes.iter().find_map(|change| match change {
         Change::Upsert(record) => match &record.data {
-            RecordData::Event(item) => match &item.data {
-                EventData::ToolResult(result) if result.call_id == "call-1" => Some((item, result)),
+            RecordData::Event(event) => match &event.data {
+                EventData::ToolResult(result) if result.call_id == "call-1" => {
+                    Some((event, result))
+                }
                 _ => None,
             },
             _ => None,
@@ -1830,10 +1834,10 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.actor == Actor::Agent
+                    RecordData::Event(event)
+                        if event.actor == Actor::Agent
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Message(message)
                                     if message.role == MessageRole::Assistant
                                         && message.content
@@ -1848,9 +1852,9 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Reasoning(reasoning)
                                 if reasoning.summary == ["checked the files"]
                                     && reasoning.content
@@ -1865,9 +1869,9 @@ fn scan_normalizes_ordered_items_without_losing_tool_correlation() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ContextCompaction(compaction)
                                 if compaction.summary.as_deref()
                                     == Some("replacement summary")
@@ -1886,9 +1890,9 @@ fn scan_normalizes_acp_v2_content_annotations_icons_and_extensions() {
         .iter()
         .find_map(|change| match change {
             Change::Upsert(record) => match &record.data {
-                RecordData::Event(item) => match &item.data {
+                RecordData::Event(event) => match &event.data {
                     EventData::Message(message)
-                        if item.external_id.as_deref() == Some("message-v2") =>
+                        if event.external_id.as_deref() == Some("message-v2") =>
                     {
                         Some(&message.content)
                     }
@@ -1960,9 +1964,9 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "search-1"
                                     && call.status == ToolStatus::InProgress
@@ -1976,9 +1980,9 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "search-1"
                                     && result.status == ToolStatus::Completed
@@ -1994,9 +1998,9 @@ fn scan_normalizes_hosted_tool_results() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "image-1"
                                     && result.status == ToolStatus::Completed
@@ -2029,9 +2033,9 @@ fn compacted_events_normalize_camel_case_fields() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ContextCompaction(compaction)
                                 if compaction.summary.as_deref() == Some("replacement summary")
                                     && compaction.automatic == Some(true)
@@ -2056,7 +2060,7 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         lifecycle_events()
     ));
     let batch = fixture.provider().scan(None).unwrap();
@@ -2067,9 +2071,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "patch-1"
                                     && call.kind == ToolKind::Edit
@@ -2084,9 +2088,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "patch-1"
                                     && result.content
@@ -2103,9 +2107,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::FileChange(change)
                                 if change.kind == FileChangeKind::Create
                                     && change.path == std::path::Path::new("src/new.rs")
@@ -2120,9 +2124,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::FileChange(change)
                                 if change.kind == FileChangeKind::Move
                                     && change.old_path.as_deref()
@@ -2139,9 +2143,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "mcp-1"
                                     && result.status == ToolStatus::Completed
@@ -2158,9 +2162,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::Spawn
                                     && invocation.status
@@ -2176,9 +2180,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Plan(plan)
                                 if plan.text.as_deref() == Some("Implementation plan")
                                     && plan.steps.len() == 3
@@ -2196,8 +2200,8 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if matches!(&item.data, EventData::ContextCompaction(_))
+                    RecordData::Event(event)
+                        if matches!(&event.data, EventData::ContextCompaction(_))
                 )
         )
     }));
@@ -2207,9 +2211,9 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::Rollback(rollback)
                                 if rollback.user_inputs_removed == Some(2)
                         )
@@ -2222,10 +2226,10 @@ fn scan_normalizes_patch_mcp_subagent_and_context_lifecycle_events() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("future-1")
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("future-1")
                             && matches!(
-                                &item.data,
+                                &event.data,
                                 EventData::Unknown(unknown)
                                     if unknown.kind.as_deref()
                                         == Some("future_response_item")
@@ -2240,8 +2244,8 @@ fn unknown_response_item_keeps_its_explicit_turn_after_terminal_context_is_clear
     let fixture = Fixture::new(&format!(
         "{}{}{}{}",
         session_meta(),
-        turn_started(),
-        turn_completed(),
+        invocation_started(),
+        invocation_completed(),
         "{\"timestamp\":\"2026-01-02T03:04:09Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"future_response_item\",\"id\":\"future-after-turn\",\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"turn-1\"}}}\n",
     ));
 
@@ -2253,15 +2257,15 @@ fn unknown_response_item_keeps_its_explicit_turn_after_terminal_context_is_clear
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
-                        if item.external_id.as_deref() == Some("future-after-turn")
+                    RecordData::Event(event)
+                        if event.external_id.as_deref() == Some("future-after-turn")
                 ) =>
             {
                 Some(record)
             }
             _ => None,
         })
-        .expect("unknown response item");
+        .expect("unknown response event");
 
     assert!(record
         .invocation
@@ -2274,7 +2278,7 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         terminal_tool_events()
     ));
     let batch = fixture.provider().scan(None).unwrap();
@@ -2285,9 +2289,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "exec-1"
                                     && result.status == ToolStatus::Completed
@@ -2311,9 +2315,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Event(item)
+                            RecordData::Event(event)
                                 if matches!(
-                                    &item.data,
+                                    &event.data,
                                     EventData::ToolResult(result)
                                         if result.call_id == "exec-1"
                                 )
@@ -2322,7 +2326,7 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             })
             .count(),
         1,
-        "the response-item projection must not replace the richer terminal result"
+        "the response-event projection must not replace the richer terminal result"
     );
     assert!(batch.changes.iter().any(|change| {
         matches!(
@@ -2330,9 +2334,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "web-1"
                                     && result.output["results"][0]["title"] == "Rust"
@@ -2347,9 +2351,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolCall(call)
                                 if call.call_id == "view-1"
                                     && call.kind == ToolKind::Read
@@ -2366,9 +2370,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::ToolResult(result)
                                 if result.call_id == "image-2"
                                     && result.content == vec![ContentBlock::Image {
@@ -2391,9 +2395,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
                     Change::Upsert(record)
                         if matches!(
                             &record.data,
-                            RecordData::Event(item)
+                            RecordData::Event(event)
                                 if matches!(
-                                    &item.data,
+                                    &event.data,
                                     EventData::ToolResult(result)
                                         if result.call_id == "image-2"
                                 )
@@ -2410,9 +2414,9 @@ fn scan_normalizes_terminal_tools_and_inter_agent_messages() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::Event(item)
+                    RecordData::Event(event)
                         if matches!(
-                            &item.data,
+                            &event.data,
                             EventData::AgentInvocation(invocation)
                                 if invocation.operation == AgentOperation::SendInput
                                     && invocation.sender_id.as_deref() == Some("reviewer")
@@ -2651,8 +2655,8 @@ fn terminal_turn_preserves_start_time_and_derives_duration() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
-        turn_completed()
+        invocation_started(),
+        invocation_completed()
     ));
     let batch = fixture.provider().scan(None).unwrap();
 
@@ -2662,13 +2666,13 @@ fn terminal_turn_preserves_start_time_and_derives_duration() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::AgentInvocation(invocation)
-                        if invocation.status == AgentInvocationStatus::Completed
-                            && invocation.started_at.map(|value| value.as_millis())
+                    RecordData::AgentInvocation(execution)
+                        if execution.status == AgentInvocationStatus::Completed
+                            && execution.started_at.map(|value| value.as_millis())
                                 == Some(1_704_164_646_000)
-                            && invocation.completed_at.map(|value| value.as_millis())
+                            && execution.completed_at.map(|value| value.as_millis())
                                 == Some(1_704_164_648_000)
-                            && invocation.duration_ms == Some(2_000)
+                            && execution.duration_ms == Some(2_000)
                 )
         )
     }));
@@ -2679,7 +2683,7 @@ fn aborted_turn_preserves_interruption_semantics() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         "{\"timestamp\":\"2026-01-02T03:04:08Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"turn-1\",\"reason\":\"interrupted\",\"started_at\":1704164646,\"completed_at\":1704164648,\"duration_ms\":2000}}\n"
     ));
     let batch = fixture.provider().scan(None).unwrap();
@@ -2690,10 +2694,10 @@ fn aborted_turn_preserves_interruption_semantics() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::AgentInvocation(invocation)
-                        if invocation.status == AgentInvocationStatus::Interrupted
-                            && invocation.stop_reason.as_ref() == Some(&StopReason::Interrupted)
-                            && invocation.duration_ms == Some(2_000)
+                    RecordData::AgentInvocation(execution)
+                        if execution.status == AgentInvocationStatus::Interrupted
+                            && execution.stop_reason.as_ref() == Some(&StopReason::Interrupted)
+                            && execution.duration_ms == Some(2_000)
                 )
         )
     }));
@@ -2704,7 +2708,7 @@ fn aborted_turn_inherits_the_started_turn_identity() {
     let fixture = Fixture::new(&format!(
         "{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         "{\"timestamp\":\"2026-01-02T03:04:08Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"reason\":\"interrupted\"}}\n"
     ));
     let batch = fixture.provider().scan(None).unwrap();
@@ -2715,9 +2719,9 @@ fn aborted_turn_inherits_the_started_turn_identity() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::AgentInvocation(invocation)
-                        if invocation.invocation_id == "turn-1"
-                            && invocation.status == AgentInvocationStatus::Interrupted
+                    RecordData::AgentInvocation(execution)
+                        if execution.invocation_id == "turn-1"
+                            && execution.status == AgentInvocationStatus::Interrupted
                 )
         )
     }));
@@ -2932,7 +2936,7 @@ fn legacy_usage_aliases_derive_total_without_double_counting_reasoning() {
             },
             _ => None,
         })
-        .expect("legacy usage observation");
+        .expect("legacy usage report");
     let cumulative = usage.cumulative.as_ref().expect("cumulative usage");
     let delta = usage.delta.as_ref().expect("additive usage");
 
@@ -3275,7 +3279,7 @@ fn a_new_canonical_usage_owner_makes_incremental_and_fresh_scans_converge() {
 }
 
 #[test]
-fn removing_a_usage_owner_promotes_the_remaining_raw_observation() {
+fn removing_a_usage_owner_promotes_the_remaining_raw_usage_report() {
     let fixture = Fixture::new(&format!("{}{}", session_meta(), token_count()));
     let duplicate_path = fixture
         .source
@@ -3445,7 +3449,7 @@ fn fork_replay_is_not_attributed_twice_and_incremental_scan_keeps_its_position()
     let parent = format!(
         "{}{}{}{}{}",
         session_meta(),
-        turn_started(),
+        invocation_started(),
         token_count_values("2026-01-02T03:04:07Z", 100, 100),
         token_count_values("2026-01-02T03:04:30Z", 150, 50),
         token_count_values("2026-01-02T03:06:00Z", 175, 25),
@@ -3577,8 +3581,8 @@ fn copied_legacy_items_link_to_their_immediate_parent_records() {
                 if record.origin.path == fixture.rollout_path
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if item.external_id.as_deref() == Some("shared-message")
+                        RecordData::Event(event)
+                            if event.external_id.as_deref() == Some("shared-message")
                     ) =>
             {
                 Some(record.id.clone())
@@ -3594,12 +3598,12 @@ fn copied_legacy_items_link_to_their_immediate_parent_records() {
                 if record.origin.path == child_path
                     && matches!(
                         &record.data,
-                        RecordData::Event(item)
-                            if item.external_id.as_deref() == Some("shared-message")
+                        RecordData::Event(event)
+                            if event.external_id.as_deref() == Some("shared-message")
                     ) =>
             {
                 match &record.data {
-                    RecordData::Event(item) => Some(item),
+                    RecordData::Event(event) => Some(event),
                     _ => None,
                 }
             }
@@ -3841,7 +3845,7 @@ fn unchanged_rollout_catalog_uses_the_metadata_only_fast_path() {
 
 #[test]
 fn append_scan_converges_with_a_fresh_full_scan() {
-    let fixture = Fixture::new(&format!("{}{}", session_meta(), turn_started()));
+    let fixture = Fixture::new(&format!("{}{}", session_meta(), invocation_started()));
     let provider = fixture.provider();
     let first = provider.scan(None).unwrap();
     let mut incremental_records = HashMap::new();
@@ -3858,7 +3862,7 @@ fn append_scan_converges_with_a_fresh_full_scan() {
                 tool_call(),
                 tool_result(),
                 message(),
-                turn_completed()
+                invocation_completed()
             )
             .as_bytes(),
         )
@@ -3878,7 +3882,7 @@ fn append_scan_converges_with_a_fresh_full_scan() {
 #[test]
 #[cfg(feature = "codex-watch")]
 fn subscription_emits_incremental_changes() {
-    let fixture = Fixture::new(&format!("{}{}", session_meta(), turn_started()));
+    let fixture = Fixture::new(&format!("{}{}", session_meta(), invocation_started()));
     let provider = fixture.provider().with_watch_options(CodexWatchOptions {
         debounce: Duration::from_millis(20),
         reconcile_interval: Duration::from_millis(50),
@@ -3905,7 +3909,8 @@ fn subscription_emits_incremental_changes() {
             Change::Upsert(record)
                 if matches!(
                     &record.data,
-                    RecordData::AgentInvocation(invocation) if invocation.status == AgentInvocationStatus::Completed
+                    RecordData::AgentInvocation(execution)
+                        if execution.status == AgentInvocationStatus::Completed
                 )
         )
     }));

@@ -14,7 +14,7 @@ use super::CodexSource;
 
 pub(super) struct InheritancePlan {
     parent_by_child: BTreeMap<PathBuf, PathBuf>,
-    items_by_parent: BTreeMap<PathBuf, BTreeMap<EventKey, RecordId>>,
+    events_by_parent: BTreeMap<PathBuf, BTreeMap<EventKey, RecordId>>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -28,7 +28,7 @@ impl InheritancePlan {
     pub(super) fn empty() -> Self {
         Self {
             parent_by_child: BTreeMap::new(),
-            items_by_parent: BTreeMap::new(),
+            events_by_parent: BTreeMap::new(),
         }
     }
 
@@ -73,9 +73,9 @@ impl InheritancePlan {
             }
         }
 
-        let mut items_by_parent = BTreeMap::new();
+        let mut events_by_parent = BTreeMap::new();
         for parent_path in parent_by_child.values() {
-            if items_by_parent.contains_key(parent_path) {
+            if events_by_parent.contains_key(parent_path) {
                 continue;
             }
             let expected_owner = index
@@ -93,13 +93,13 @@ impl InheritancePlan {
                 &metadata.session_id,
                 max_line_bytes,
             ) {
-                items_by_parent.insert(parent_path.clone(), items);
+                events_by_parent.insert(parent_path.clone(), items);
             }
         }
 
         Self {
             parent_by_child,
-            items_by_parent,
+            events_by_parent,
         }
     }
 
@@ -107,18 +107,18 @@ impl InheritancePlan {
         let Some(parent_path) = self.parent_by_child.get(child_path) else {
             return;
         };
-        let Some(parent_events) = self.items_by_parent.get(parent_path) else {
+        let Some(parent_events) = self.events_by_parent.get(parent_path) else {
             return;
         };
         for record in records {
-            let RecordData::Event(item) = &mut record.data else {
+            let RecordData::Event(event) = &mut record.data else {
                 continue;
             };
-            if item.inherited_from.is_some() {
+            if event.inherited_from.is_some() {
                 continue;
             }
-            if let Some(parent) = event_key(item).and_then(|key| parent_events.get(&key)) {
-                item.inherited_from = Some(parent.clone());
+            if let Some(parent) = event_key(event).and_then(|key| parent_events.get(&key)) {
+                event.inherited_from = Some(parent.clone());
             }
         }
     }
@@ -180,8 +180,8 @@ fn read_event_index(
             &mut context,
         );
         for record in records.drain(..) {
-            if let RecordData::Event(item) = &record.data {
-                if let Some(key) = event_key(item) {
+            if let RecordData::Event(event) = &record.data {
+                if let Some(key) = event_key(event) {
                     items.insert(key, record.id);
                 }
             }
@@ -190,9 +190,9 @@ fn read_event_index(
     Ok(items)
 }
 
-fn event_key(item: &Event) -> Option<EventKey> {
-    let external_id = item.external_id.as_ref()?.clone();
-    let kind = match &item.data {
+fn event_key(event: &Event) -> Option<EventKey> {
+    let external_id = event.external_id.as_ref()?.clone();
+    let kind = match &event.data {
         EventData::Message(_) => "message",
         EventData::Reasoning(_) => "reasoning",
         EventData::Plan(_) => "plan",

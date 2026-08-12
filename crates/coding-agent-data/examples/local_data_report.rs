@@ -199,16 +199,16 @@ fn print_summary_table(
     print_table(&format!("{name} summary"), "Metric", "Value", &rows);
 }
 
-fn print_count_table(title: &str, item_header: &str, counts: &BTreeMap<String, usize>) {
+fn print_count_table(title: &str, event_header: &str, counts: &BTreeMap<String, usize>) {
     let rows = if counts.is_empty() {
         vec![("<none>".to_owned(), "0".to_owned())]
     } else {
         counts
             .iter()
-            .map(|(item, count)| (item.clone(), count.to_string()))
+            .map(|(event, count)| (event.clone(), count.to_string()))
             .collect()
     };
-    print_table(title, item_header, "Count", &rows);
+    print_table(title, event_header, "Count", &rows);
 }
 
 fn print_table(title: &str, left_header: &str, right_header: &str, rows: &[(String, String)]) {

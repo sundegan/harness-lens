@@ -185,7 +185,7 @@ fn batch_validation_rejects_every_cross_source_record_link() {
     changes.push(Change::upsert(record));
 
     let mut record = Record::new(
-        RecordId::scoped(&source, "unknown", "turn-link"),
+        RecordId::scoped(&source, "unknown", "invocation-link"),
         source.clone(),
         origin.clone(),
         RecordData::Unknown(UnknownRecord { kind: None }),
@@ -243,33 +243,33 @@ fn batch_validation_rejects_every_cross_source_record_link() {
         RecordData::Session(session),
     )));
 
-    let mut item = Event::new(
+    let mut event = Event::new(
         EventSequence::new(1, 0),
         Actor::Agent,
         EventData::Unknown(coding_agent_data::UnknownEvent { kind: None }),
     );
-    item.parent = Some(other.clone());
+    event.parent = Some(other.clone());
     changes.push(Change::upsert(Record::new(
-        RecordId::scoped(&source, "item", "parent"),
+        RecordId::scoped(&source, "event", "parent"),
         source.clone(),
         origin.clone(),
-        RecordData::Event(item),
+        RecordData::Event(event),
     )));
 
-    let mut item = Event::new(
+    let mut event = Event::new(
         EventSequence::new(2, 0),
         Actor::Agent,
         EventData::Unknown(coding_agent_data::UnknownEvent { kind: None }),
     );
-    item.inherited_from = Some(other.clone());
+    event.inherited_from = Some(other.clone());
     changes.push(Change::upsert(Record::new(
-        RecordId::scoped(&source, "item", "inherited"),
+        RecordId::scoped(&source, "event", "inherited"),
         source.clone(),
         origin.clone(),
-        RecordData::Event(item),
+        RecordData::Event(event),
     )));
 
-    let item = Event::new(
+    let event = Event::new(
         EventSequence::new(3, 0),
         Actor::Agent,
         EventData::AgentInvocation(AgentInvocation {
@@ -295,10 +295,10 @@ fn batch_validation_rejects_every_cross_source_record_link() {
         }),
     );
     changes.push(Change::upsert(Record::new(
-        RecordId::scoped(&source, "item", "child-session"),
+        RecordId::scoped(&source, "event", "child-session"),
         source,
         origin,
-        RecordData::Event(item),
+        RecordData::Event(event),
     )));
 
     changes.push(Change::Delete(other));
