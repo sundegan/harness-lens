@@ -546,7 +546,7 @@ pub(super) fn rollout_records(
                 actor: Actor::System,
                 agent_id: None,
                 data: EventData::ForkInvocationBoundary(ForkInvocationBoundary {
-                    trigger_turn: payload
+                    trigger_invocation: payload
                         .get("trigger_turn")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),

@@ -7,7 +7,12 @@ use serde_json::Value;
 
 use crate::{Error, Result};
 
-/// Identifies one coding-agent data provider.
+/// Identifier for one coding-agent data provider.
+///
+/// A `ProviderId` identifies the adapter and provider family, such as Codex or
+/// Claude Code. It does not identify one local installation. That distinction
+/// belongs to [`SourceId`]. This is a crate-level identity type rather than a
+/// provider-native identifier.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ProviderId(String);
@@ -24,7 +29,7 @@ impl ProviderId {
     }
 }
 
-/// Identifies one concrete local data-source instance.
+/// Identifies one concrete local data-source instance owned by a provider.
 ///
 /// Two installations of the same coding agent have different source IDs, so
 /// their records cannot collide.
@@ -44,7 +49,11 @@ impl SourceId {
     }
 }
 
-/// Identifies one normalized record within a concrete source.
+/// Stable identifier for one normalized [`Record`] within a concrete source.
+///
+/// A `RecordId` is the identity used by [`Change`] to upsert or delete a fact.
+/// It is not necessarily the provider's original ID, and it must remain
+/// scoped to the [`SourceId`] that owns the record.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RecordId(String);
@@ -74,7 +83,11 @@ impl RecordId {
     }
 }
 
-/// Describes a provider and its concrete source.
+/// Runtime descriptor for a provider adapter and one concrete local source.
+///
+/// [`crate::Provider`] implementations expose this value so scan, checkpoint, and
+/// validation code can agree on the provider identity and source scope. It is
+/// metadata about a provider instance, not the provider implementation itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderInfo {
     /// Stable provider identifier.
@@ -85,7 +98,11 @@ pub struct ProviderInfo {
     pub source: SourceId,
 }
 
-/// A UTC instant represented as Unix milliseconds.
+/// A UTC instant represented as Unix milliseconds since the Unix epoch.
+///
+/// This type deliberately stores an instant rather than a formatted local
+/// date. A missing provider timestamp remains `None`, while zero is a real epoch
+/// value and must not be used as a missing-value sentinel.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Timestamp(i64);
@@ -141,7 +158,12 @@ pub enum SourceLocation {
     WholeFile,
 }
 
-/// Points to the original local artifact from which a record was read.
+/// Provenance pointer to the local artifact and position from which a record was read.
+///
+/// `SourceRef` identifies where normalized evidence came from, and it does not
+/// contain the artifact contents and does not replace the stable [`RecordId`].
+/// The path is provider-local provenance and may not be suitable for display
+/// without redaction.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SourceRef {
     /// Concrete coding-agent source that owns the artifact.
@@ -195,10 +217,12 @@ impl SourceRef {
     }
 }
 
-/// Preserves provider-native input for forward compatibility.
+/// Preserves the provider-native input associated with a normalized fact.
 ///
 /// Consumers should prefer [`Record::data`]. The original value exists so
 /// unknown fields are not lost while a provider catches up with a new format.
+/// `OriginalData` is provenance and diagnostic context, not a second semantic
+/// model and not a compatibility promise for the provider's private schema.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OriginalData {
     /// Provider-owned format label.
@@ -207,22 +231,37 @@ pub struct OriginalData {
     pub value: Value,
 }
 
-/// Kind of relationship from the containing session to a referenced session.
+/// Describes how the current session relates to another session.
+///
+/// Read the relationship from the session that owns the [`SessionRelation`]
+/// to its `session` field: `Fork` means the current session branched from the
+/// referenced one, while `Child` means it was created by an agent running in
+/// the referenced parent session. `Continuation` means the same logical work
+/// continued in a new provider-owned session container. This enum describes
+/// session lineage. It does not describe an [`AgentInvocation`] or an event.
+///
+/// The names are normalized from provider lineage fields such as Codex's
+/// [`forked_from_id` and `parent_thread_id`](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/thread.rs).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum SessionRelationKind {
-    /// The session was forked from an earlier session.
+    /// The current session branched from the referenced session's history.
     Fork,
-    /// The session was created as a child or subagent of the referenced session.
+    /// The current session was created as a child or subagent of the referenced session.
     Child,
-    /// The session continues the referenced session in a new provider-owned container.
+    /// The current session continues the referenced session in a new provider-owned container.
     Continuation,
     /// A provider-native relationship with no normalized equivalent yet.
     Other(String),
 }
 
-/// A normalized relationship to another session.
+/// A directed lineage edge from one session to another.
+///
+/// The containing [`Session`] is the source of the relationship and
+/// [`Self::session`] is the referenced target. Keeping the relationship as a
+/// separate value allows one session to retain more than one provider-reported
+/// lineage fact without treating the related session as embedded data.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SessionRelation {
@@ -239,7 +278,17 @@ impl SessionRelation {
     }
 }
 
-/// Provider storage strategy for one session's durable history.
+/// Describes how a provider stores and exposes one session's durable history.
+///
+/// `Legacy` means the transcript is treated as self-contained. `Paginated`
+/// means the logical history is assembled using provider ordinals and may
+/// include a prefix from an ancestor session. `Other` preserves a provider
+/// mode that this crate does not yet understand. This is storage and replay
+/// metadata, not a session lifecycle state and not an agent execution state.
+///
+/// The name and two normalized modes follow Codex's
+/// [`ThreadHistoryMode`](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs)
+/// concept. The normalized type intentionally leaves room for other providers.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
@@ -253,7 +302,12 @@ pub enum HistoryMode {
     Other(String),
 }
 
-/// Exclusive logical position in another session's history.
+/// Exclusive cutoff position for a prefix read from another session's history.
+///
+/// The referenced session contributes logical ordinals before
+/// `end_ordinal_exclusive`, while `end_byte_offset` is the corresponding source-file
+/// boundary when the provider can report it. This is a history cursor, not an
+/// [`EventSequence`] and not a database offset.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HistoryPosition {
     /// Session that owns the referenced physical history.
@@ -264,7 +318,14 @@ pub struct HistoryPosition {
     pub end_byte_offset: u64,
 }
 
-/// One physical session range contributing to a logical session history.
+/// One physical transcript range contributing to a logical session history.
+///
+/// A forked or paginated session can expose a logical history assembled from
+/// multiple provider-owned transcripts. This value records one such range.
+/// It does not copy or own the events in that range.
+///
+/// The lineage model is comparable to the history-prefix and ordinal metadata
+/// in [Codex thread data](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HistorySegment {
     /// Session whose transcript owns this range.
@@ -276,7 +337,12 @@ pub struct HistorySegment {
     pub end_ordinal_exclusive: Option<u64>,
 }
 
-/// Durable history and lineage metadata for one session.
+/// Describes how a provider materializes one session's durable history.
+///
+/// This is primarily needed for forked, paginated, or otherwise inherited
+/// transcripts. It records which physical session ranges make up the logical
+/// history exposed by [`Session`]. It is metadata about session storage, not
+/// another session or agent invocation.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SessionHistory {
     /// Storage strategy used by the provider.
@@ -295,7 +361,18 @@ pub struct SessionHistory {
     pub lineage: Vec<HistorySegment>,
 }
 
-/// A normalized coding-agent session.
+/// A persistent conversation and workspace context owned by a coding agent.
+///
+/// A session is the container for the records produced while an agent works
+/// on one continuous task, thread, or provider-owned transcript. It can group
+/// multiple [`AgentInvocation`] values and their [`Event`] values, and carries
+/// provider metadata such as the title, working directory, model, timestamps,
+/// token snapshot, archive state, and source relationships. A session is not
+/// one individual agent execution and is not itself an event.
+///
+/// The conversation-context meaning follows [Google ADK's Session
+/// model](https://adk.dev/sessions/session/) and [Agent Client Protocol's
+/// Session Setup](https://agentclientprotocol.com/protocol/v1/session-setup).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Session {
@@ -392,7 +469,7 @@ pub enum StopReason {
     EndInvocation,
     /// The model reached its token limit.
     MaxTokens,
-    /// The agent reached its invocation-request limit.
+    /// The agent reached the provider's limit on model requests in this invocation.
     MaxInvocationRequests,
     /// The provider-defined stop sequence was generated.
     StopSequence,
@@ -414,7 +491,13 @@ pub enum StopReason {
     Other(String),
 }
 
-/// Normalized token counters.
+/// Normalized counters for one token-usage snapshot or delta.
+///
+/// The same shape is used for both cumulative usage and usage attributed to a
+/// single report. The enclosing [`UsageReport`] field (`cumulative` or `delta`)
+/// determines which interpretation applies. Components may be unavailable or
+/// provider-specific, so consumers must not assume that every field sums to
+/// `total`.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TokenUsage {
     /// Total tokens.
@@ -437,7 +520,7 @@ pub struct TokenUsage {
     pub reasoning_output: Option<i64>,
 }
 
-/// A provider-reported monetary cost.
+/// A provider-reported monetary cost associated with a usage report.
 ///
 /// The decimal amount is stored as text so normalization never introduces
 /// binary floating-point rounding.
@@ -449,16 +532,28 @@ pub struct Cost {
     pub currency: String,
 }
 
-/// One provider-reported token-usage and cost report.
+/// A provider usage report carried as a [`RecordData`] payload.
+///
+/// This type is intentionally broader than [`TokenUsage`]: it identifies the
+/// model and request that the usage belongs to, and may contain both a
+/// provider-reported cumulative snapshot and an additive delta. Consumers
+/// replace cumulative snapshots but may aggregate deltas only when their
+/// attribution rules establish that they are additive. It is not a database
+/// usage total and not itself a model invocation.
+///
+/// The field vocabulary is comparable to provider message-usage objects such
+/// as the [Anthropic Messages API usage
+/// fields](https://platform.claude.com/docs/en/api/messages), while the
+/// cumulative/delta distinction is this crate's normalization contract.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UsageReport {
-    /// Model service or vendor attributed to this observation.
+    /// Model service or vendor attributed to this usage report.
     #[serde(default)]
     pub model_provider: Option<String>,
-    /// Model identifier attributed to this observation.
+    /// Model identifier attributed to this usage report.
     #[serde(default)]
     pub model: Option<String>,
-    /// Provider service tier attributed to this observation.
+    /// Provider service tier attributed to this usage report.
     #[serde(default)]
     pub service_tier: Option<String>,
     /// Provider request identifier, when reported.
@@ -469,17 +564,20 @@ pub struct UsageReport {
     pub invocation_id: Option<String>,
     /// Provider-reported cumulative usage for the session, when available.
     ///
-    /// Consumers replace this snapshot; they never add cumulative values.
+    /// Consumers replace this snapshot. They never add cumulative values.
     pub cumulative: Option<TokenUsage>,
-    /// Additive usage attributed only to the current observation, when available.
+    /// Additive usage attributed only to the current usage report, when available.
     ///
-    /// Replayed observations copied into a fork have no delta.
+    /// Replayed reports copied into a fork have no delta.
     pub delta: Option<TokenUsage>,
-    /// Monetary cost associated with this observation, when reported.
+    /// Monetary cost associated with this usage report, when reported.
     pub cost: Option<Cost>,
 }
 
-/// One rolling rate-limit window.
+/// One provider-reported rolling rate-limit window.
+///
+/// A window describes a bounded usage period, not the complete account limit.
+/// A [`RateLimit`] may contain several windows with different durations.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RateLimitWindow {
     /// Provider-neutral window label, such as `primary` or `secondary`.
@@ -492,7 +590,11 @@ pub struct RateLimitWindow {
     pub resets_at: Option<Timestamp>,
 }
 
-/// Remaining provider credits.
+/// Provider-reported remaining credit balance.
+///
+/// The provider-formatted `balance` is kept as text because its unit and
+/// precision are provider-defined, and `has_credits` and `unlimited` are separate
+/// observations and may be unknown.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CreditBalance {
     /// Whether the provider reports that credits are available.
@@ -503,7 +605,11 @@ pub struct CreditBalance {
     pub balance: Option<String>,
 }
 
-/// A provider-enforced monetary or organizational spending limit.
+/// Provider-enforced monetary or organizational spending-limit information.
+///
+/// Amounts remain provider-formatted strings because the unit and precision
+/// are not guaranteed to be a currency amount. This is distinct from the
+/// per-request [`Cost`] report.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SpendLimit {
     /// Provider-formatted limit.
@@ -544,7 +650,12 @@ pub enum RateLimitScope {
     Other(String),
 }
 
-/// A provider-reported usage-limit snapshot.
+/// A provider-reported snapshot of usage limits and spending controls.
+///
+/// This aggregates the provider's windows, credits, spending limit, plan, and
+/// reached-limit attribution as observed at one point in time. It is not a
+/// single request failure and does not describe the lifecycle of an
+/// [`AgentInvocation`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RateLimit {
     /// Provider-native limit identifier.
@@ -567,11 +678,17 @@ pub struct RateLimit {
     pub reached_scope: Option<RateLimitScope>,
 }
 
-/// Identifies who caused an event to occur.
+/// Identifies who or what caused an [`Event`] to exist.
 ///
-/// This is intentionally separate from [`MessageRole`]. For example, a tool
-/// result can be stored inside a provider-native `user` message while still
-/// being an environment-produced event.
+/// This answers “who or what produced this observed fact?”, so it belongs on
+/// the event envelope. It is intentionally separate from [`MessageRole`],
+/// which answers “what role does this message play in the conversation
+/// protocol?”. For example, a provider may encode a tool result inside a
+/// `user` message even though the observed event was produced by a tool or the
+/// execution environment. `Actor` is a provider-neutral name in this crate,
+/// with semantics comparable to Google ADK's event `author` and origin fields.
+///
+/// See [Google ADK: identifying event origin and type](https://adk.dev/events/#identifying-event-origin-and-type).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
@@ -590,7 +707,12 @@ pub enum Actor {
     Other(String),
 }
 
-/// A stable order within one source artifact.
+/// A stable, source-local order for one [`Event`].
+///
+/// `position` identifies the provider or artifact position and `part` orders
+/// multiple normalized events derived from that same position. The optional
+/// `logical_ordinal` is a provider history position and must not be confused
+/// with a byte offset or a database row ID.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct EventSequence {
     /// Monotonic provider or artifact position.
@@ -631,26 +753,49 @@ impl EventSequence {
     }
 }
 
-/// A normalized message role.
+/// Describes the role a [`Message`] plays in the conversation protocol.
+///
+/// A role is about the message's place in the exchange—not necessarily the
+/// real-world actor that caused the surrounding [`Event`]. `System` and
+/// `Developer` provide instructions, `User` carries human or client input,
+/// `Assistant` carries model or agent output, and `Tool` carries tool output
+/// when the provider represents it as a message. This is a deliberately small
+/// cross-provider vocabulary. `Other` preserves a role that cannot yet be
+/// normalized.
+///
+/// The vocabulary is comparable to the `system`, `user`, and `assistant`
+/// roles in the [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages)
+/// and to the message authors used by [Google ADK events](https://adk.dev/events/).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
-    /// System instructions.
+    /// Instructions supplied by the system or runtime.
     System,
-    /// Developer-authored instructions with precedence below system messages.
+    /// Instructions supplied by the application or developer, below system instructions.
     Developer,
-    /// Human input.
+    /// Input supplied by a human user or client.
     User,
-    /// Model or agent output.
+    /// Output produced by the model or agent.
     Assistant,
-    /// Tool output represented as a conversation message.
+    /// Output from a tool represented as a conversation message.
     Tool,
     /// A provider-native role that has no normalized equivalent yet.
     Other(String),
 }
 
-/// The presentation phase of an assistant message.
+/// Identifies which presentation phase an assistant [`Message`] belongs to.
+///
+/// `Commentary` is intermediate progress, explanation, or other output shown
+/// before the answer is complete. `FinalAnswer` is the answer that completes
+/// the current user request. `None` on [`Message::phase`] means the provider
+/// did not report a phase. It must not be silently interpreted as a final
+/// answer. This enum is about message presentation, not the lifecycle status
+/// of an [`AgentInvocation`].
+///
+/// The two normalized values follow Codex's provider-native
+/// [`MessagePhase`](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/models.rs)
+/// model, while the surrounding `Message` type remains provider-neutral.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
@@ -711,7 +856,7 @@ impl<'de> Deserialize<'de> for ContentPriority {
     }
 }
 
-/// Display and routing hints attached to a content block.
+/// Display, routing, and freshness hints attached to a content block.
 ///
 /// See [ACP v2 content annotations](https://agentclientprotocol.com/protocol/v2/schema#annotations).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -775,6 +920,12 @@ impl ContentIcon {
 }
 
 /// One typed block of message or tool-result content.
+///
+/// A content block is the smallest normalized unit that can carry text,
+/// media, or a resource reference. It is intentionally separate from
+/// [`Message`] and [`ToolResult`], because both messages and tool results can
+/// contain an ordered list of blocks. Unknown provider blocks are retained as
+/// [`ContentBlock::Unknown`] instead of being silently discarded.
 ///
 /// See [ACP v2 content blocks](https://agentclientprotocol.com/protocol/v2/content).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -867,7 +1018,17 @@ impl ContentBlock {
     }
 }
 
-/// A normalized conversation message.
+/// The content of one conversation message observed during agent work.
+///
+/// A message combines a [`MessageRole`], an optional [`MessagePhase`], and an
+/// ordered list of [`ContentBlock`] values. It is normally carried by
+/// [`EventData::Message`], where the surrounding [`Event`] supplies sequence,
+/// actor, and causal metadata. A `Message` is therefore not the event envelope,
+/// not a complete [`AgentInvocation`], and not necessarily one model request.
+///
+/// The shape is comparable to the role-and-content messages in the
+/// [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages)
+/// and to message events in [Google ADK](https://adk.dev/events/).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     /// Normalized conversation role.
@@ -878,7 +1039,16 @@ pub struct Message {
     pub content: Vec<ContentBlock>,
 }
 
-/// Model reasoning that a provider made available to consumers.
+/// Model-reasoning content that a provider made available to consumers.
+///
+/// This type represents persisted summaries or visible reasoning content. It
+/// does not claim that hidden chain-of-thought is available. The
+/// [`ReasoningVisibility`] field records whether detailed content was visible,
+/// redacted, or encrypted in the source.
+///
+/// The model intentionally follows the provider-neutral distinction between
+/// visible reasoning summaries and unavailable detailed reasoning. It does not
+/// expose hidden chain-of-thought as an inferred field.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Reasoning {
     /// Provider-produced reasoning summaries.
@@ -942,7 +1112,11 @@ pub enum PlanStepPriority {
     Low,
 }
 
-/// One step in an agent plan.
+/// One ordered step in an agent plan.
+///
+/// A plan step is a declared objective and its provider-reported status. It is
+/// not an [`AgentInvocation`] and its completion does not by itself prove that
+/// the corresponding work happened.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PlanStep {
     /// Human-readable step text.
@@ -953,7 +1127,10 @@ pub struct PlanStep {
     pub priority: Option<PlanStepPriority>,
 }
 
-/// A normalized agent plan.
+/// A normalized plan declared or observed during agent work.
+///
+/// Providers may expose only free-form plan text, structured steps, or both.
+/// An empty `steps` list therefore does not mean that no plan existed.
 ///
 /// See [ACP v2 agent plans](https://agentclientprotocol.com/protocol/v2/agent-plan).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1018,7 +1195,10 @@ pub enum ToolStatus {
     Unknown,
 }
 
-/// A file location affected or inspected by a tool.
+/// A file location that a tool reported as affected or inspected.
+///
+/// This is a location hint attached to a [`ToolCall`], not a complete file
+/// snapshot and not proof that the file was changed.
 ///
 /// See [ACP v2 tool-call locations](https://agentclientprotocol.com/protocol/v2/tool-calls#following-the-agent).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1029,7 +1209,11 @@ pub struct ToolLocation {
     pub line: Option<u64>,
 }
 
-/// A normalized tool invocation request.
+/// A normalized request to invoke one tool.
+///
+/// A [`ToolCall`] records the request and its observed state at one point in
+/// the event stream. Its [`ToolResult`] is a separate event payload. A tool
+/// call may exist without a persisted result.
 ///
 /// See [ACP v2 tool calls](https://agentclientprotocol.com/protocol/v2/tool-calls).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1053,7 +1237,11 @@ pub struct ToolCall {
     pub locations: Vec<ToolLocation>,
 }
 
-/// A normalized tool invocation result.
+/// A normalized result or terminal update for one tool invocation.
+///
+/// The `output` value preserves structured provider data while `content`
+/// provides ordered displayable blocks. This is tool output, not an assistant
+/// [`Message`] and not a complete [`AgentInvocation`].
 ///
 /// See [ACP v2 tool-call updates](https://agentclientprotocol.com/protocol/v2/tool-calls#updating).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1093,7 +1281,7 @@ pub enum ApprovalOptionKind {
     Other,
 }
 
-/// One option offered by an approval request.
+/// One user- or policy-selectable option offered by an approval request.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalOption {
     /// Provider-native option identifier.
@@ -1104,7 +1292,7 @@ pub struct ApprovalOption {
     pub kind: ApprovalOptionKind,
 }
 
-/// A request for user authorization.
+/// A request for authorization before a proposed operation executes.
 ///
 /// See [ACP v2 permission requests](https://agentclientprotocol.com/protocol/v2/tool-calls#requesting-permission).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1135,7 +1323,7 @@ pub enum ApprovalOutcome {
     Other(String),
 }
 
-/// The resolved decision for an approval request.
+/// The recorded resolution of an authorization request.
 ///
 /// See [ACP v2 permission outcomes](https://agentclientprotocol.com/protocol/v2/tool-calls#requesting-permission).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1167,7 +1355,12 @@ pub enum ModelInvocationStatus {
     Unknown,
 }
 
-/// One request to a language model.
+/// One request to a language model and its observed terminal state.
+///
+/// A model invocation is smaller than an [`AgentInvocation`]: one agent
+/// invocation can issue several model requests, and a model request can be
+/// followed by tool calls or messages. This type is also distinct from
+/// [`ToolCall`], which invokes an external tool rather than the model.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ModelInvocation {
     /// Provider-native invocation identifier, when present.
@@ -1283,7 +1476,15 @@ pub enum SandboxPolicy {
     Other(String),
 }
 
-/// Execution settings observed for a session or agent invocation.
+/// Effective execution settings observed for a session or agent invocation.
+///
+/// This is a point-in-time context snapshot for interpreting nearby events:
+/// working directory, model, permissions, sandbox, collaboration mode, and
+/// provider-specific settings. It is not the lifecycle state of an execution,
+/// not an operating-system process context, and not a replacement for
+/// [`AgentInvocation`]. Session configuration concepts are comparable to the
+/// [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup)
+/// fields, while provider-specific values remain in `provider_attributes`.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ExecutionContext {
@@ -1349,7 +1550,11 @@ pub enum ModeChangeKind {
     Other(String),
 }
 
-/// A change to the agent's active execution mode.
+/// An observed transition of the agent's active execution mode.
+///
+/// This records what changed and, when available, why. It does not define the
+/// mode's permission or execution semantics. Those effective settings belong
+/// to [`ExecutionContext`].
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ModeChange {
     /// Provider-reported mode identifier.
@@ -1373,7 +1578,12 @@ pub enum NoticeLevel {
     Error,
 }
 
-/// A user-visible notice reported while the agent was running.
+/// A user-visible informational, warning, or error notice emitted during agent work.
+///
+/// A notice communicates status to a consumer. It is not itself a failure
+/// record, tool result, or lifecycle transition. Consumers should use the
+/// structured event payload that accompanies it when stronger semantics are
+/// required.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Notice {
     /// Notice severity.
@@ -1399,7 +1609,11 @@ pub enum HookStatus {
     Unknown,
 }
 
-/// A persisted hook-execution result.
+/// A persisted result from one hook or an aggregate hook run.
+///
+/// Hook output is kept separate from [`ToolResult`]: a hook can affect whether
+/// the agent continues without being a user-invoked tool. `count`, `infos`,
+/// and `errors` allow one provider event to summarize multiple hook runs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HookResult {
     /// Hook lifecycle event, such as `stop`.
@@ -1426,7 +1640,11 @@ pub struct HookResult {
 
 /// A deliverable produced by an inter-agent task.
 ///
-/// See [A2A artifacts](https://a2a-protocol.org/latest/topics/key-concepts/#artifacts).
+/// This follows the [A2A artifact concept](https://a2a-protocol.org/latest/topics/key-concepts/#artifacts),
+/// where an artifact is a tangible output generated by an agent while working
+/// on a task. The normalized type keeps ordered content and provider-neutral
+/// metadata, while allowing the provider-native artifact ID to remain
+/// optional.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TaskArtifact {
     /// Provider-native artifact identifier, when present.
@@ -1444,16 +1662,21 @@ pub struct TaskArtifact {
 /// One complete processing cycle in which an agent accepts input, performs
 /// work, and reaches a reported lifecycle state.
 ///
-/// This is one agent execution, not one language-model request or tool call.
-/// A top-level invocation is carried by [`RecordData::AgentInvocation`], while
-/// a child or peer-agent invocation is carried by
-/// [`EventData::AgentInvocation`].
+/// This is the normalized representation of one agent execution, not of one
+/// language-model request or one tool call. A single invocation may involve
+/// several model calls, tool calls, messages, and child-agent activities. A
+/// top-level invocation is carried by [`RecordData::AgentInvocation`]. A child
+/// or peer-agent invocation is carried by [`EventData::AgentInvocation`].
+/// Both forms use this same lifecycle model and fields, while the surrounding
+/// [`Record`] or [`Event`] supplies their source and ordering context.
 ///
-/// Google ADK calls this unit an
-/// [invocation](https://adk.dev/runtime/event-loop/#invocation), Codex calls a
-/// comparable unit a
-/// [`turn`](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/turn.rs),
-/// and other runtimes may call it a `run` or `task`.
+/// Provider-native systems use different names for a comparable unit of work:
+/// Google ADK calls it an [invocation](https://adk.dev/runtime/event-loop/#invocation),
+/// [Codex calls it a `turn`](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/turn.rs),
+/// other agent runtimes may call it a `run`, and [A2A models it as a
+/// `task`](https://a2a-protocol.org/latest/topics/key-concepts/#task). These
+/// terms do not necessarily have identical boundaries, so `AgentInvocation`
+/// is the normalized name used by this crate.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentInvocation {
     /// Provider-native invocation identifier, or an empty string when absent.
@@ -1478,7 +1701,7 @@ pub struct AgentInvocation {
     /// Time when this invocation reached a terminal state, when reported.
     #[serde(default)]
     pub completed_at: Option<Timestamp>,
-    /// Provider-reported or derived duration in milliseconds.
+    /// Provider-reported or derived invocation duration in milliseconds.
     #[serde(default)]
     pub duration_ms: Option<i64>,
     /// Normalized reason why this invocation stopped.
@@ -1520,7 +1743,12 @@ pub enum FileChangeKind {
     Move,
 }
 
-/// One normalized file change.
+/// One observed file-system change or patch.
+///
+/// `FileChange` describes the provider's evidence about a path operation. It
+/// may include a diff, but it is not guaranteed to contain the complete file
+/// contents. `status` reuses [`ToolStatus`] because many providers report file
+/// mutations as tool operations.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FileChange {
     /// Changed path after the operation.
@@ -1535,7 +1763,12 @@ pub struct FileChange {
     pub status: ToolStatus,
 }
 
-/// Persisted provider world-state snapshot or patch.
+/// Persisted provider world-state update, either a full snapshot or a patch.
+///
+/// When `full` is true, `state` replaces the previously known provider state.
+/// Otherwise it is a provider-defined patch. The value is intentionally JSON
+/// and namespaced because this crate does not claim a universal world-state
+/// schema.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
     /// Whether this observation replaces the whole state rather than applying
@@ -1568,6 +1801,11 @@ pub enum GoalStatus {
 }
 
 /// Durable objective and budget state maintained by an agent.
+///
+/// A `Goal` is an observed planning/budget record, not a user-facing task
+/// identifier and not a substitute for [`Session`] or [`AgentInvocation`].
+/// Its token and wall-time fields describe the provider's accounting at the
+/// reported update, not a newly calculated metric.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Goal {
     /// Human-readable objective.
@@ -1586,11 +1824,15 @@ pub struct Goal {
     pub updated_at: Option<Timestamp>,
 }
 
-/// Boundary metadata used when selecting inputs inherited by an agent fork.
+/// Boundary metadata used when selecting invocation history inherited by an agent fork.
+///
+/// This is a stream marker used while reconstructing fork lineage. It says
+/// whether the delivery starts a new logical invocation. It is not itself an
+/// invocation and does not contain the inherited events.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForkInvocationBoundary {
-    /// Whether this delivery starts a new logical fork turn.
-    pub trigger_turn: bool,
+    /// Whether this delivery starts a new logical fork invocation.
+    pub trigger_invocation: bool,
 }
 
 /// Provider-neutral operation applied to pending user input.
@@ -1611,6 +1853,11 @@ pub enum QueueOperation {
 }
 
 /// One durable mutation of a coding agent's pending-input queue.
+///
+/// The type is named `InputQueueMutation` because it represents one observed
+/// enqueue/dequeue/remove operation, not the queue's current contents. A
+/// provider may include task metadata when the queued input came from a
+/// background task or tool workflow.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct InputQueueMutation {
     /// Queue mutation performed by the provider.
@@ -1627,7 +1874,12 @@ pub struct InputQueueMutation {
     pub status: Option<String>,
 }
 
-/// A context-window compaction performed during a session.
+/// An observed compaction of the context window used by a session.
+///
+/// Compaction replaces or summarizes active context so subsequent work can
+/// continue within provider limits. The replacement history and window IDs
+/// are provider evidence. This type does not claim that the original events
+/// were deleted from durable source storage.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ContextCompaction {
     /// Provider-produced replacement summary, when available.
@@ -1655,7 +1907,11 @@ pub struct ContextCompaction {
     pub window_id: Option<String>,
 }
 
-/// A provider retry observation.
+/// An observation that the provider retried a request or operation.
+///
+/// This records one retry attempt and its reported delay/reason. It is not a
+/// retry policy and does not imply that the retried operation eventually
+/// succeeded.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Retry {
     /// One-based attempt number, when known.
@@ -1666,21 +1922,35 @@ pub struct Retry {
     pub delay_ms: Option<u64>,
 }
 
-/// A rollback of previously active session context.
+/// An observed rollback of previously active session context.
+///
+/// This is context/history accounting, not a database transaction rollback and
+/// not evidence that source artifacts were physically deleted. The provider
+/// may report only the number of removed user inputs.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Rollback {
-    /// Number of user inputs removed from active context, when reported.
+    /// Number of user-input turns removed from active context, when reported.
     pub user_inputs_removed: Option<u64>,
 }
 
-/// An event whose semantics are not yet normalized.
+/// An event payload whose semantics are not yet normalized.
+///
+/// `UnknownEvent` preserves the provider's best type label so consumers can
+/// count and diagnose unsupported event kinds without pretending to understand
+/// their payload.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnknownEvent {
     /// Best available provider-native type name.
     pub kind: Option<String>,
 }
 
-/// Stable event variants ordered inside a session or agent invocation.
+/// The semantic payload of one ordered fact observed during agent work.
+///
+/// [`Event`] is the outer envelope that supplies sequence, actor, and causal
+/// links. `EventData` says what happened. The variants cover conversation,
+/// reasoning, plans, model and tool activity, file changes, notices, and
+/// nested child-agent invocations. This type is not a complete invocation or
+/// a session container.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
@@ -1709,9 +1979,9 @@ pub enum EventData {
     WorldState(WorldState),
     /// Durable agent goal and budget state.
     Goal(Goal),
-    /// Fork-turn boundary in an inter-agent delivery stream.
+    /// Fork-invocation boundary in an inter-agent delivery stream.
     ForkInvocationBoundary(ForkInvocationBoundary),
-    /// Mutation of pending user input.
+    /// Mutation of the pending user-input queue.
     InputQueue(InputQueueMutation),
     /// Context-window compaction.
     ContextCompaction(ContextCompaction),
@@ -1731,7 +2001,19 @@ pub enum EventData {
     Unknown(UnknownEvent),
 }
 
-/// One ordered fact inside a session or agent invocation.
+/// One ordered event envelope inside a session or agent invocation.
+///
+/// Events are the provider-observed facts that make an invocation inspectable:
+/// for example, a message, reasoning update, tool call, tool result, file
+/// change, or child-agent invocation. The event's [`EventData`] contains the
+/// concrete fact, while this envelope preserves its provider identity,
+/// source order, actor, agent identity, and causal or fork-inheritance links.
+/// An event is smaller than and distinct from a complete [`AgentInvocation`].
+///
+/// The event semantics follow [Google ADK's Events
+/// model](https://adk.dev/events/) and its [Runtime Event
+/// Loop](https://adk.dev/runtime/event-loop/), where events represent atomic
+/// occurrences exchanged between the runner and agent execution logic.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Event {
@@ -1767,23 +2049,33 @@ impl Event {
     }
 }
 
-/// A record whose semantics are not yet normalized.
+/// A record payload whose semantics are not yet normalized.
+///
+/// `UnknownRecord` is used when the provider emitted a top-level fact that has
+/// no normalized [`RecordData`] variant. The surrounding [`Record`] still
+/// preserves identity and provenance.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnknownRecord {
     /// Best available provider-native type name.
     pub kind: Option<String>,
 }
 
-/// Stable normalized record variants.
+/// The semantic payload carried by one [`Record`].
+///
+/// `RecordData` answers what kind of normalized fact a provider emitted:
+/// session metadata, an agent invocation lifecycle, a usage report, a
+/// rate-limit snapshot, or an ordered [`Event`]. It is a payload type rather
+/// than an identity or storage container. The surrounding [`Record`] supplies
+/// the stable record ID, source, origin, and relationship links.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum RecordData {
     /// Session metadata.
     Session(Session),
-    /// AgentInvocation lifecycle state.
+    /// One complete agent invocation lifecycle.
     AgentInvocation(AgentInvocation),
-    /// Token usage.
+    /// Provider usage report, including cumulative or additive token data.
     UsageReport(UsageReport),
     /// Provider usage-limit snapshot.
     RateLimit(RateLimit),
@@ -1793,7 +2085,21 @@ pub enum RecordData {
     Unknown(UnknownRecord),
 }
 
-/// One normalized record emitted by a provider.
+/// One source-scoped normalized fact emitted by a provider adapter.
+///
+/// A record is the envelope used to persist and incrementally update the
+/// normalized data stream. It combines a stable internal identity with the
+/// owning source, optional session and invocation links, a timestamp, the
+/// original artifact location, and one semantic [`RecordData`] payload. A
+/// record may describe metadata, an agent execution, an event, usage, or a
+/// rate-limit observation. The record itself is not one specific agent
+/// behavior. The optional [`OriginalData`] value preserves provider
+/// provenance for diagnostics and for fields not yet normalized.
+///
+/// The source-plus-position-plus-payload shape is comparable to Kafka
+/// Connect's [`SourceRecord`](https://kafka.apache.org/40/javadoc/org/apache/kafka/connect/source/SourceRecord.html),
+/// but `Record` is this crate's provider-neutral type rather than a Kafka
+/// protocol object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Record {
@@ -1811,7 +2117,7 @@ pub struct Record {
     pub origin: SourceRef,
     /// Stable normalized data.
     pub data: RecordData,
-    /// Optional provider-native value retained for compatibility.
+    /// Optional provider-native value retained for provenance and diagnostics.
     pub original: Option<OriginalData>,
 }
 
@@ -1831,7 +2137,13 @@ impl Record {
     }
 }
 
-/// One incremental change produced by a provider.
+/// One incremental mutation emitted by a provider during a scan or watch.
+///
+/// Consumers apply changes in order: `Upsert` inserts or replaces a record,
+/// `Delete` removes one record by its stable ID, `Reset` requests rebuilding
+/// records from an artifact, and `Remove` reports that an artifact no longer
+/// exists. The associated [`Batch::checkpoint`] is safe to persist only after
+/// the batch's changes have been applied.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
@@ -1866,7 +2178,12 @@ pub enum DiagnosticSeverity {
     Error,
 }
 
-/// Structured provider diagnostic.
+/// Structured, non-payload diagnostic emitted while reading a provider source.
+///
+/// Diagnostics explain incomplete, incompatible, or otherwise recoverable
+/// source conditions without embedding the affected record. They are scan
+/// metadata and should not be mistaken for normalized agent events or terminal
+/// execution errors.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
     /// Severity.
@@ -1897,7 +2214,13 @@ impl Diagnostic {
     }
 }
 
-/// Opaque, serializable incremental provider state.
+/// Opaque cursor for continuing one provider's incremental scan.
+///
+/// A checkpoint is provider-private state bound to one [`ProviderInfo`] and
+/// concrete [`SourceId`]. Consumers should persist it and pass it back to the
+/// next [`crate::Provider::scan`] call without interpreting its contents. If
+/// the provider or source identity does not match, or the private state can
+/// no longer be decoded, the caller must discard it and perform a fresh scan.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Checkpoint {
     pub(crate) provider: ProviderId,
@@ -1965,7 +2288,13 @@ impl Checkpoint {
     }
 }
 
-/// One bounded incremental provider result.
+/// One bounded page of an incremental provider scan.
+///
+/// A batch contains the ordered [`Change`] values to apply, the checkpoint
+/// representing the position after that page, any recoverable diagnostics,
+/// and a continuation flag. When [`Batch::has_more`] is true, the consumer
+/// applies this batch and calls the provider again with its checkpoint. When
+/// it is false, the checkpoint represents the end of the current scan.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
     /// Normalized changes in source order.

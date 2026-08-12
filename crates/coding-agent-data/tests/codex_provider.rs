@@ -1461,7 +1461,7 @@ fn durable_codex_state_goal_shell_extensions_and_usage_are_normalized() {
                         if matches!(
                             &item.data,
                             EventData::ForkInvocationBoundary(boundary)
-                                if boundary.trigger_turn
+                                if boundary.trigger_invocation
                         )
                 )
         )
