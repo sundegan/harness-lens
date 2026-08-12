@@ -6,14 +6,9 @@
 
 # coding-agent-data
 
-`coding-agent-data` 是一个 Rust 库，为本地 coding agent 数据提供统一的 API
-和数据模型。它面向桌面应用、CLI、分析工具、历史查看器等场景，让上层应用
-无需了解不同 Agent 的数据位置、存储格式和私有 Schema，就可以浏览、索引、
-同步、分析和可视化这些数据。
+`coding-agent-data` 是一个 Rust 库，为本地 coding agent 数据提供统一的 API 和数据模型。它面向桌面应用、CLI、分析工具、历史查看器等场景，让上层应用无需了解不同 Agent 的数据位置、存储格式和私有 Schema，就可以浏览、索引、同步、分析和可视化这些数据。
 
-应用通过一致的、Provider-neutral 的 API 访问不同 coding agent 的数据。每个
-Provider 负责发现和解析自己的本地数据源，应用则可以按照自身需求保存、索引、
-同步、脱敏和展示归一化后的记录。
+应用通过一致的、Provider-neutral 的 API 访问不同 coding agent 的数据。每个 Provider 负责发现和解析自己的本地数据源，应用则可以按照自身需求保存、索引、同步、脱敏和展示归一化后的记录。
 
 ## 能力
 
@@ -23,36 +18,12 @@ Provider 负责发现和解析自己的本地数据源，应用则可以按照�
 - 可选的文件系统监控，支持防抖和定期重新校验
 - 格式探针，用于发现 Provider 本地数据格式变化
 
-## 术语表
-
-[中文术语表与语义模型指南](./GLOSSARY_ZH.md)
-
-[格式探针设计与使用指南](./docs/FORMAT_PROBE_ZH.md)
-
 ## 支持的 Provider
 
 | Provider    | 本地数据源                                         |
 | ----------- | -------------------------------------------------- |
 | Codex       | `state_5.sqlite`、rollout `.jsonl` 和 `.jsonl.zst` |
 | Claude Code | 主 Agent 和子 Agent 的 transcript `.jsonl`         |
-
-## 本地 Provider 兼容性测试
-
-在本 crate 目录运行：
-
-```bash
-make test-provider-formats
-```
-
-它会比较代表性本地 artifact 与审核基线，并运行真实 Provider adapter
-验证归一化兼容性。确认上游变化已被当前 adapter 正确支持后，可以显式更新基线：
-
-```bash
-make update-provider-format-baselines
-```
-
-检测范围、比较语义、失败条件、基线审核流程、公共 API 和隐私边界见
-[格式探针文档](./docs/FORMAT_PROBE_ZH.md)。
 
 ## 快速开始
 
@@ -97,7 +68,10 @@ fn apply_batch_atomically(batch: &Batch) -> Result<()> {
 }
 ```
 
-只有从头开始扫描时才传入 `None`。应用每个 Batch 后，应在同一个事务中保存
-其变更和 Checkpoint，然后再把该 Checkpoint 传给下一次 `scan`。当 `has_more`
-为 `true` 时，应立即继续扫描。完成追赶后，如果 Provider 提供对应的 watch
-功能，可以从最后一个已应用的 Checkpoint 启动 `WatchProvider::watch`。
+只有从头开始扫描时才传入 `None`。应用每个 Batch 后，应在同一个事务中保存其变更和 Checkpoint，然后再把该 Checkpoint 传给下一次 `scan`。当 `has_more` 为 `true` 时，应立即继续扫描。完成追赶后，如果 Provider 提供对应的 watch 功能，可以从最后一个已应用的 Checkpoint 启动 `WatchProvider::watch`。
+
+## 文档
+
+- [中文术语表与语义模型指南](./docs/GLOSSARY_ZH.md)
+- [格式探针设计与使用指南](./docs/FORMAT_PROBE_ZH.md)
+- [全部 crate 文档](./docs/README.md)

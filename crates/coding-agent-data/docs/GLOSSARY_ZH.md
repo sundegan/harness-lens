@@ -10,9 +10,7 @@ coding-agent-data 的核心模型名词表。本文集中说明每个模型的�
 
 ## 模型分层与职责边界
 
-这里的“层”是为了帮助读者理解模型职责的概念分类，不是 Rust 模块层级、
-数据库表层级，也不是对象之间的继承关系。一个对象可能作为另一个对象的
-字段或枚举载荷出现，但这不表示它们属于同一个层。
+这里的“层”是为了帮助读者理解模型职责的概念分类，不是 Rust 模块层级、数据库表层级，也不是对象之间的继承关系。一个对象可能作为另一个对象的字段或枚举载荷出现，但这不表示它们属于同一个层。
 
 | 层              | 核心问题                                     | 主要类型                                                                                           | 职责与边界                                                                                                      |
 | --------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -29,25 +27,25 @@ coding-agent-data 的核心模型名词表。本文集中说明每个模型的�
 
 | 名称                                       | 所在层     | 定义与职责                                                                                                                                                                        | 典型关系或例子                                                                                                                |
 | ------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [`Session`](src/model.rs#L378)             | 语义层     | Provider 持久化的对话、线程或工作上下文。它是多个 Agent 执行共享的长期容器，通常还保存标题、工作目录、模型、Git 信息和 Token 汇总等会话级元数据。                                 | 一个 Codex Thread 可以对应一个 `Session`，其中连续发生多个 `AgentInvocation`。                                                |
-| [`AgentInvocation`](src/model.rs#L1681)    | 语义层     | Agent 接收一次输入后，完成模型调用、工具操作、消息处理以及可能的子 Agent 协作，直到进入终态或其他生命周期状态的完整执行过程。                                                     | 一次“搜索代码、修改文件、运行测试并回复用户”的全过程是一个 `AgentInvocation`，其中可以包含多个 `ModelInvocation` 和 `Event`。 |
-| [`ModelInvocation`](src/model.rs#L1365)    | 语义层     | Agent 向语言模型发起的一次具体请求及其生命周期。它是 Agent 执行中的一个子过程，可以记录模型、状态、停止原因和请求耗时等信息。                                                     | 一个 `AgentInvocation` 可能因工具调用或多轮决策而包含多个 `ModelInvocation`。                                                 |
-| [`Event`](src/model.rs#L2019)              | 语义层     | 执行过程中发生的一条有序事实。它负责携带顺序、来源 Actor、父子关系和 `EventData`，因此可以表达消息、推理、工具调用、文件变更或子 Agent 活动。                                     | “用户发送问题”“调用搜索工具”“工具返回结果”分别可以是同一个 `AgentInvocation` 中的多个 `Event`。                               |
-| [`EventData`](src/model.rs#L1957)          | 语义层     | `Event` 的具体语义载荷，表示这条事件到底发生了什么。它可以承载 `Message`、`ToolCall`、`ToolResult`、`FileChange`、`AgentInvocation`、`Plan` 等变体。                              | `Event { actor: Actor::Tool, data: EventData::ToolResult(...) }` 表示工具返回了一条结果。                                     |
-| [`UsageReport`](src/model.rs#L549)         | 语义层     | Provider 在某个时间点报告的一份用量事实。它可以同时包含模型和请求身份、累计 Token 快照、当前增量 Token、服务层级以及成本信息。它描述用量，不代表一次 Agent 执行。                 | `RecordData::UsageReport(UsageReport)` 可以被消费者用于替换会话累计值，或在归因成立时累加 `delta`。                                 |
-| [`Actor`](src/model.rs#L695)               | 语义层     | 导致或产生某条 `Event` 的主体或系统，例如用户、Agent、工具、运行环境或系统。它描述事件来源，不描述消息在对话协议中的角色。                                                        | 工具返回结果通常可以标记为 `actor: Actor::Tool`。                                                                             |
-| [`MessageRole`](src/model.rs#L772)         | 语义层     | `Message` 在对话协议中的角色，例如 `System`、`Developer`、`User`、`Assistant` 或 `Tool`。它描述消息如何被协议解释，不直接证明哪个主体执行了动作。                                 | 一条 `Message` 可以是 `role: MessageRole::Assistant`，同时外层 `Event.actor` 为 `Actor::Agent`。                              |
-| [`Message`](src/model.rs#L1033)            | 语义层     | 一条带有角色、可选展示阶段和有序内容块的对话消息。它只描述消息本身，事件顺序、Actor 和因果关系由外层 `Event` 保存。                                                               | 用户问题、Agent 的中间 commentary 和最终回答都可以归一化为 `Message`。                                                        |
-| [`MessagePhase`](src/model.rs#L802)        | 语义层     | Assistant 消息在一次执行中的展示阶段。`Commentary` 表示中间过程，`FinalAnswer` 表示当前请求的最终回答，`Other` 表示 Provider 暂时无法映射的阶段。                                 | `Message { role: Assistant, phase: FinalAnswer, ... }` 表示最终答复，不表示整个 `AgentInvocation` 已成功。                    |
-| [`SessionRelationKind`](src/model.rs#L248) | 语义层     | 当前 `Session` 与另一个 `Session` 之间的 lineage 关系。`Fork` 表示从历史分支，`Child` 表示由父 Session 中的 Agent 创建，`Continuation` 表示同一逻辑工作迁移到新的 Provider 容器。 | `S2 --Fork--> S1` 表示 S2 从 S1 的历史分支出来。                                                                              |
-| [`HistoryMode`](src/model.rs#L295)         | 语义层     | Provider 保存和拼接 Session 历史的方式。`Legacy` 通常表示 Transcript 自包含，`Paginated` 表示按逻辑 ordinal 拼接并可能引用祖先历史前缀，`Other` 保留未知模式。                    | Fork 后的 Session 可能用 `Paginated` 读取父 Session 的历史前缀，再接上自己的记录。                                            |
-| [`InputQueueMutation`](src/model.rs#L1862) | 语义层     | 对待处理用户输入队列执行的一次操作，例如入队、出队、移除或清空。它描述队列发生了什么变化，不是队列在某一时刻的完整快照。                                                          | `EventData::InputQueue(InputQueueMutation { operation: QueueOperation::Enqueue, ... })` 表示一条输入被加入待处理队列。        |
-| [`TaskArtifact`](src/model.rs#L1649)       | 语义层     | Agent 或子 Agent 在任务中产生并向外部交付的结果。它可以由文本、文件引用、结构化数据或其他 `ContentBlock` 组成，不要求一定对应一个工作区文件。                                     | 代码审查报告、补丁说明、结构化 JSON 或图片引用都可以是 `TaskArtifact`。                                                       |
-| [`Record`](src/model.rs#L2105)             | 事实信封层 | 一条带有稳定 ID、Provider 来源、原始位置、Session/Invocation 关联和语义载荷的归一化事实信封。它负责让消费者能够定位、更新、删除和追溯事实。                                       | `Record { id, source, origin, data: RecordData::Event(...) }` 表示一条可被增量同步的有来源事件事实。                          |
-| [`RecordData`](src/model.rs#L2073)         | 事实信封层 | `Record` 携带的具体事实类型。它把 Session、AgentInvocation、Event、UsageReport、RateLimit 和 Unknown 等语义对象放进统一的枚举载荷中。                                             | `RecordData::Event(Event)` 表示 Record 的语义内容是一条 Event，Record 本身仍负责 ID 和 provenance。                           |
-| [`Change`](src/model.rs#L2150)             | 增量同步层 | Provider 要求消费者对归一化事实执行的一项变更。`Upsert` 插入或替换 Record，`Delete` 删除 Record，`Reset` 重建一个来源，`Remove` 清理已经消失的来源。                              | 消费者收到 `Change::Upsert(record)` 后，按 `record.id` 写入或更新事实。                                                       |
-| [`Batch`](src/model.rs#L2299)              | 增量同步层 | Provider 一次有界 `scan` 返回的结果页。它包含按顺序排列的 `Change`、可恢复诊断、续扫 `Checkpoint` 以及 `has_more` 标志。                                                          | 消费者应用一个 `Batch` 后，先在同一事务中保存 changes 和 checkpoint，再决定是否继续扫描。                                     |
-| [`Checkpoint`](src/model.rs#L2225)         | 增量同步层 | Provider 私有的增量扫描续扫状态。消费者只负责持久化并原样传回，不应解释其中的 Provider-specific state。                                                                           | Codex 和 Claude Code 可以使用不同的 checkpoint 格式，但上层都通过同一个 `Checkpoint` 接口续扫。                               |
+| [`Session`](../src/model.rs#L378)             | 语义层     | Provider 持久化的对话、线程或工作上下文。它是多个 Agent 执行共享的长期容器，通常还保存标题、工作目录、模型、Git 信息和 Token 汇总等会话级元数据。                                 | 一个 Codex Thread 可以对应一个 `Session`，其中连续发生多个 `AgentInvocation`。                                                |
+| [`AgentInvocation`](../src/model.rs#L1681)    | 语义层     | Agent 接收一次输入后，完成模型调用、工具操作、消息处理以及可能的子 Agent 协作，直到进入终态或其他生命周期状态的完整执行过程。                                                     | 一次“搜索代码、修改文件、运行测试并回复用户”的全过程是一个 `AgentInvocation`，其中可以包含多个 `ModelInvocation` 和 `Event`。 |
+| [`ModelInvocation`](../src/model.rs#L1365)    | 语义层     | Agent 向语言模型发起的一次具体请求及其生命周期。它是 Agent 执行中的一个子过程，可以记录模型、状态、停止原因和请求耗时等信息。                                                     | 一个 `AgentInvocation` 可能因工具调用或多轮决策而包含多个 `ModelInvocation`。                                                 |
+| [`Event`](../src/model.rs#L2019)              | 语义层     | 执行过程中发生的一条有序事实。它负责携带顺序、来源 Actor、父子关系和 `EventData`，因此可以表达消息、推理、工具调用、文件变更或子 Agent 活动。                                     | “用户发送问题”“调用搜索工具”“工具返回结果”分别可以是同一个 `AgentInvocation` 中的多个 `Event`。                               |
+| [`EventData`](../src/model.rs#L1957)          | 语义层     | `Event` 的具体语义载荷，表示这条事件到底发生了什么。它可以承载 `Message`、`ToolCall`、`ToolResult`、`FileChange`、`AgentInvocation`、`Plan` 等变体。                              | `Event { actor: Actor::Tool, data: EventData::ToolResult(...) }` 表示工具返回了一条结果。                                     |
+| [`UsageReport`](../src/model.rs#L549)         | 语义层     | Provider 在某个时间点报告的一份用量事实。它可以同时包含模型和请求身份、累计 Token 快照、当前增量 Token、服务层级以及成本信息。它描述用量，不代表一次 Agent 执行。                 | `RecordData::UsageReport(UsageReport)` 可以被消费者用于替换会话累计值，或在归因成立时累加 `delta`。                                 |
+| [`Actor`](../src/model.rs#L695)               | 语义层     | 导致或产生某条 `Event` 的主体或系统，例如用户、Agent、工具、运行环境或系统。它描述事件来源，不描述消息在对话协议中的角色。                                                        | 工具返回结果通常可以标记为 `actor: Actor::Tool`。                                                                             |
+| [`MessageRole`](../src/model.rs#L772)         | 语义层     | `Message` 在对话协议中的角色，例如 `System`、`Developer`、`User`、`Assistant` 或 `Tool`。它描述消息如何被协议解释，不直接证明哪个主体执行了动作。                                 | 一条 `Message` 可以是 `role: MessageRole::Assistant`，同时外层 `Event.actor` 为 `Actor::Agent`。                              |
+| [`Message`](../src/model.rs#L1033)            | 语义层     | 一条带有角色、可选展示阶段和有序内容块的对话消息。它只描述消息本身，事件顺序、Actor 和因果关系由外层 `Event` 保存。                                                               | 用户问题、Agent 的中间 commentary 和最终回答都可以归一化为 `Message`。                                                        |
+| [`MessagePhase`](../src/model.rs#L802)        | 语义层     | Assistant 消息在一次执行中的展示阶段。`Commentary` 表示中间过程，`FinalAnswer` 表示当前请求的最终回答，`Other` 表示 Provider 暂时无法映射的阶段。                                 | `Message { role: Assistant, phase: FinalAnswer, ... }` 表示最终答复，不表示整个 `AgentInvocation` 已成功。                    |
+| [`SessionRelationKind`](../src/model.rs#L248) | 语义层     | 当前 `Session` 与另一个 `Session` 之间的 lineage 关系。`Fork` 表示从历史分支，`Child` 表示由父 Session 中的 Agent 创建，`Continuation` 表示同一逻辑工作迁移到新的 Provider 容器。 | `S2 --Fork--> S1` 表示 S2 从 S1 的历史分支出来。                                                                              |
+| [`HistoryMode`](../src/model.rs#L295)         | 语义层     | Provider 保存和拼接 Session 历史的方式。`Legacy` 通常表示 Transcript 自包含，`Paginated` 表示按逻辑 ordinal 拼接并可能引用祖先历史前缀，`Other` 保留未知模式。                    | Fork 后的 Session 可能用 `Paginated` 读取父 Session 的历史前缀，再接上自己的记录。                                            |
+| [`InputQueueMutation`](../src/model.rs#L1862) | 语义层     | 对待处理用户输入队列执行的一次操作，例如入队、出队、移除或清空。它描述队列发生了什么变化，不是队列在某一时刻的完整快照。                                                          | `EventData::InputQueue(InputQueueMutation { operation: QueueOperation::Enqueue, ... })` 表示一条输入被加入待处理队列。        |
+| [`TaskArtifact`](../src/model.rs#L1649)       | 语义层     | Agent 或子 Agent 在任务中产生并向外部交付的结果。它可以由文本、文件引用、结构化数据或其他 `ContentBlock` 组成，不要求一定对应一个工作区文件。                                     | 代码审查报告、补丁说明、结构化 JSON 或图片引用都可以是 `TaskArtifact`。                                                       |
+| [`Record`](../src/model.rs#L2105)             | 事实信封层 | 一条带有稳定 ID、Provider 来源、原始位置、Session/Invocation 关联和语义载荷的归一化事实信封。它负责让消费者能够定位、更新、删除和追溯事实。                                       | `Record { id, source, origin, data: RecordData::Event(...) }` 表示一条可被增量同步的有来源事件事实。                          |
+| [`RecordData`](../src/model.rs#L2073)         | 事实信封层 | `Record` 携带的具体事实类型。它把 Session、AgentInvocation、Event、UsageReport、RateLimit 和 Unknown 等语义对象放进统一的枚举载荷中。                                             | `RecordData::Event(Event)` 表示 Record 的语义内容是一条 Event，Record 本身仍负责 ID 和 provenance。                           |
+| [`Change`](../src/model.rs#L2150)             | 增量同步层 | Provider 要求消费者对归一化事实执行的一项变更。`Upsert` 插入或替换 Record，`Delete` 删除 Record，`Reset` 重建一个来源，`Remove` 清理已经消失的来源。                              | 消费者收到 `Change::Upsert(record)` 后，按 `record.id` 写入或更新事实。                                                       |
+| [`Batch`](../src/model.rs#L2299)              | 增量同步层 | Provider 一次有界 `scan` 返回的结果页。它包含按顺序排列的 `Change`、可恢复诊断、续扫 `Checkpoint` 以及 `has_more` 标志。                                                          | 消费者应用一个 `Batch` 后，先在同一事务中保存 changes 和 checkpoint，再决定是否继续扫描。                                     |
+| [`Checkpoint`](../src/model.rs#L2225)         | 增量同步层 | Provider 私有的增量扫描续扫状态。消费者只负责持久化并原样传回，不应解释其中的 Provider-specific state。                                                                           | Codex 和 Claude Code 可以使用不同的 checkpoint 格式，但上层都通过同一个 `Checkpoint` 接口续扫。                               |
 
 ## 典型工作示例
 
@@ -339,8 +337,7 @@ Session S1
 ]
 ```
 
-`RecordData` 始终序列化为 `{ "type": "...", "value": {...} }`。
-完整 `Record` 还可包含 `timestamp`、`origin` 和 `original` 等字段。
+`RecordData` 始终序列化为 `{ "type": "...", "value": {...} }`。完整 `Record` 还可包含 `timestamp`、`origin` 和 `original` 等字段。
 
 ## 语义层模型
 
@@ -348,7 +345,7 @@ Session S1
 
 | 项目      | 说明                                                                                 |
 | --------- | ------------------------------------------------------------------------------------ |
-| Rust 类型 | [Session](src/model.rs#L378)                                                         |
+| Rust 类型 | [Session](../src/model.rs#L378)                                                         |
 | 定义      | Provider 持久化的对话、线程、工作任务或 Transcript 上下文                            |
 | 主要字段  | external_id、title、cwd、transcript、时间、model、Token 快照、Git 信息、archive 状态 |
 | 可以包含  | 多个 AgentInvocation，以及这些 Invocation 产生的 Event                               |
@@ -386,7 +383,7 @@ S4 --Continuation-> S1   S4 延续 S1 的逻辑工作
 
 | 项目          | 说明                                                                                                            |
 | ------------- | --------------------------------------------------------------------------------------------------------------- |
-| Rust 类型     | [AgentInvocation](src/model.rs#L1681)                                                                           |
+| Rust 类型     | [AgentInvocation](../src/model.rs#L1681)                                                                           |
 | 定义          | Agent 接收一次输入后，完成模型调用、工具操作、消息处理和可能的子 Agent 协作，直到进入某个生命周期状态的完整过程 |
 | 可以包含      | 多个 ModelInvocation、ToolCall、ToolResult、Message、FileChange 和 TaskArtifact                                 |
 | 顶层承载      | RecordData::AgentInvocation                                                                                     |
@@ -403,8 +400,7 @@ S4 --Continuation-> S1   S4 延续 S1 的逻辑工作
 | 其他 Agent runtime | Run        | 常见叫法，但不同 runtime 的边界可能不同                                         |
 | A2A                | Task       | 有状态且具有生命周期的 Agent 工作单元，语义相近但不是本 crate 的协议对象        |
 
-本 crate 使用 AgentInvocation，是为了明确它表示 Agent 层执行，并与
-ModelInvocation、Tool invocation 区分开。
+本 crate 使用 AgentInvocation，是为了明确它表示 Agent 层执行，并与 ModelInvocation、Tool invocation 区分开。
 
 参考来源：
 
@@ -417,7 +413,7 @@ ModelInvocation、Tool invocation 区分开。
 
 | 项目       | Event                                                          | EventData                                                                |
 | ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Rust 类型  | [Event](src/model.rs#L2019)                                    | [EventData](src/model.rs#L1957)                                          |
+| Rust 类型  | [Event](../src/model.rs#L2019)                                    | [EventData](../src/model.rs#L1957)                                          |
 | 角色       | 事件信封                                                       | 事件载荷                                                                 |
 | 负责内容   | external_id、sequence、parent、inherited_from、actor、agent_id | Message、Reasoning、ToolCall、ToolResult、FileChange、AgentInvocation 等 |
 | 回答的问题 | 什么时候发生、由谁产生、和什么有关                             | 具体发生了什么                                                           |
@@ -461,9 +457,7 @@ Event
 | `Cost`        | Provider 报告的金额和货币信息，金额以文本保存以避免二进制浮点数引入误差               | amount、currency                                     |
 | `RateLimit`   | Provider 在某个时间点报告的限流窗口、额度、消费和触发原因快照                         | windows、credits、spend_limit、reached_reason        |
 
-`UsageReport` 是外层用量报告，`TokenUsage` 是其中的计数值。例如同一条
-Record 可以同时携带模型名称、请求 ID、累计 Token、当前增量 Token 和金额。
-累计值由消费者替换保存；只有在归因规则确认可加总时，才聚合 `delta`。
+`UsageReport` 是外层用量报告，`TokenUsage` 是其中的计数值。例如同一条 Record 可以同时携带模型名称、请求 ID、累计 Token、当前增量 Token 和金额。累计值由消费者替换保存；只有在归因规则确认可加总时，才聚合 `delta`。
 
 参考来源：
 
@@ -472,8 +466,7 @@ Record 可以同时携带模型名称、请求 ID、累计 Token、当前增量 
 
 ### Actor、MessageRole、Message、MessagePhase
 
-这几个名词位于不同层次，最重要的区别是：`Actor` 描述事件由谁或什么
-产生，`MessageRole` 描述消息在对话协议中的角色。
+这几个名词位于不同层次，最重要的区别是：`Actor` 描述事件由谁或什么产生，`MessageRole` 描述消息在对话协议中的角色。
 
 | 类型            | 它回答的问题                        | 它描述什么                                                                                    | 示例                                                                 |
 | --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -531,7 +524,7 @@ Event
 
 | 项目      | 说明                                                        |
 | --------- | ----------------------------------------------------------- |
-| Rust 类型 | [TaskArtifact](src/model.rs#L1649)                          |
+| Rust 类型 | [TaskArtifact](../src/model.rs#L1649)                          |
 | 定义      | Agent 或子 Agent 在任务中产生并返回的交付物                 |
 | 主要字段  | artifact_id、name、description、parts、metadata             |
 | parts     | 按顺序排列的 ContentBlock，可包含文本、文件引用或结构化内容 |
@@ -556,7 +549,7 @@ Event
 
 | 项目       | Record                                                       | RecordData                                                       |
 | ---------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Rust 类型  | [Record](src/model.rs#L2105)                                 | [RecordData](src/model.rs#L2073)                                 |
+| Rust 类型  | [Record](../src/model.rs#L2105)                                 | [RecordData](../src/model.rs#L2073)                                 |
 | 角色       | Provider-neutral 事实信封                                    | 事实的具体语义载荷                                               |
 | 负责内容   | id、source、session、invocation、timestamp、origin、original | Session、AgentInvocation、Event、UsageReport、RateLimit、Unknown |
 | 解决的问题 | 事实来自哪里、如何定位、属于谁、如何更新或删除               | 事实表达了什么                                                   |
@@ -586,12 +579,9 @@ Record
     })
 ```
 
-Record 与 RecordData 不能简单合并，因为同一种语义载荷仍需要统一的来源、稳定 ID、
-原始位置和关联关系；增量消费者也需要通过 Record::id 更新或删除事实。
-Record::original 用于 provenance 和诊断，保留 Provider 原始值，不代表兼容层。
+Record 与 RecordData 不能简单合并，因为同一种语义载荷仍需要统一的来源、稳定 ID、原始位置和关联关系；增量消费者也需要通过 Record::id 更新或删除事实。Record::original 用于 provenance 和诊断，保留 Provider 原始值，不代表兼容层。
 
-外部类比：[Apache Kafka Connect SourceRecord](https://kafka.apache.org/40/javadoc/org/apache/kafka/connect/source/SourceRecord.html)。
-该类比只说明“来源身份 + 原始位置/游标 + 载荷”的数据集成边界，Record 不是 Kafka 类型的直接复用。
+外部类比：[Apache Kafka Connect SourceRecord](https://kafka.apache.org/40/javadoc/org/apache/kafka/connect/source/SourceRecord.html)。该类比只说明“来源身份 + 原始位置/游标 + 载荷”的数据集成边界，Record 不是 Kafka 类型的直接复用。
 
 ## 增量同步层
 
@@ -604,13 +594,13 @@ Record::original 用于 provenance 和诊断，保留 Provider 原始值，不�
 | Reset(SourceRef)  | 一个 artifact 需要重新构建 | 重建该 artifact 产生的事实 |
 | Remove(SourceRef) | 一个 artifact 已经消失     | 清理该 artifact 产生的事实 |
 
-Rust 类型：[Change](src/model.rs#L2150)。Change 是同步协议，不是 Agent 执行事件。
+Rust 类型：[Change](../src/model.rs#L2150)。Change 是同步协议，不是 Agent 执行事件。
 
 ### Batch
 
 | 项目        | 说明                              |
 | ----------- | --------------------------------- |
-| Rust 类型   | [Batch](src/model.rs#L2299)       |
+| Rust 类型   | [Batch](../src/model.rs#L2299)       |
 | 定义        | Provider 一次 scan 返回的有界结果 |
 | changes     | 按源顺序排列的 Change             |
 | checkpoint  | 应用 changes 后可以保存的续扫游标 |
@@ -628,7 +618,7 @@ has_more 为 true 时，再用 checkpoint 调用 scan
 
 | 项目       | 说明                                                      |
 | ---------- | --------------------------------------------------------- |
-| Rust 类型  | [Checkpoint](src/model.rs#L2225)                          |
+| Rust 类型  | [Checkpoint](../src/model.rs#L2225)                          |
 | 定义       | Provider 私有的增量扫描续扫游标                           |
 | 绑定范围   | 创建它的 Provider 和具体 SourceId                         |
 | 消费者行为 | 持久化并原样传回，不解释内部 state                        |

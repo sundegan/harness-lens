@@ -6,15 +6,11 @@
 
 # Glossary
 
-This glossary explains the core `coding-agent-data` models, their boundaries,
-typical relationships, and the main sources that influenced their names.
+This glossary explains the core `coding-agent-data` models, their boundaries, typical relationships, and the main sources that influenced their names.
 
 ## Model layers and responsibility boundaries
 
-The layers below are conceptual categories used to explain model responsibility.
-They are not Rust module layers, database table layers, or inheritance
-relationships. A type may appear as a field or enum payload of another type
-without belonging to the same layer.
+The layers below are conceptual categories used to explain model responsibility. They are not Rust module layers, database table layers, or inheritance relationships. A type may appear as a field or enum payload of another type without belonging to the same layer.
 
 | Layer            | Question it answers                                                              | Main types                                                                                                  | Responsibility and boundary                                                                                                            |
 | ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -31,25 +27,25 @@ The relationship between the layers can be summarized as:
 
 | Name                  | Layer            | Definition and responsibility                                                                                                                                                                                                              | Typical relationship or example                                                                                                              |
 | --------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`Session`](src/model.rs#L378) | Semantic         | A provider-persisted conversation, thread, or work context. It is the durable container shared by multiple Agent executions and commonly carries title, working directory, model, Git, and token metadata.                                 | One Codex Thread can map to one `Session` containing several `AgentInvocation` values.                                                       |
-| [`AgentInvocation`](src/model.rs#L1681) | Semantic         | One complete Agent processing cycle after receiving input. It may include model requests, tool operations, message handling, and child-Agent collaboration until it reaches a lifecycle state.                                             | “Search the code, edit the file, run tests, and reply” can be one `AgentInvocation` containing several `ModelInvocation` and `Event` values. |
-| [`ModelInvocation`](src/model.rs#L1365) | Semantic         | One concrete request from an Agent to a language model and its lifecycle. It is a sub-process of an Agent execution and can carry model, status, stop reason, and latency data.                                                            | One `AgentInvocation` may contain multiple `ModelInvocation` values when tools or iterative decisions trigger more model requests.           |
-| [`Event`](src/model.rs#L2019) | Semantic         | One ordered fact observed during execution. It carries sequence, actor, causal links, and `EventData`, allowing messages, reasoning, tool activity, file changes, and child-Agent activity to be represented.                              | “The user asked a question”, “the Agent called search”, and “the tool returned” can be separate Events in one invocation.                    |
-| [`EventData`](src/model.rs#L1957) | Semantic         | The typed payload that says what an Event represents. Variants include `Message`, `ToolCall`, `ToolResult`, `FileChange`, `AgentInvocation`, and `Plan`.                                                                                   | `Event { actor: Actor::Tool, data: EventData::ToolResult(...) }` represents a tool result.                                                   |
-| [`UsageReport`](src/model.rs#L549) | Semantic         | A usage fact reported by a Provider at a point in time. It may include model and request identity, cumulative token snapshots, token deltas, service tier, and cost. It describes accounting, not an Agent execution.                      | `RecordData::UsageReport(UsageReport)` can replace a cumulative session value or aggregate a `delta` when attribution is sound.                    |
-| [`Actor`](src/model.rs#L695) | Semantic         | The person, Agent, tool, runtime, or system that caused or produced an Event. It describes event origin, not the message role in a conversation protocol.                                                                                  | A tool result can use `actor: Actor::Tool`.                                                                                                  |
-| [`MessageRole`](src/model.rs#L772) | Semantic         | The role a `Message` plays in the conversation protocol, such as `System`, `Developer`, `User`, `Assistant`, or `Tool`. It does not by itself prove which subject performed an action.                                                     | A message may use `MessageRole::Assistant` while its enclosing Event uses `Actor::Agent`.                                                    |
-| [`Message`](src/model.rs#L1033) | Semantic         | A conversation message with a role, optional presentation phase, and ordered content blocks. Event sequence, actor, and causal links remain on the enclosing `Event`.                                                                      | A user prompt, intermediate commentary, or final answer can be normalized as a `Message`.                                                    |
-| [`MessagePhase`](src/model.rs#L802) | Semantic         | The presentation phase of an assistant message. `Commentary` is intermediate output, `FinalAnswer` completes the current request, and `Other` preserves an unmapped provider value.                                                        | `Message { role: Assistant, phase: FinalAnswer, ... }` describes a final answer, not necessarily a successful invocation.                    |
-| [`SessionRelationKind`](src/model.rs#L248) | Semantic         | The lineage relationship between the current `Session` and another session. `Fork` branches history, `Child` represents a child session created by an Agent, and `Continuation` moves the same logical work into a new provider container. | `S2 --Fork--> S1` means that S2 branched from S1.                                                                                            |
-| [`HistoryMode`](src/model.rs#L295) | Semantic         | How a Provider stores and assembles Session history. `Legacy` is typically self-contained, `Paginated` uses logical ordinals and may reference an ancestor prefix, and `Other` preserves an unknown mode.                                  | A forked Session can read an ancestor prefix in `Paginated` mode and then append its own records.                                            |
-| [`InputQueueMutation`](src/model.rs#L1862) | Semantic         | One operation applied to the pending user-input queue, such as enqueue, dequeue, remove, or clear. It describes a queue change, not a queue snapshot.                                                                                      | `EventData::InputQueue(InputQueueMutation { operation: QueueOperation::Enqueue, ... })` records an input being queued.                       |
-| [`TaskArtifact`](src/model.rs#L1649) | Semantic         | A deliverable produced by an Agent or child Agent and returned to an outside consumer. It may contain text, file references, structured data, or other `ContentBlock` values.                                                              | A review report, patch explanation, JSON document, or image reference can be a `TaskArtifact`.                                               |
-| [`Record`](src/model.rs#L2105) | Fact envelope    | A normalized fact envelope with stable ID, Provider source, original location, Session/Invocation links, and semantic payload. It lets consumers locate, update, delete, and trace a fact.                                                 | `Record { id, source, origin, data: RecordData::Event(...) }` is a sourced event fact that can be synchronized incrementally.                |
-| [`RecordData`](src/model.rs#L2073) | Fact envelope    | The concrete fact carried by a `Record`. It wraps semantic objects such as `Session`, `AgentInvocation`, `Event`, `UsageReport`, `RateLimit`, and `Unknown` in one tagged enum.                                                            | `RecordData::Event(Event)` says what the fact means while the surrounding `Record` supplies identity and provenance.                         |
-| [`Change`](src/model.rs#L2150) | Incremental sync | One mutation a Provider asks a consumer to apply to normalized facts. `Upsert` inserts or replaces, `Delete` removes, `Reset` rebuilds an artifact, and `Remove` cleans up a vanished artifact.                                            | After receiving `Change::Upsert(record)`, a consumer writes or replaces the fact by `record.id`.                                             |
-| [`Batch`](src/model.rs#L2299) | Incremental sync | One bounded page returned by `scan`. It contains ordered `Change` values, recoverable diagnostics, a continuation `Checkpoint`, and `has_more`.                                                                                            | Apply a Batch and save its Checkpoint in the same transaction before deciding whether to scan again.                                         |
-| [`Checkpoint`](src/model.rs#L2225) | Incremental sync | Provider-private continuation state for an incremental scan. Consumers persist it and pass it back unchanged rather than interpreting its internal state.                                                                                  | Codex and Claude Code can use different checkpoint formats behind the same `Checkpoint` interface.                                           |
+| [`Session`](../src/model.rs#L378) | Semantic         | A provider-persisted conversation, thread, or work context. It is the durable container shared by multiple Agent executions and commonly carries title, working directory, model, Git, and token metadata.                                 | One Codex Thread can map to one `Session` containing several `AgentInvocation` values.                                                       |
+| [`AgentInvocation`](../src/model.rs#L1681) | Semantic         | One complete Agent processing cycle after receiving input. It may include model requests, tool operations, message handling, and child-Agent collaboration until it reaches a lifecycle state.                                             | “Search the code, edit the file, run tests, and reply” can be one `AgentInvocation` containing several `ModelInvocation` and `Event` values. |
+| [`ModelInvocation`](../src/model.rs#L1365) | Semantic         | One concrete request from an Agent to a language model and its lifecycle. It is a sub-process of an Agent execution and can carry model, status, stop reason, and latency data.                                                            | One `AgentInvocation` may contain multiple `ModelInvocation` values when tools or iterative decisions trigger more model requests.           |
+| [`Event`](../src/model.rs#L2019) | Semantic         | One ordered fact observed during execution. It carries sequence, actor, causal links, and `EventData`, allowing messages, reasoning, tool activity, file changes, and child-Agent activity to be represented.                              | “The user asked a question”, “the Agent called search”, and “the tool returned” can be separate Events in one invocation.                    |
+| [`EventData`](../src/model.rs#L1957) | Semantic         | The typed payload that says what an Event represents. Variants include `Message`, `ToolCall`, `ToolResult`, `FileChange`, `AgentInvocation`, and `Plan`.                                                                                   | `Event { actor: Actor::Tool, data: EventData::ToolResult(...) }` represents a tool result.                                                   |
+| [`UsageReport`](../src/model.rs#L549) | Semantic         | A usage fact reported by a Provider at a point in time. It may include model and request identity, cumulative token snapshots, token deltas, service tier, and cost. It describes accounting, not an Agent execution.                      | `RecordData::UsageReport(UsageReport)` can replace a cumulative session value or aggregate a `delta` when attribution is sound.                    |
+| [`Actor`](../src/model.rs#L695) | Semantic         | The person, Agent, tool, runtime, or system that caused or produced an Event. It describes event origin, not the message role in a conversation protocol.                                                                                  | A tool result can use `actor: Actor::Tool`.                                                                                                  |
+| [`MessageRole`](../src/model.rs#L772) | Semantic         | The role a `Message` plays in the conversation protocol, such as `System`, `Developer`, `User`, `Assistant`, or `Tool`. It does not by itself prove which subject performed an action.                                                     | A message may use `MessageRole::Assistant` while its enclosing Event uses `Actor::Agent`.                                                    |
+| [`Message`](../src/model.rs#L1033) | Semantic         | A conversation message with a role, optional presentation phase, and ordered content blocks. Event sequence, actor, and causal links remain on the enclosing `Event`.                                                                      | A user prompt, intermediate commentary, or final answer can be normalized as a `Message`.                                                    |
+| [`MessagePhase`](../src/model.rs#L802) | Semantic         | The presentation phase of an assistant message. `Commentary` is intermediate output, `FinalAnswer` completes the current request, and `Other` preserves an unmapped provider value.                                                        | `Message { role: Assistant, phase: FinalAnswer, ... }` describes a final answer, not necessarily a successful invocation.                    |
+| [`SessionRelationKind`](../src/model.rs#L248) | Semantic         | The lineage relationship between the current `Session` and another session. `Fork` branches history, `Child` represents a child session created by an Agent, and `Continuation` moves the same logical work into a new provider container. | `S2 --Fork--> S1` means that S2 branched from S1.                                                                                            |
+| [`HistoryMode`](../src/model.rs#L295) | Semantic         | How a Provider stores and assembles Session history. `Legacy` is typically self-contained, `Paginated` uses logical ordinals and may reference an ancestor prefix, and `Other` preserves an unknown mode.                                  | A forked Session can read an ancestor prefix in `Paginated` mode and then append its own records.                                            |
+| [`InputQueueMutation`](../src/model.rs#L1862) | Semantic         | One operation applied to the pending user-input queue, such as enqueue, dequeue, remove, or clear. It describes a queue change, not a queue snapshot.                                                                                      | `EventData::InputQueue(InputQueueMutation { operation: QueueOperation::Enqueue, ... })` records an input being queued.                       |
+| [`TaskArtifact`](../src/model.rs#L1649) | Semantic         | A deliverable produced by an Agent or child Agent and returned to an outside consumer. It may contain text, file references, structured data, or other `ContentBlock` values.                                                              | A review report, patch explanation, JSON document, or image reference can be a `TaskArtifact`.                                               |
+| [`Record`](../src/model.rs#L2105) | Fact envelope    | A normalized fact envelope with stable ID, Provider source, original location, Session/Invocation links, and semantic payload. It lets consumers locate, update, delete, and trace a fact.                                                 | `Record { id, source, origin, data: RecordData::Event(...) }` is a sourced event fact that can be synchronized incrementally.                |
+| [`RecordData`](../src/model.rs#L2073) | Fact envelope    | The concrete fact carried by a `Record`. It wraps semantic objects such as `Session`, `AgentInvocation`, `Event`, `UsageReport`, `RateLimit`, and `Unknown` in one tagged enum.                                                            | `RecordData::Event(Event)` says what the fact means while the surrounding `Record` supplies identity and provenance.                         |
+| [`Change`](../src/model.rs#L2150) | Incremental sync | One mutation a Provider asks a consumer to apply to normalized facts. `Upsert` inserts or replaces, `Delete` removes, `Reset` rebuilds an artifact, and `Remove` cleans up a vanished artifact.                                            | After receiving `Change::Upsert(record)`, a consumer writes or replaces the fact by `record.id`.                                             |
+| [`Batch`](../src/model.rs#L2299) | Incremental sync | One bounded page returned by `scan`. It contains ordered `Change` values, recoverable diagnostics, a continuation `Checkpoint`, and `has_more`.                                                                                            | Apply a Batch and save its Checkpoint in the same transaction before deciding whether to scan again.                                         |
+| [`Checkpoint`](../src/model.rs#L2225) | Incremental sync | Provider-private continuation state for an incremental scan. Consumers persist it and pass it back unchanged rather than interpreting its internal state.                                                                                  | Codex and Claude Code can use different checkpoint formats behind the same `Checkpoint` interface.                                           |
 
 ## Worked example
 
@@ -79,19 +75,11 @@ Session S1
 └── AgentInvocation I2
 ```
 
-In code, these objects are not nested into one large structure. A Provider
-adapter emits one flat `Record` for each fact that can be independently
-identified, updated, or deleted. `Record` is the fact envelope, carrying stable
-identity, source, relationships, and provenance, while `RecordData` carries the
-semantic payload. Records relate to one another through IDs such as `session`,
-`invocation`, and `parent`, rather than copying or embedding complete objects.
+In code, these objects are not nested into one large structure. A Provider adapter emits one flat `Record` for each fact that can be independently identified, updated, or deleted. `Record` is the fact envelope, carrying stable identity, source, relationships, and provenance, while `RecordData` carries the semantic payload. Records relate to one another through IDs such as `session`, `invocation`, and `parent`, rather than copying or embedding complete objects.
 
-This shape lets a consumer upsert or delete one fact by Record ID without
-rewriting the entire Session. It also avoids repeated nested data and circular
-references, keeping semantic content separate from source attribution.
+This shape lets a consumer upsert or delete one fact by Record ID without rewriting the entire Session. It also avoids repeated nested data and circular references, keeping semantic content separate from source attribution.
 
-The following array shows S1, I1, and E1–E7 as independent Records. Optional
-fields are omitted:
+The following array shows S1, I1, and E1–E7 as independent Records. Optional fields are omitted:
 
 ```json
 [
@@ -349,8 +337,7 @@ fields are omitted:
 ]
 ```
 
-`RecordData` always serializes as an object with `type` and `value`. A complete
-`Record` may also include `timestamp`, `origin`, and `original` fields.
+`RecordData` always serializes as an object with `type` and `value`. A complete `Record` may also include `timestamp`, `origin`, and `original` fields.
 
 ## Semantic model
 
@@ -358,7 +345,7 @@ fields are omitted:
 
 | Item             | Description                                                                                                 |
 | ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| Rust type        | [Session](src/model.rs#L378)                                                                                |
+| Rust type        | [Session](../src/model.rs#L378)                                                                                |
 | Definition       | A provider-persisted conversation, thread, work task, or transcript context.                                |
 | Main fields      | `external_id`, `title`, `cwd`, `transcript`, timestamps, model, token snapshot, Git metadata, archive state |
 | Can contain      | Multiple `AgentInvocation` values and the Events they produce                                               |
@@ -396,7 +383,7 @@ Reference sources:
 
 | Item                | Description                                                                                                                                                                                    |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rust type           | [AgentInvocation](src/model.rs#L1681)                                                                                                                                                          |
+| Rust type           | [AgentInvocation](../src/model.rs#L1681)                                                                                                                                                          |
 | Definition          | The complete Agent-side process after receiving input, including model requests, tool operations, message handling, and possible child-Agent collaboration until a lifecycle state is reached. |
 | Can contain         | Multiple `ModelInvocation`, `ToolCall`, `ToolResult`, `Message`, `FileChange`, and `TaskArtifact` values                                                                                       |
 | Top-level payload   | `RecordData::AgentInvocation`                                                                                                                                                                  |
@@ -413,8 +400,7 @@ Comparable names in other systems:
 | Other Agent runtimes | Run        | A common label, although boundaries vary by runtime                                                            |
 | A2A                  | Task       | A stateful Agent work unit with a lifecycle. Similar in meaning, but not an object from this crate’s protocol. |
 
-`AgentInvocation` is used here to make the Agent-level boundary explicit and to
-distinguish it from `ModelInvocation` and `ToolCall`.
+`AgentInvocation` is used here to make the Agent-level boundary explicit and to distinguish it from `ModelInvocation` and `ToolCall`.
 
 Reference sources:
 
@@ -427,7 +413,7 @@ Reference sources:
 
 | Item      | Event                                                                      | EventData                                                                                   |
 | --------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Rust type | [Event](src/model.rs#L2019)                                                | [EventData](src/model.rs#L1957)                                                             |
+| Rust type | [Event](../src/model.rs#L2019)                                                | [EventData](../src/model.rs#L1957)                                                             |
 | Role      | Event envelope                                                             | Event payload                                                                               |
 | Carries   | `external_id`, `sequence`, `parent`, `inherited_from`, `actor`, `agent_id` | `Message`, `Reasoning`, `ToolCall`, `ToolResult`, `FileChange`, `AgentInvocation`, and more |
 | Answers   | When did it happen, who produced it, and what is it related to?            | What specifically happened?                                                                 |
@@ -471,10 +457,7 @@ Reference sources:
 | `Cost`        | Provider-reported amount and currency. The amount is stored as text to avoid binary floating-point error.                             | amount, currency                                     |
 | `RateLimit`   | A point-in-time snapshot of provider limit windows, credits, spend, and trigger reason.                                               | windows, credits, spend limit, reached reason        |
 
-`UsageReport` is the outer report and `TokenUsage` contains its counters. One
-Record can carry a model name, request ID, cumulative tokens, token delta, and
-cost together. Consumers replace cumulative values. They aggregate `delta`
-only when attribution rules establish that summing is valid.
+`UsageReport` is the outer report and `TokenUsage` contains its counters. One Record can carry a model name, request ID, cumulative tokens, token delta, and cost together. Consumers replace cumulative values. They aggregate `delta` only when attribution rules establish that summing is valid.
 
 Reference sources:
 
@@ -483,9 +466,7 @@ Reference sources:
 
 ### Actor, MessageRole, Message, and MessagePhase
 
-These terms live at different levels. The key distinction is that `Actor` says
-who or what produced an Event, while `MessageRole` says how a Message functions
-in the conversation protocol.
+These terms live at different levels. The key distinction is that `Actor` says who or what produced an Event, while `MessageRole` says how a Message functions in the conversation protocol.
 
 | Type            | Question it answers                                    | What it describes                                                                | Example                                                                               |
 | --------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -543,7 +524,7 @@ Reference sources:
 
 | Item             | Description                                                                        |
 | ---------------- | ---------------------------------------------------------------------------------- |
-| Rust type        | [TaskArtifact](src/model.rs#L1649)                                                 |
+| Rust type        | [TaskArtifact](../src/model.rs#L1649)                                                 |
 | Definition       | A deliverable produced and returned by an Agent or child Agent during a task       |
 | Main fields      | artifact ID, name, description, parts, metadata                                    |
 | `parts`          | Ordered `ContentBlock` values, including text, file references, or structured data |
@@ -568,7 +549,7 @@ Reference sources:
 
 | Item      | `Record`                                                                          | `RecordData`                                                     |
 | --------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Rust type | [Record](src/model.rs#L2105)                                                      | [RecordData](src/model.rs#L2073)                                 |
+| Rust type | [Record](../src/model.rs#L2105)                                                      | [RecordData](../src/model.rs#L2073)                                 |
 | Role      | Provider-neutral fact envelope                                                    | Concrete semantic payload                                        |
 | Carries   | ID, source, Session, Invocation, timestamp, origin, original                      | Session, AgentInvocation, Event, UsageReport, RateLimit, Unknown |
 | Answers   | Where did the fact come from, how is it identified, related, updated, or deleted? | What does the fact mean?                                         |
@@ -598,16 +579,9 @@ Record
     })
 ```
 
-`Record` and `RecordData` are separate because the same semantic payload still
-needs a stable ID, source, original position, and relationship links. An
-incremental consumer also needs `Record::id` to update or delete one fact.
-`Record::original` preserves provider data for provenance and diagnostics. It
-is not a compatibility layer.
+`Record` and `RecordData` are separate because the same semantic payload still needs a stable ID, source, original position, and relationship links. An incremental consumer also needs `Record::id` to update or delete one fact. `Record::original` preserves provider data for provenance and diagnostics. It is not a compatibility layer.
 
-Comparable data-integration shape: [Apache Kafka Connect
-SourceRecord](https://kafka.apache.org/40/javadoc/org/apache/kafka/connect/source/SourceRecord.html).
-The comparison is limited to the “source identity + position/cursor + payload”
-boundary. `Record` is not a Kafka type.
+Comparable data-integration shape: [Apache Kafka Connect SourceRecord](https://kafka.apache.org/40/javadoc/org/apache/kafka/connect/source/SourceRecord.html). The comparison is limited to the “source identity + position/cursor + payload” boundary. `Record` is not a Kafka type.
 
 ## Incremental synchronization layer
 
@@ -620,14 +594,13 @@ boundary. `Record` is not a Kafka type.
 | `Reset(SourceRef)`  | Rebuild an artifact        | Rebuild facts produced by that artifact |
 | `Remove(SourceRef)` | An artifact disappeared    | Remove facts produced by that artifact  |
 
-Rust type: [Change](src/model.rs#L2150). `Change` is synchronization protocol,
-not an Agent execution event.
+Rust type: [Change](../src/model.rs#L2150). `Change` is synchronization protocol, not an Agent execution event.
 
 ### Batch
 
 | Item          | Description                                                |
 | ------------- | ---------------------------------------------------------- |
-| Rust type     | [Batch](src/model.rs#L2299)                                |
+| Rust type     | [Batch](../src/model.rs#L2299)                                |
 | Definition    | A bounded result page returned by one Provider `scan` call |
 | `changes`     | Source-ordered `Change` values                             |
 | `checkpoint`  | Continuation cursor safe to save after applying changes    |
@@ -645,7 +618,7 @@ When has_more is true, call scan again with the checkpoint.
 
 | Item              | Description                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------------------- |
-| Rust type         | [Checkpoint](src/model.rs#L2225)                                                                |
+| Rust type         | [Checkpoint](../src/model.rs#L2225)                                                                |
 | Definition        | Provider-private continuation cursor for an incremental scan                                    |
 | Scope             | Bound to the Provider and concrete `SourceId` that created it                                   |
 | Consumer behavior | Persist and return it unchanged. Do not interpret its internal state.                           |
@@ -669,17 +642,6 @@ When has_more is true, call scan again with the checkpoint.
 
 ## Naming principles
 
-Names should reuse stable, recognizable ecosystem terms such as `Session`,
-`Event`, `Invocation`, and `Artifact`. They should also make an object’s level
-and behavioral boundary explicit, so an Agent execution, a model request, and a
-tool call are not conflated. In practice, `AgentInvocation` names one Agent
-execution, `ModelInvocation` names one model request, and `ToolCall` names one
-tool call. Provider-specific differences remain in provider adapters and
-original data. Codex terms such as `Turn` and `Item` are therefore not promoted
-into names for the shared model.
+Names should reuse stable, recognizable ecosystem terms such as `Session`, `Event`, `Invocation`, and `Artifact`. They should also make an object’s level and behavioral boundary explicit, so an Agent execution, a model request, and a tool call are not conflated. In practice, `AgentInvocation` names one Agent execution, `ModelInvocation` names one model request, and `ToolCall` names one tool call. Provider-specific differences remain in provider adapters and original data. Codex terms such as `Turn` and `Item` are therefore not promoted into names for the shared model.
 
-The model also separates facts from envelopes, and semantics from synchronization
-protocol. `Record` carries a fact’s source, ID, position, and relationships,
-while `RecordData` carries its meaning. `Change`, `Batch`, and `Checkpoint`
-describe how facts are delivered, updated, and resumed. They are synchronization
-objects, not Agent behavior objects.
+The model also separates facts from envelopes, and semantics from synchronization protocol. `Record` carries a fact’s source, ID, position, and relationships, while `RecordData` carries its meaning. `Change`, `Batch`, and `Checkpoint` describe how facts are delivered, updated, and resumed. They are synchronization objects, not Agent behavior objects.
