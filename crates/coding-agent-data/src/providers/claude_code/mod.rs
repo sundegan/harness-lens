@@ -1,4 +1,6 @@
 mod checkpoint;
+#[cfg(feature = "format-probe")]
+mod format_probe;
 mod normalize;
 mod source;
 mod transcript;
@@ -13,6 +15,8 @@ use crate::{
 #[cfg(feature = "claude-code-watch")]
 use crate::{Subscription, WatchProvider};
 
+#[cfg(feature = "format-probe")]
+pub use format_probe::ClaudeCodeFormatProbe;
 pub use source::ClaudeCodeSource;
 #[cfg(feature = "claude-code-watch")]
 pub use watch::ClaudeCodeWatchOptions;

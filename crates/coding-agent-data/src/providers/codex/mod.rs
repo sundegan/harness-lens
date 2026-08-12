@@ -1,4 +1,6 @@
 mod checkpoint;
+#[cfg(feature = "format-probe")]
+mod format_probe;
 mod inheritance;
 mod lineage;
 mod normalize;
@@ -19,6 +21,8 @@ use crate::{
 #[cfg(feature = "codex-watch")]
 use crate::{Subscription, WatchProvider};
 
+#[cfg(feature = "format-probe")]
+pub use format_probe::CodexFormatProbe;
 pub use source::CodexSource;
 #[cfg(feature = "codex-watch")]
 pub use watch::CodexWatchOptions;

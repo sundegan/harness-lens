@@ -1,0 +1,996 @@
+{
+  "comparison_mode": "exact",
+  "fingerprint": {
+    "manifest_version": 2,
+    "provider": "codex",
+    "options": {
+      "max_line_bytes": 16777216,
+      "max_depth": 32,
+      "max_diagnostics": 100
+    },
+    "format": "sqlite",
+    "observations": {
+      "objects": {
+        "_sqlx_migrations": {
+          "kind": "table",
+          "definition_digest": "9e366fd739e7dc3a191f76ccf3a0c9fc2bab8edd141202c8174aa067427ffac5",
+          "columns": [
+            {
+              "name": "version",
+              "declared_type": "BIGINT",
+              "not_null": false,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "description",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "installed_on",
+              "declared_type": "TIMESTAMP",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "success",
+              "declared_type": "BOOLEAN",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "checksum",
+              "declared_type": "BLOB",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "execution_time",
+              "declared_type": "BIGINT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {}
+        },
+        "backfill_state": {
+          "kind": "table",
+          "definition_digest": "6d0d28ff4f42b8dabddd5acafd1dd54a8784b66601cf7b425a07193828bf2ca1",
+          "columns": [
+            {
+              "name": "id",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "status",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "last_watermark",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "last_success_at",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "updated_at",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {}
+        },
+        "external_agent_config_imports": {
+          "kind": "table",
+          "definition_digest": "b2abac38eebfc5adda0120b464082bc520b857fd97bbee3d20ed878c1f1a9fce",
+          "columns": [
+            {
+              "name": "import_id",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "completed_at_ms",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "successes",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "failures",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "provider_id",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {}
+        },
+        "remote_control_enrollments": {
+          "kind": "table",
+          "definition_digest": "6e45813ebc81216fe71c467a037b3ab5c30d6e1daf053a0cafac4f0fc3dd60fc",
+          "columns": [
+            {
+              "name": "websocket_url",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "account_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 2,
+              "kind": "normal"
+            },
+            {
+              "name": "app_server_client_name",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 3,
+              "kind": "normal"
+            },
+            {
+              "name": "server_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "environment_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "server_name",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "updated_at",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "remote_control_enabled",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {}
+        },
+        "thread_dynamic_tools": {
+          "kind": "table",
+          "definition_digest": "2ac98d9a49758a658e517fc21d3c58e0363bf9c5f4b076f716d99a4d325c4290",
+          "columns": [
+            {
+              "name": "thread_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "position",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 2,
+              "kind": "normal"
+            },
+            {
+              "name": "name",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "description",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "input_schema",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "defer_loading",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "namespace",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {
+            "idx_thread_dynamic_tools_thread": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "f3445c817960eed1aac6498d0cbbe099be9c042507ec601df063b49441b3e1fb",
+              "terms": [
+                {
+                  "column_id": 0,
+                  "column_name": "thread_id",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            }
+          }
+        },
+        "thread_sections": {
+          "kind": "table",
+          "definition_digest": "dd7a98684ff3858213a1284c9287f089b820a062d4eb022014cd18cdf8d651a7",
+          "columns": [
+            {
+              "name": "id",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "name",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {}
+        },
+        "thread_spawn_edges": {
+          "kind": "table",
+          "definition_digest": "670c51f138a45a2e298ebaae874eb5f9d953e74a13d288562a3c299c31f1ba0d",
+          "columns": [
+            {
+              "name": "parent_thread_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "child_thread_id",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "status",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {
+            "idx_thread_spawn_edges_parent_status": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "e67f0d4f4e67016b01697020daf981d3331b2b1b43f77f620a3f13e16e6249c8",
+              "terms": [
+                {
+                  "column_id": 0,
+                  "column_name": "parent_thread_id",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 2,
+                  "column_name": "status",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            }
+          }
+        },
+        "threads": {
+          "kind": "table",
+          "definition_digest": "1ee36939c8fe2e3507aa35e629086120d1d3bbdc005bce771f8f42232bce456b",
+          "columns": [
+            {
+              "name": "id",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 1,
+              "kind": "normal"
+            },
+            {
+              "name": "rollout_path",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "created_at",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "updated_at",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "source",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "model_provider",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "cwd",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "title",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "sandbox_policy",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "approval_mode",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "tokens_used",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "has_user_event",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "archived",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "archived_at",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "git_sha",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "git_branch",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "git_origin_url",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "cli_version",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "first_user_message",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "agent_nickname",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "agent_role",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "memory_mode",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "model",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "reasoning_effort",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "agent_path",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "created_at_ms",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "updated_at_ms",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "thread_source",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "preview",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "recency_at",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "recency_at_ms",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "history_mode",
+              "declared_type": "TEXT",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "name",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "is_pinned",
+              "declared_type": "INTEGER",
+              "not_null": true,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "thread_section_id",
+              "declared_type": "TEXT",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "section_position",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            },
+            {
+              "name": "section_entered_at_ms",
+              "declared_type": "INTEGER",
+              "not_null": false,
+              "primary_key_position": 0,
+              "kind": "normal"
+            }
+          ],
+          "indexes": {
+            "idx_threads_archived": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "8f9a2f31b68fc737595a3d8ba49bf6bdc8185745170193eee2511772ba5f8772",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_archived_cwd_created_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "fbc7cb2344d17bfeefb3762aa58b00bdd8b0bea0551b971e534a7ec5cac845c5",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 6,
+                  "column_name": "cwd",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 25,
+                  "column_name": "created_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_archived_cwd_recency_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "c37c86a40fcf5bd1a1353f9e2d7bc6521b78badbd084239b4387a9f0bc1f37cb",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 6,
+                  "column_name": "cwd",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 30,
+                  "column_name": "recency_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_archived_cwd_updated_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "b5f6078f698a636a61cda214a52ada21c9c0d2c6a8cc7f82630698fe6de013a2",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 6,
+                  "column_name": "cwd",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 26,
+                  "column_name": "updated_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_created_at": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "b44918e974f8f3609eea018624b5a310ac4bb97652f8bf928924b015ffe44681",
+              "terms": [
+                {
+                  "column_id": 2,
+                  "column_name": "created_at",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_created_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "5463cc890dae31649a8f417b74b54d2d9c01417440b4c671290cab93db5acca9",
+              "terms": [
+                {
+                  "column_id": 25,
+                  "column_name": "created_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_pinned_recency_at_ms": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "a753509209dd8186c732c826a28dd117d896894d593a2f104a65249aa2d945f9",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 30,
+                  "column_name": "recency_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_provider": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "0e366b9c1fbd926c5f427e831e04301ddca7cc773667e1283f20e1debc8d24df",
+              "terms": [
+                {
+                  "column_id": 5,
+                  "column_name": "model_provider",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_recency_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "18e7182da3a49892b86d1fef510b6b1ea43045bda9fb5e45feec69789c0cae73",
+              "terms": [
+                {
+                  "column_id": 30,
+                  "column_name": "recency_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_section_position": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "4ce1fc161eec76d259b76932013289191523ba3514a34fc21a71693453ca50cf",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 34,
+                  "column_name": "thread_section_id",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 35,
+                  "column_name": "section_position",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_section_recency_at_ms": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "a3f292545656a25b0c6e6fc8eb2aa48c713aa48c92be39d1ee39953df7fd70f7",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 34,
+                  "column_name": "thread_section_id",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 30,
+                  "column_name": "recency_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_source": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "8634ab779b5d5da37032df6caed5bbf71303a4a231848eccf6b0dfa41fc64405",
+              "terms": [
+                {
+                  "column_id": 4,
+                  "column_name": "source",
+                  "descending": false,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_updated_at": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "5d33280f48615418b6a985a18dfd3d7998229459593a14c3520098179e35a86a",
+              "terms": [
+                {
+                  "column_id": 3,
+                  "column_name": "updated_at",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_updated_at_ms": {
+              "unique": false,
+              "partial": false,
+              "definition_digest": "502ec436e6303d0f6adfd4a6b505e3f18301980c7c401210be58e42cd333cfd9",
+              "terms": [
+                {
+                  "column_id": 26,
+                  "column_name": "updated_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_visible_created_at_ms": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "27dc14f978064b812a5d5b7b3ac4ba80efd4fb1256f12d374139d1fadd0553ca",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 25,
+                  "column_name": "created_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_visible_recency_at_ms": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "2dd948d891168cabf3e9d6495eaeb358b582d60fe249e5a7ba809d36f7e878c4",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 30,
+                  "column_name": "recency_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 0,
+                  "column_name": "id",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            },
+            "idx_threads_visible_updated_at_ms": {
+              "unique": false,
+              "partial": true,
+              "definition_digest": "091b63602f80d2dc0a9f6866d7694164ba4605c2573dabdc713f13e338ecbcd9",
+              "terms": [
+                {
+                  "column_id": 12,
+                  "column_name": "archived",
+                  "descending": false,
+                  "collation": "BINARY"
+                },
+                {
+                  "column_id": 26,
+                  "column_name": "updated_at_ms",
+                  "descending": true,
+                  "collation": "BINARY"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

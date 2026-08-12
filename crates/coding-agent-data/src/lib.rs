@@ -41,6 +41,12 @@ mod model;
 mod provider;
 mod subscription;
 
+pub(crate) const DEFAULT_MAX_JSON_LINE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Provider-neutral contracts for structural format inspection.
+#[cfg(feature = "format-probe")]
+pub mod format_probe;
+
 /// Built-in coding-agent providers.
 pub mod providers;
 

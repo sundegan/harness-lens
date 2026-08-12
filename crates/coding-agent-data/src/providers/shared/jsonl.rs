@@ -26,6 +26,10 @@ pub(crate) fn read_bounded_line(
     loop {
         let available = reader.fill_buf()?;
         if available.is_empty() {
+            if !too_large && json_line_contents(bytes).len() > max_line_bytes {
+                too_large = true;
+                bytes.clear();
+            }
             return Ok(if count == 0 {
                 LineRead::Eof
             } else {
@@ -38,7 +42,7 @@ pub(crate) fn read_bounded_line(
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |position| position + 1);
         count = count.saturating_add(consumed);
-        if !too_large && bytes.len().saturating_add(consumed) <= max_line_bytes.saturating_add(1) {
+        if !too_large && bytes.len().saturating_add(consumed) <= max_line_bytes.saturating_add(2) {
             bytes.extend_from_slice(&available[..consumed]);
         } else {
             too_large = true;
@@ -47,15 +51,23 @@ pub(crate) fn read_bounded_line(
         let complete = available[consumed - 1] == b'\n';
         reader.consume(consumed);
         if complete {
+            if !too_large && json_line_contents(bytes).len() > max_line_bytes {
+                too_large = true;
+                bytes.clear();
+            }
             return Ok(LineRead::Complete { count, too_large });
         }
     }
 }
 
 pub(crate) fn is_complete_json_value(bytes: &[u8]) -> bool {
-    let contents = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    let contents = contents.strip_suffix(b"\r").unwrap_or(contents);
+    let contents = json_line_contents(bytes);
     !contents.is_empty() && serde_json::from_slice::<Value>(contents).is_ok()
+}
+
+fn json_line_contents(bytes: &[u8]) -> &[u8] {
+    let contents = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    contents.strip_suffix(b"\r").unwrap_or(contents)
 }
 
 pub(crate) fn tail_fingerprint(path: &Path, offset: u64, action: &'static str) -> Result<u64> {
@@ -122,5 +134,23 @@ mod tests {
         assert!(is_complete_json_value(b"{\"type\":\"event\"}\r"));
         assert!(!is_complete_json_value(br#"{"type":"event""#));
         assert!(!is_complete_json_value(b""));
+    }
+
+    #[test]
+    fn line_limit_excludes_lf_and_crlf_endings() {
+        for line in [b"1234\n".as_slice(), b"1234\r\n".as_slice()] {
+            let mut reader = Cursor::new(line);
+            let mut bytes = Vec::new();
+
+            let result = read_bounded_line(&mut reader, &mut bytes, 4).unwrap();
+
+            assert!(matches!(
+                result,
+                LineRead::Complete {
+                    too_large: false,
+                    ..
+                }
+            ));
+        }
     }
 }

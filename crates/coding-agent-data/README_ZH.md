@@ -21,10 +21,13 @@ Provider 负责发现和解析自己的本地数据源，应用则可以按照�
 - 提供带稳定身份和来源引用的归一化记录，同时保留 Provider 原始数据
 - 提供可序列化、对上层透明的 Checkpoint，用于有界增量扫描
 - 可选的文件系统监控，支持防抖和定期重新校验
+- 格式探针，用于发现 Provider 本地数据格式变化
 
 ## 术语表
 
 [中文术语表与语义模型指南](./GLOSSARY_ZH.md)
+
+[格式探针设计与使用指南](./docs/FORMAT_PROBE_ZH.md)
 
 ## 支持的 Provider
 
@@ -32,6 +35,24 @@ Provider 负责发现和解析自己的本地数据源，应用则可以按照�
 | ----------- | -------------------------------------------------- |
 | Codex       | `state_5.sqlite`、rollout `.jsonl` 和 `.jsonl.zst` |
 | Claude Code | 主 Agent 和子 Agent 的 transcript `.jsonl`         |
+
+## 本地 Provider 兼容性测试
+
+在本 crate 目录运行：
+
+```bash
+make test-provider-formats
+```
+
+它会比较代表性本地 artifact 与审核基线，并运行真实 Provider adapter
+验证归一化兼容性。确认上游变化已被当前 adapter 正确支持后，可以显式更新基线：
+
+```bash
+make update-provider-format-baselines
+```
+
+检测范围、比较语义、失败条件、基线审核流程、公共 API 和隐私边界见
+[格式探针文档](./docs/FORMAT_PROBE_ZH.md)。
 
 ## 快速开始
 

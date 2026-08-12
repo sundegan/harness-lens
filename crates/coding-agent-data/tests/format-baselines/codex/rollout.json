@@ -1,0 +1,769 @@
+{
+  "comparison_mode": "allowed_structure",
+  "fingerprint": {
+    "manifest_version": 2,
+    "provider": "codex",
+    "options": {
+      "max_line_bytes": 16777216,
+      "max_depth": 32,
+      "max_diagnostics": 100
+    },
+    "format": "json_lines",
+    "observations": {
+      "records_seen": 0,
+      "valid_records": 0,
+      "malformed_records": 0,
+      "incomplete_records": 0,
+      "oversized_records": 0,
+      "fields": {
+        "$": [
+          "object"
+        ],
+        "$/payload": [
+          "object"
+        ],
+        "$/payload/approval_policy": [
+          "string"
+        ],
+        "$/payload/approvals_reviewer": [
+          "string"
+        ],
+        "$/payload/arguments": [
+          "string",
+          "object"
+        ],
+        "$/payload/audio": [
+          "array"
+        ],
+        "$/payload/base_instructions": [
+          "object"
+        ],
+        "$/payload/base_instructions/text": [
+          "string"
+        ],
+        "$/payload/call_id": [
+          "string"
+        ],
+        "$/payload/changes": [
+          "object"
+        ],
+        "$/payload/changes/*": [
+          "object"
+        ],
+        "$/payload/changes/*/content": [
+          "string"
+        ],
+        "$/payload/changes/*/move_path": [
+          "null"
+        ],
+        "$/payload/changes/*/type": [
+          "string"
+        ],
+        "$/payload/changes/*/unified_diff": [
+          "string"
+        ],
+        "$/payload/cli_version": [
+          "string"
+        ],
+        "$/payload/client_id": [
+          "string"
+        ],
+        "$/payload/collaboration_mode": [
+          "object"
+        ],
+        "$/payload/collaboration_mode/mode": [
+          "string"
+        ],
+        "$/payload/collaboration_mode/settings": [
+          "object"
+        ],
+        "$/payload/collaboration_mode/settings/developer_instructions": [
+          "string"
+        ],
+        "$/payload/collaboration_mode/settings/model": [
+          "string"
+        ],
+        "$/payload/collaboration_mode/settings/reasoning_effort": [
+          "string"
+        ],
+        "$/payload/collaboration_mode_kind": [
+          "string"
+        ],
+        "$/payload/comp_hash": [
+          "string"
+        ],
+        "$/payload/completed_at": [
+          "integer"
+        ],
+        "$/payload/content": [
+          "null",
+          "array"
+        ],
+        "$/payload/content/*": [
+          "object"
+        ],
+        "$/payload/content/*/text": [
+          "string"
+        ],
+        "$/payload/content/*/type": [
+          "string"
+        ],
+        "$/payload/context_window": [
+          "object"
+        ],
+        "$/payload/context_window/window_id": [
+          "string"
+        ],
+        "$/payload/current_date": [
+          "string"
+        ],
+        "$/payload/cwd": [
+          "string"
+        ],
+        "$/payload/duration": [
+          "object"
+        ],
+        "$/payload/duration/nanos": [
+          "integer"
+        ],
+        "$/payload/duration/secs": [
+          "integer"
+        ],
+        "$/payload/duration_ms": [
+          "integer"
+        ],
+        "$/payload/dynamic_tools": [
+          "array"
+        ],
+        "$/payload/effort": [
+          "string"
+        ],
+        "$/payload/encrypted_content": [
+          "string"
+        ],
+        "$/payload/error": [
+          "object"
+        ],
+        "$/payload/error/codex_error_info": [
+          "string"
+        ],
+        "$/payload/error/message": [
+          "string"
+        ],
+        "$/payload/execution": [
+          "string"
+        ],
+        "$/payload/first_window_id": [
+          "string"
+        ],
+        "$/payload/forked_from_id": [
+          "string"
+        ],
+        "$/payload/full": [
+          "boolean"
+        ],
+        "$/payload/git": [
+          "object"
+        ],
+        "$/payload/git/branch": [
+          "string"
+        ],
+        "$/payload/git/commit_hash": [
+          "string"
+        ],
+        "$/payload/git/repository_url": [
+          "string"
+        ],
+        "$/payload/history_mode": [
+          "string"
+        ],
+        "$/payload/id": [
+          "string"
+        ],
+        "$/payload/images": [
+          "array"
+        ],
+        "$/payload/info": [
+          "object"
+        ],
+        "$/payload/info/last_token_usage": [
+          "object"
+        ],
+        "$/payload/info/last_token_usage/cache_write_input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/last_token_usage/cached_input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/last_token_usage/input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/last_token_usage/output_tokens": [
+          "integer"
+        ],
+        "$/payload/info/last_token_usage/reasoning_output_tokens": [
+          "integer"
+        ],
+        "$/payload/info/last_token_usage/total_tokens": [
+          "integer"
+        ],
+        "$/payload/info/model_context_window": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage": [
+          "object"
+        ],
+        "$/payload/info/total_token_usage/cache_write_input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage/cached_input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage/input_tokens": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage/output_tokens": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage/reasoning_output_tokens": [
+          "integer"
+        ],
+        "$/payload/info/total_token_usage/total_tokens": [
+          "integer"
+        ],
+        "$/payload/input": [
+          "string"
+        ],
+        "$/payload/internal_chat_message_metadata_passthrough": [
+          "object"
+        ],
+        "$/payload/internal_chat_message_metadata_passthrough/turn_id": [
+          "string"
+        ],
+        "$/payload/invocation": [
+          "object"
+        ],
+        "$/payload/invocation/arguments": [
+          "object"
+        ],
+        "$/payload/invocation/server": [
+          "string"
+        ],
+        "$/payload/invocation/tool": [
+          "string"
+        ],
+        "$/payload/last_agent_message": [
+          "null",
+          "string"
+        ],
+        "$/payload/local_audio": [
+          "array"
+        ],
+        "$/payload/local_images": [
+          "array"
+        ],
+        "$/payload/memory_citation": [
+          "null"
+        ],
+        "$/payload/memory_mode": [
+          "string"
+        ],
+        "$/payload/message": [
+          "string"
+        ],
+        "$/payload/model": [
+          "string"
+        ],
+        "$/payload/model_context_window": [
+          "integer"
+        ],
+        "$/payload/model_provider": [
+          "string"
+        ],
+        "$/payload/multi_agent_version": [
+          "string"
+        ],
+        "$/payload/name": [
+          "string"
+        ],
+        "$/payload/namespace": [
+          "string"
+        ],
+        "$/payload/num_turns": [
+          "integer"
+        ],
+        "$/payload/originator": [
+          "string"
+        ],
+        "$/payload/output": [
+          "string",
+          "array"
+        ],
+        "$/payload/permission_profile": [
+          "object"
+        ],
+        "$/payload/personality": [
+          "string"
+        ],
+        "$/payload/phase": [
+          "string"
+        ],
+        "$/payload/previous_window_id": [
+          "string"
+        ],
+        "$/payload/rate_limits": [
+          "object"
+        ],
+        "$/payload/rate_limits/credits": [
+          "object"
+        ],
+        "$/payload/rate_limits/credits/balance": [
+          "null"
+        ],
+        "$/payload/rate_limits/credits/has_credits": [
+          "boolean"
+        ],
+        "$/payload/rate_limits/credits/unlimited": [
+          "boolean"
+        ],
+        "$/payload/rate_limits/individual_limit": [
+          "null"
+        ],
+        "$/payload/rate_limits/limit_id": [
+          "string"
+        ],
+        "$/payload/rate_limits/limit_name": [
+          "null",
+          "string"
+        ],
+        "$/payload/rate_limits/plan_type": [
+          "null"
+        ],
+        "$/payload/rate_limits/primary": [
+          "null",
+          "object"
+        ],
+        "$/payload/rate_limits/primary/resets_at": [
+          "integer"
+        ],
+        "$/payload/rate_limits/primary/used_percent": [
+          "float"
+        ],
+        "$/payload/rate_limits/primary/window_minutes": [
+          "integer"
+        ],
+        "$/payload/rate_limits/rate_limit_reached_type": [
+          "null"
+        ],
+        "$/payload/rate_limits/secondary": [
+          "null",
+          "object"
+        ],
+        "$/payload/rate_limits/secondary/resets_at": [
+          "integer"
+        ],
+        "$/payload/rate_limits/secondary/used_percent": [
+          "float"
+        ],
+        "$/payload/rate_limits/secondary/window_minutes": [
+          "integer"
+        ],
+        "$/payload/rate_limits/spend_control_reached": [
+          "null"
+        ],
+        "$/payload/read_only_hint": [
+          "boolean"
+        ],
+        "$/payload/realtime_active": [
+          "boolean"
+        ],
+        "$/payload/reason": [
+          "string"
+        ],
+        "$/payload/replacement_history": [
+          "array"
+        ],
+        "$/payload/replacement_history/*": [
+          "object"
+        ],
+        "$/payload/replacement_history/*/content": [
+          "array"
+        ],
+        "$/payload/replacement_history/*/content/*": [
+          "object"
+        ],
+        "$/payload/replacement_history/*/content/*/text": [
+          "string"
+        ],
+        "$/payload/replacement_history/*/content/*/type": [
+          "string"
+        ],
+        "$/payload/replacement_history/*/id": [
+          "string"
+        ],
+        "$/payload/replacement_history/*/internal_chat_message_metadata_passthrough": [
+          "object"
+        ],
+        "$/payload/replacement_history/*/internal_chat_message_metadata_passthrough/turn_id": [
+          "string"
+        ],
+        "$/payload/replacement_history/*/role": [
+          "string"
+        ],
+        "$/payload/replacement_history/*/type": [
+          "string"
+        ],
+        "$/payload/result": [
+          "string",
+          "object"
+        ],
+        "$/payload/revised_prompt": [
+          "string"
+        ],
+        "$/payload/role": [
+          "string"
+        ],
+        "$/payload/sandbox_policy": [
+          "object"
+        ],
+        "$/payload/sandbox_policy/type": [
+          "string"
+        ],
+        "$/payload/session_id": [
+          "string"
+        ],
+        "$/payload/source": [
+          "string"
+        ],
+        "$/payload/started_at": [
+          "integer"
+        ],
+        "$/payload/state": [
+          "object"
+        ],
+        "$/payload/state/agents_md": [
+          "object"
+        ],
+        "$/payload/state/agents_md/directory": [
+          "string"
+        ],
+        "$/payload/state/agents_md/text": [
+          "string"
+        ],
+        "$/payload/state/apps_instructions": [
+          "boolean"
+        ],
+        "$/payload/state/collaboration_mode": [
+          "object"
+        ],
+        "$/payload/state/collaboration_mode/mode": [
+          "string"
+        ],
+        "$/payload/state/collaboration_mode/model": [
+          "string"
+        ],
+        "$/payload/state/environments": [
+          "object"
+        ],
+        "$/payload/state/environments/*": [
+          "string",
+          "object"
+        ],
+        "$/payload/state/environments/*/local": [
+          "object"
+        ],
+        "$/payload/state/environments/*/local/cwd": [
+          "string"
+        ],
+        "$/payload/state/environments/*/local/shell": [
+          "string"
+        ],
+        "$/payload/state/environments/*/local/status": [
+          "string"
+        ],
+        "$/payload/state/environments_instructions": [
+          "boolean"
+        ],
+        "$/payload/state/git_attribution": [
+          "boolean"
+        ],
+        "$/payload/state/host_skills": [
+          "object"
+        ],
+        "$/payload/state/host_skills/body": [
+          "string"
+        ],
+        "$/payload/state/host_skills/includeInstructions": [
+          "boolean"
+        ],
+        "$/payload/state/model": [
+          "string"
+        ],
+        "$/payload/state/multi_agent_mode": [
+          "object"
+        ],
+        "$/payload/state/permissions": [
+          "object"
+        ],
+        "$/payload/state/permissions/approved_command_prefixes": [
+          "array"
+        ],
+        "$/payload/state/permissions/approved_command_prefixes/*": [
+          "array"
+        ],
+        "$/payload/state/permissions/approved_command_prefixes/*/*": [
+          "string"
+        ],
+        "$/payload/state/permissions/instructions": [
+          "string"
+        ],
+        "$/payload/state/personality": [
+          "object"
+        ],
+        "$/payload/state/personality/model": [
+          "string"
+        ],
+        "$/payload/state/personality/personality": [
+          "string"
+        ],
+        "$/payload/state/plugins_instructions": [
+          "boolean"
+        ],
+        "$/payload/state/realtime": [
+          "object"
+        ],
+        "$/payload/state/realtime/active": [
+          "boolean"
+        ],
+        "$/payload/state/skills": [
+          "object"
+        ],
+        "$/payload/state/skills/includeInstructions": [
+          "boolean"
+        ],
+        "$/payload/status": [
+          "string"
+        ],
+        "$/payload/stderr": [
+          "string"
+        ],
+        "$/payload/stdout": [
+          "string"
+        ],
+        "$/payload/success": [
+          "boolean"
+        ],
+        "$/payload/summary": [
+          "string",
+          "array"
+        ],
+        "$/payload/summary/*": [
+          "object"
+        ],
+        "$/payload/summary/*/text": [
+          "string"
+        ],
+        "$/payload/summary/*/type": [
+          "string"
+        ],
+        "$/payload/text": [
+          "string"
+        ],
+        "$/payload/text_elements": [
+          "array"
+        ],
+        "$/payload/thread_settings": [
+          "object"
+        ],
+        "$/payload/thread_settings/active_permission_profile": [
+          "object"
+        ],
+        "$/payload/thread_settings/approval_policy": [
+          "string"
+        ],
+        "$/payload/thread_settings/approvals_reviewer": [
+          "string"
+        ],
+        "$/payload/thread_settings/collaboration_mode": [
+          "object"
+        ],
+        "$/payload/thread_settings/collaboration_mode/mode": [
+          "string"
+        ],
+        "$/payload/thread_settings/collaboration_mode/settings": [
+          "object"
+        ],
+        "$/payload/thread_settings/collaboration_mode/settings/developer_instructions": [
+          "null",
+          "string"
+        ],
+        "$/payload/thread_settings/collaboration_mode/settings/model": [
+          "string"
+        ],
+        "$/payload/thread_settings/collaboration_mode/settings/reasoning_effort": [
+          "string"
+        ],
+        "$/payload/thread_settings/cwd": [
+          "string"
+        ],
+        "$/payload/thread_settings/model": [
+          "string"
+        ],
+        "$/payload/thread_settings/model_provider_id": [
+          "string"
+        ],
+        "$/payload/thread_settings/permission_profile": [
+          "object"
+        ],
+        "$/payload/thread_settings/personality": [
+          "string"
+        ],
+        "$/payload/thread_settings/reasoning_effort": [
+          "string"
+        ],
+        "$/payload/thread_settings/reasoning_summary": [
+          "string"
+        ],
+        "$/payload/thread_settings/service_tier": [
+          "string"
+        ],
+        "$/payload/thread_source": [
+          "string"
+        ],
+        "$/payload/time_to_first_token_ms": [
+          "integer"
+        ],
+        "$/payload/timestamp": [
+          "string"
+        ],
+        "$/payload/timezone": [
+          "string"
+        ],
+        "$/payload/tools": [
+          "array"
+        ],
+        "$/payload/turn_id": [
+          "string"
+        ],
+        "$/payload/type": [
+          "string"
+        ],
+        "$/payload/window_id": [
+          "string"
+        ],
+        "$/payload/window_number": [
+          "integer"
+        ],
+        "$/payload/workspace_roots": [
+          "array"
+        ],
+        "$/payload/workspace_roots/*": [
+          "string"
+        ],
+        "$/timestamp": [
+          "string"
+        ],
+        "$/type": [
+          "string"
+        ]
+      },
+      "discriminators": {
+        "$/payload/changes/*/type": [
+          "add",
+          "delete",
+          "update"
+        ],
+        "$/payload/collaboration_mode/mode": [
+          "default"
+        ],
+        "$/payload/content/*/type": [
+          "input_text",
+          "output_text"
+        ],
+        "$/payload/replacement_history/*/content/*/type": [
+          "input_text"
+        ],
+        "$/payload/replacement_history/*/role": [
+          "developer",
+          "user"
+        ],
+        "$/payload/replacement_history/*/type": [
+          "message"
+        ],
+        "$/payload/role": [
+          "assistant",
+          "developer",
+          "user"
+        ],
+        "$/payload/sandbox_policy/type": [
+          "danger-full-access"
+        ],
+        "$/payload/state/collaboration_mode/mode": [
+          "default"
+        ],
+        "$/payload/state/environments/*/local/status": [
+          "available"
+        ],
+        "$/payload/status": [
+          "completed",
+          "failed"
+        ],
+        "$/payload/summary/*/type": [
+          "summary_text"
+        ],
+        "$/payload/thread_settings/collaboration_mode/mode": [
+          "default"
+        ],
+        "$/payload/type": [
+          "agent_message",
+          "agent_reasoning",
+          "context_compacted",
+          "custom_tool_call",
+          "custom_tool_call_output",
+          "function_call",
+          "function_call_output",
+          "image_generation_end",
+          "mcp_tool_call_end",
+          "message",
+          "patch_apply_end",
+          "reasoning",
+          "task_complete",
+          "task_started",
+          "thread_rolled_back",
+          "thread_settings_applied",
+          "token_count",
+          "tool_search_call",
+          "tool_search_output",
+          "turn_aborted",
+          "user_message"
+        ],
+        "$/type": [
+          "compacted",
+          "event_msg",
+          "response_item",
+          "session_meta",
+          "turn_context",
+          "world_state"
+        ]
+      },
+      "depth_limited_paths": [],
+      "dynamic_map_paths": [
+        "$/payload/changes",
+        "$/payload/state/environments"
+      ],
+      "opaque_paths": [
+        "$/payload/arguments",
+        "$/payload/dynamic_tools",
+        "$/payload/invocation/arguments",
+        "$/payload/output",
+        "$/payload/permission_profile",
+        "$/payload/result",
+        "$/payload/thread_settings/active_permission_profile",
+        "$/payload/thread_settings/permission_profile",
+        "$/payload/tools"
+      ],
+      "diagnostics": [],
+      "diagnostics_truncated": 0
+    }
+  }
+}

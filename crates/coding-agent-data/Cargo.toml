@@ -16,6 +16,7 @@ default = [
     "codex-watch",
     "claude-code",
     "claude-code-watch",
+    "format-probe",
     "sqlite-bundled",
 ]
 codex = [
@@ -29,6 +30,7 @@ codex = [
 claude-code = ["dep:dirs", "dep:time"]
 codex-watch = ["codex", "dep:notify"]
 claude-code-watch = ["claude-code", "dep:notify"]
+format-probe = []
 sqlite = ["dep:rusqlite"]
 sqlite-bundled = ["codex", "rusqlite/bundled"]
 

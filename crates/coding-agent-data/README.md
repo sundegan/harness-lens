@@ -25,10 +25,13 @@ records in ways that fit their needs.
   references, while retaining original data for provider-specific use cases.
 - Opaque, serializable checkpoints for bounded, incremental scans.
 - Optional filesystem monitoring with debounce and periodic reconciliation.
+- Structural format probing for detecting changes in Provider-local data.
 
 ## Glossary
 
 [English glossary and semantic guide](./GLOSSARY.md)
+
+[Format probe design and usage guide](./docs/FORMAT_PROBE.md)
 
 ## Supported providers
 
@@ -36,6 +39,26 @@ records in ways that fit their needs.
 | ----------- | ---------------------------------------------------- |
 | Codex       | `state_5.sqlite`, rollout `.jsonl`, and `.jsonl.zst` |
 | Claude Code | Main and subagent transcript `.jsonl`                |
+
+## Local Provider compatibility test
+
+From this crate, run:
+
+```bash
+make test-provider-formats
+```
+
+It compares representative local artifacts with reviewed baselines and runs
+the real Provider adapters to verify normalization compatibility. After
+confirming that an upstream change is supported, explicitly update baselines:
+
+```bash
+make update-provider-format-baselines
+```
+
+See the [format probe guide](./docs/FORMAT_PROBE.md) for coverage, comparison
+semantics, failure conditions, baseline review, public APIs, privacy boundaries,
+and known limitations.
 
 ## Quick start
 

@@ -3,6 +3,8 @@ use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "format-probe")]
+use std::time::SystemTime;
 
 use serde_json::Value;
 
@@ -36,7 +38,7 @@ impl Default for ScanLimits {
     fn default() -> Self {
         Self {
             max_lines_per_batch: 100_000,
-            max_line_bytes: 16 * 1024 * 1024,
+            max_line_bytes: crate::DEFAULT_MAX_JSON_LINE_BYTES,
         }
     }
 }
@@ -470,6 +472,25 @@ fn transcript_files(source: &ClaudeCodeSource) -> Result<Vec<PathBuf>> {
     collect_transcripts(&source.projects_dir(), &source.projects_dir(), &mut files)?;
     files.sort();
     Ok(files)
+}
+
+#[cfg(feature = "format-probe")]
+pub(super) fn latest_transcript(source: &ClaudeCodeSource) -> Result<Option<PathBuf>> {
+    let mut latest: Option<(SystemTime, PathBuf)> = None;
+    for path in transcript_files(source)? {
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|error| Error::io("inspect a Claude Code transcript", &path, error))?;
+        if latest
+            .as_ref()
+            .is_none_or(|(latest_modified, latest_path)| {
+                (&modified, &path) > (latest_modified, latest_path)
+            })
+        {
+            latest = Some((modified, path));
+        }
+    }
+    Ok(latest.map(|(_, path)| path))
 }
 
 fn child_session_index(

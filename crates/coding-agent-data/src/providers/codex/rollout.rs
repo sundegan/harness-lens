@@ -34,7 +34,7 @@ impl Default for ScanLimits {
     fn default() -> Self {
         Self {
             max_lines_per_batch: 100_000,
-            max_line_bytes: 16 * 1024 * 1024,
+            max_line_bytes: crate::DEFAULT_MAX_JSON_LINE_BYTES,
         }
     }
 }
@@ -865,6 +865,18 @@ fn rollout_catalog(source: &CodexSource) -> Result<BTreeMap<PathBuf, RolloutFile
     collect_rollout_files(&source.active_sessions(), &mut files)?;
     collect_rollout_files(&source.archived_sessions(), &mut files)?;
     Ok(files)
+}
+
+#[cfg(feature = "format-probe")]
+pub(super) fn latest_rollout(source: &CodexSource) -> Result<Option<PathBuf>> {
+    Ok(rollout_catalog(source)?
+        .into_iter()
+        .max_by(|(left_path, left), (right_path, right)| {
+            left.modified_nanos
+                .cmp(&right.modified_nanos)
+                .then_with(|| left_path.cmp(right_path))
+        })
+        .map(|(path, _)| path))
 }
 
 fn collect_rollout_files(

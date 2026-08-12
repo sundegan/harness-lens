@@ -1,0 +1,254 @@
+{
+  "comparison_mode": "allowed_structure",
+  "fingerprint": {
+    "manifest_version": 2,
+    "provider": "claude-code",
+    "options": {
+      "max_line_bytes": 16777216,
+      "max_depth": 32,
+      "max_diagnostics": 100
+    },
+    "format": "json_lines",
+    "observations": {
+      "records_seen": 0,
+      "valid_records": 0,
+      "malformed_records": 0,
+      "incomplete_records": 0,
+      "oversized_records": 0,
+      "fields": {
+        "$": [
+          "object"
+        ],
+        "$/attachment": [
+          "object"
+        ],
+        "$/attachment/addedLines": [
+          "array"
+        ],
+        "$/attachment/addedLines/*": [
+          "string"
+        ],
+        "$/attachment/addedTypes": [
+          "array"
+        ],
+        "$/attachment/addedTypes/*": [
+          "string"
+        ],
+        "$/attachment/content": [
+          "string"
+        ],
+        "$/attachment/isInitial": [
+          "boolean"
+        ],
+        "$/attachment/names": [
+          "array"
+        ],
+        "$/attachment/names/*": [
+          "string"
+        ],
+        "$/attachment/removedTypes": [
+          "array"
+        ],
+        "$/attachment/showConcurrencyNote": [
+          "boolean"
+        ],
+        "$/attachment/skillCount": [
+          "integer"
+        ],
+        "$/attachment/type": [
+          "string"
+        ],
+        "$/content": [
+          "string"
+        ],
+        "$/customTitle": [
+          "string"
+        ],
+        "$/cwd": [
+          "string"
+        ],
+        "$/entrypoint": [
+          "string"
+        ],
+        "$/error": [
+          "string"
+        ],
+        "$/gitBranch": [
+          "string"
+        ],
+        "$/isApiErrorMessage": [
+          "boolean"
+        ],
+        "$/isSidechain": [
+          "boolean"
+        ],
+        "$/lastPrompt": [
+          "string"
+        ],
+        "$/leafUuid": [
+          "string"
+        ],
+        "$/message": [
+          "object"
+        ],
+        "$/message/container": [
+          "null"
+        ],
+        "$/message/content": [
+          "string",
+          "array"
+        ],
+        "$/message/content/*": [
+          "object"
+        ],
+        "$/message/content/*/text": [
+          "string"
+        ],
+        "$/message/content/*/type": [
+          "string"
+        ],
+        "$/message/context_management": [
+          "null"
+        ],
+        "$/message/id": [
+          "string"
+        ],
+        "$/message/model": [
+          "string"
+        ],
+        "$/message/role": [
+          "string"
+        ],
+        "$/message/stop_details": [
+          "null"
+        ],
+        "$/message/stop_reason": [
+          "string"
+        ],
+        "$/message/stop_sequence": [
+          "string"
+        ],
+        "$/message/type": [
+          "string"
+        ],
+        "$/message/usage": [
+          "object"
+        ],
+        "$/message/usage/cache_creation": [
+          "object"
+        ],
+        "$/message/usage/cache_creation/ephemeral_1h_input_tokens": [
+          "integer"
+        ],
+        "$/message/usage/cache_creation/ephemeral_5m_input_tokens": [
+          "integer"
+        ],
+        "$/message/usage/cache_creation_input_tokens": [
+          "integer"
+        ],
+        "$/message/usage/cache_read_input_tokens": [
+          "integer"
+        ],
+        "$/message/usage/inference_geo": [
+          "null"
+        ],
+        "$/message/usage/input_tokens": [
+          "integer"
+        ],
+        "$/message/usage/iterations": [
+          "null"
+        ],
+        "$/message/usage/output_tokens": [
+          "integer"
+        ],
+        "$/message/usage/server_tool_use": [
+          "object"
+        ],
+        "$/message/usage/server_tool_use/web_fetch_requests": [
+          "integer"
+        ],
+        "$/message/usage/server_tool_use/web_search_requests": [
+          "integer"
+        ],
+        "$/message/usage/service_tier": [
+          "null"
+        ],
+        "$/message/usage/speed": [
+          "null"
+        ],
+        "$/operation": [
+          "string"
+        ],
+        "$/origin": [
+          "object"
+        ],
+        "$/origin/kind": [
+          "string"
+        ],
+        "$/parentUuid": [
+          "null",
+          "string"
+        ],
+        "$/permissionMode": [
+          "string"
+        ],
+        "$/promptId": [
+          "string"
+        ],
+        "$/promptSource": [
+          "string"
+        ],
+        "$/sessionId": [
+          "string"
+        ],
+        "$/timestamp": [
+          "string"
+        ],
+        "$/type": [
+          "string"
+        ],
+        "$/userType": [
+          "string"
+        ],
+        "$/uuid": [
+          "string"
+        ],
+        "$/version": [
+          "string"
+        ]
+      },
+      "discriminators": {
+        "$/attachment/type": [
+          "agent_listing_delta",
+          "skill_listing"
+        ],
+        "$/message/content/*/type": [
+          "text"
+        ],
+        "$/message/role": [
+          "assistant",
+          "user"
+        ],
+        "$/message/type": [
+          "message"
+        ],
+        "$/origin/kind": [
+          "human"
+        ],
+        "$/type": [
+          "assistant",
+          "attachment",
+          "custom-title",
+          "last-prompt",
+          "queue-operation",
+          "user"
+        ]
+      },
+      "depth_limited_paths": [],
+      "dynamic_map_paths": [],
+      "opaque_paths": [],
+      "diagnostics": [],
+      "diagnostics_truncated": 0
+    }
+  }
+}
