@@ -453,7 +453,7 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                           {formatTime(item.event.timestampMs)}
                         </time>
                       </div>
-                      <div class="select-text whitespace-pre-wrap break-words text-sm leading-6">
+                      <div class="selectable-text whitespace-pre-wrap break-words text-sm leading-6">
                         {textFromContent(item.value.content) ||
                           i18nManager.t('sessions.detail.empty_message')}
                       </div>
@@ -480,7 +480,7 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                         />
                       </Collapsible.Trigger>
                       <Collapsible.Content class="border-t px-4 py-3">
-                        <div class="select-text whitespace-pre-wrap break-words text-sm leading-6">
+                        <div class="selectable-text whitespace-pre-wrap break-words text-sm leading-6">
                           {textFromContent(item.value.content) ||
                             i18nManager.t('sessions.detail.empty_message')}
                         </div>
@@ -532,7 +532,7 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                           <p class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                             {i18nManager.t('sessions.detail.input')}
                           </p>
-                          <pre class="max-h-72 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words select-text">{formatJson(item.call.input)}</pre>
+                          <pre class="max-h-72 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words selectable-text">{formatJson(item.call.input)}</pre>
                         </div>
                         {#if item.resultValue}
                           <div>
@@ -542,10 +542,10 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                             {#if item.resultValue.error}
                               <div class="mb-2 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-xs text-destructive">
                                 <CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                                <span class="select-text">{item.resultValue.error}</span>
+                                <span class="selectable-text">{item.resultValue.error}</span>
                               </div>
                             {/if}
-                            <pre class="max-h-80 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words select-text">{formatJson(item.resultValue.output)}</pre>
+                            <pre class="max-h-80 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words selectable-text">{formatJson(item.resultValue.output)}</pre>
                           </div>
                         {:else}
                           <p class="text-xs text-muted-foreground">
@@ -575,7 +575,7 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                       />
                     </Collapsible.Trigger>
                     <Collapsible.Content class="border-t px-4 py-3">
-                      <div class="select-text whitespace-pre-wrap text-sm leading-6">
+                      <div class="selectable-text whitespace-pre-wrap text-sm leading-6">
                         {textFromContent(item.value.content) ||
                           item.value.summary?.join('\n') ||
                           i18nManager.t('sessions.detail.no_reasoning')}
@@ -629,7 +629,7 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
                         />
                       </Collapsible.Trigger>
                       <Collapsible.Content class="bg-muted/20 px-4 pb-3">
-                        <pre class="max-h-80 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words select-text">{formatJson(event.event)}</pre>
+                        <pre class="max-h-80 overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 whitespace-pre-wrap break-words selectable-text">{formatJson(event.event)}</pre>
                       </Collapsible.Content>
                     </Collapsible.Root>
                   {/each}

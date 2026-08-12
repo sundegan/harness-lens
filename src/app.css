@@ -152,15 +152,20 @@
     overflow: hidden;
     background: transparent;
     overscroll-behavior: none;
+    -webkit-user-select: none;
     user-select: none;
   }
 
-  input,
-  textarea,
-  [contenteditable="true"],
-  pre,
-  code,
-  .selectable-text {
+  /* Keep the desktop shell from behaving like a selectable web page on WebKit. */
+  #app-root,
+  #app-root * {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #app-root .selectable-text,
+  #app-root .selectable-text * {
+    -webkit-user-select: text;
     user-select: text;
   }
 
