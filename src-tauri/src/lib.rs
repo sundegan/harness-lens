@@ -80,9 +80,7 @@ pub fn run() {
                 api.prevent_close();
                 window::persist_main_window(window.app_handle());
 
-                if let Err(error) = window.hide() {
-                    log::error!("failed to hide main window on close: {error}");
-                }
+                window::enter_background_mode(window.app_handle());
             }
         })
         .setup(|app| {
@@ -112,8 +110,16 @@ pub fn run() {
         .expect("error while building HarnessLens");
 
     app.run(|app_handle, event| {
-        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
             window::persist_main_window(app_handle);
+
+            // Ordinary user exits stay resident; only the explicit tray Quit and
+            // Tauri's reserved restart request may terminate this process.
+            let is_restart = code == Some(tauri::RESTART_EXIT_CODE);
+            if !is_restart && !tray::consume_exit_authorization(code) {
+                api.prevent_exit();
+                window::enter_background_mode(app_handle);
+            }
         }
     });
 }

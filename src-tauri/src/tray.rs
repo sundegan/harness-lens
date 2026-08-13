@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
@@ -10,14 +12,16 @@ const CHECK_UPDATES_MENU_ID: &str = "tray-check-updates";
 const QUIT_MENU_ID: &str = "tray-quit";
 const OPEN_SETTINGS_EVENT: &str = "open-settings";
 const CHECK_UPDATES_EVENT: &str = "check-for-updates";
+const TRAY_EXIT_CODE: i32 = 0;
 
+static EXIT_AUTHORIZED: AtomicBool = AtomicBool::new(false);
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrayMenuLabels {
-    show_main: String,
-    settings: String,
-    check_updates: String,
-    quit: String,
+    pub show_main: String,
+    pub settings: String,
+    pub check_updates: String,
+    pub quit: String,
 }
 
 pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -31,7 +35,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
             SHOW_MAIN_MENU_ID => window::focus_main_window(app),
             SETTINGS_MENU_ID => open_settings(app),
             CHECK_UPDATES_MENU_ID => check_for_updates(app),
-            QUIT_MENU_ID => app.exit(0),
+            QUIT_MENU_ID => request_quit(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -63,6 +67,19 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+fn request_quit(app: &tauri::AppHandle) {
+    EXIT_AUTHORIZED.store(true, Ordering::Release);
+    app.exit(TRAY_EXIT_CODE);
+}
+
+pub fn consume_exit_authorization(code: Option<i32>) -> bool {
+    if code != Some(TRAY_EXIT_CODE) {
+        return false;
+    }
+
+    EXIT_AUTHORIZED.swap(false, Ordering::AcqRel)
+}
+
 pub fn update_menu(app: &tauri::AppHandle, labels: TrayMenuLabels) -> Result<(), String> {
     let menu = build_menu(app, &labels).map_err(|error| error.to_string())?;
     let tray = app
@@ -70,6 +87,20 @@ pub fn update_menu(app: &tauri::AppHandle, labels: TrayMenuLabels) -> Result<(),
         .ok_or_else(|| "main tray is not available".to_owned())?;
 
     tray.set_menu(Some(menu)).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exit_authorization_is_consumed_once() {
+        EXIT_AUTHORIZED.store(true, Ordering::Release);
+
+        assert!(!consume_exit_authorization(None));
+        assert!(consume_exit_authorization(Some(TRAY_EXIT_CODE)));
+        assert!(!consume_exit_authorization(Some(TRAY_EXIT_CODE)));
+    }
 }
 
 fn default_menu_labels() -> TrayMenuLabels {

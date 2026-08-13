@@ -99,6 +99,11 @@ pub fn persist_main_window(app: &tauri::AppHandle) {
 }
 
 pub fn focus_main_window(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
+        log::error!("failed to restore regular application policy: {error}");
+    }
+
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -108,6 +113,19 @@ pub fn focus_main_window(app: &tauri::AppHandle) {
         {
             linux_fix::nudge_main_window(window);
         }
+    }
+}
+
+pub fn enter_background_mode(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(error) = window.hide() {
+            log::error!("failed to hide main window: {error}");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {
+        log::error!("failed to enter accessory application policy: {error}");
     }
 }
 
