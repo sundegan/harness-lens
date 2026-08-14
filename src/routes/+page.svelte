@@ -1,5 +1,6 @@
 <script lang="ts">
 import BlocksIcon from '@lucide/svelte/icons/blocks';
+import DownloadIcon from '@lucide/svelte/icons/download';
 import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 import SettingsIcon from '@lucide/svelte/icons/settings';
 import SessionBrowser from '$lib/components/session-history/SessionBrowser.svelte';
@@ -7,6 +8,7 @@ import SkillAnalysis from '$lib/components/skill-analysis/SkillAnalysis.svelte';
 import * as Sidebar from '$lib/components/ui/sidebar';
 import { i18nManager } from '$lib/i18n.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
+import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
 
 type MainModuleId = 'sessions' | 'skills';
@@ -100,6 +102,20 @@ function activateModule(module: MainModuleId) {
 
     <Sidebar.Footer class="items-center px-2 py-3">
       <Sidebar.Menu>
+        {#if appUpdateManager.hasUpdate}
+          <Sidebar.MenuItem>
+            <Sidebar.MenuButton
+              tooltipContent={i18nManager.t('update.action.download')}
+              tooltipContentProps={{ hidden: false, sideOffset: 8 }}
+              class="update-entry mx-auto size-7! justify-center rounded-full p-0"
+              aria-label={i18nManager.t('update.action.download')}
+              data-testid="main-nav-update"
+              onclick={() => appUpdateManager.openUpdateDialog()}
+            >
+              <DownloadIcon strokeWidth={1.8} aria-hidden="true" />
+            </Sidebar.MenuButton>
+          </Sidebar.MenuItem>
+        {/if}
         <Sidebar.MenuItem>
           <Sidebar.MenuButton
             tooltipContent={i18nManager.t('main.nav.settings')}

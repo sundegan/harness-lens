@@ -16,6 +16,7 @@ pub struct Settings {
     pub theme: Option<String>,
     pub language: Option<String>,
     pub auto_check_updates: Option<bool>,
+    pub auto_check_interval_hours: Option<u64>,
 }
 
 fn read_settings() -> Result<Settings, String> {
@@ -113,6 +114,15 @@ pub fn save_setting(key: String, value: Value) -> Result<(), String> {
                     .as_bool()
                     .ok_or_else(|| "autoCheckUpdates setting must be a boolean".to_owned())?,
             );
+        }
+        "autoCheckIntervalHours" => {
+            let hours = value
+                .as_u64()
+                .ok_or_else(|| "autoCheckIntervalHours setting must be an integer".to_owned())?;
+            if !matches!(hours, 12 | 24 | 72 | 168) {
+                return Err("autoCheckIntervalHours must be one of 12, 24, 72, or 168".to_owned());
+            }
+            settings.auto_check_interval_hours = Some(hours);
         }
         _ => return Err(format!("unsupported setting key: {key}")),
     }

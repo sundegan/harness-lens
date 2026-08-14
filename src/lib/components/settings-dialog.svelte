@@ -1,17 +1,19 @@
 <script lang="ts">
 import MonitorCogIcon from '@lucide/svelte/icons/monitor-cog';
+import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 import SettingsIcon from '@lucide/svelte/icons/settings';
 import XIcon from '@lucide/svelte/icons/x';
 import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
 import { Button } from '$lib/components/ui/button/index.js';
+import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 import * as Dialog from '$lib/components/ui/dialog/index.js';
 import * as Field from '$lib/components/ui/field/index.js';
 import * as Select from '$lib/components/ui/select/index.js';
 import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 import { i18nManager } from '$lib/i18n.svelte';
+import { settingsDialogManager } from '$lib/settings-dialog.svelte';
 import { themeManager } from '$lib/theme.svelte';
-
-type SettingsSection = 'general' | 'appearance';
+import { appUpdateManager } from '$lib/update.svelte';
 
 const languageOptions = $derived([
   { value: 'system', label: i18nManager.t('settings.language.lang_system') },
@@ -31,6 +33,13 @@ const themeOptions = $derived([
   { value: 'dark', label: i18nManager.t('settings.appearance.theme_dark') },
 ]);
 
+const updateIntervalOptions = $derived([
+  { value: '12', label: i18nManager.t('settings.updates.interval.12_hours') },
+  { value: '24', label: i18nManager.t('settings.updates.interval.24_hours') },
+  { value: '72', label: i18nManager.t('settings.updates.interval.3_days') },
+  { value: '168', label: i18nManager.t('settings.updates.interval.7_days') },
+]);
+
 const navigation = $derived([
   {
     value: 'general' as const,
@@ -42,10 +51,15 @@ const navigation = $derived([
     label: i18nManager.t('nav.appearance'),
     icon: MonitorCogIcon,
   },
+  {
+    value: 'updates' as const,
+    label: i18nManager.t('nav.updates'),
+    icon: RefreshCwIcon,
+  },
 ]);
 
 let { open = $bindable(false) }: { open?: boolean } = $props();
-let activeSection = $state<SettingsSection>('general');
+const activeSection = $derived(settingsDialogManager.activeSection);
 
 const activeLabel = $derived(
   navigation.find((item) => item.value === activeSection)?.label ??
@@ -56,6 +70,11 @@ const selectedLanguageLabel = $derived(
 );
 const selectedThemeLabel = $derived(
   themeOptions.find((option) => option.value === themeManager.theme)?.label ?? ''
+);
+const selectedUpdateIntervalLabel = $derived(
+  updateIntervalOptions.find(
+    (option) => option.value === String(appUpdateManager.autoCheckIntervalHours)
+  )?.label ?? ''
 );
 </script>
 
@@ -83,7 +102,8 @@ const selectedThemeLabel = $derived(
                     <Sidebar.MenuButton
                       isActive={activeSection === item.value}
                       class="h-9"
-                      onclick={() => (activeSection = item.value)}
+                      data-testid={`settings-nav-${item.value}`}
+                      onclick={() => (settingsDialogManager.activeSection = item.value)}
                     >
                       <item.icon aria-hidden="true" />
                       <span>{item.label}</span>
@@ -147,7 +167,7 @@ const selectedThemeLabel = $derived(
                 </Field.Field>
               </Field.Group>
             </section>
-          {:else}
+          {:else if activeSection === 'appearance'}
             <section class="mx-auto max-w-xl" aria-label={i18nManager.t('settings.appearance.title')}>
               <Field.Group>
                 <Field.Field orientation="responsive" class="border-b py-3">
@@ -172,9 +192,158 @@ const selectedThemeLabel = $derived(
                 </Field.Field>
               </Field.Group>
             </section>
+          {:else}
+            <section class="mx-auto max-w-xl" aria-label={i18nManager.t('settings.updates.title')}>
+              <Field.Group>
+                <Field.Field orientation="responsive" class="border-b py-3">
+                  <Field.Content>
+                    <Field.Label for="auto-check-updates" class="text-sm">
+                      {i18nManager.t('settings.updates.auto_check')}
+                    </Field.Label>
+                    <Field.Description class="text-xs">
+                      {i18nManager.t('settings.updates.auto_check_desc')}
+                    </Field.Description>
+                  </Field.Content>
+                  <Checkbox
+                    id="auto-check-updates"
+                    data-testid="auto-check-updates"
+                    checked={appUpdateManager.autoCheckUpdates}
+                    onCheckedChange={(checked) => appUpdateManager.setAutoCheckUpdates(checked)}
+                  />
+                </Field.Field>
+
+                <Field.Field orientation="responsive" class="border-b py-3">
+                  <Field.Content>
+                    <Field.Label for="auto-check-interval" class="text-sm">
+                      {i18nManager.t('settings.updates.interval')}
+                    </Field.Label>
+                    <Field.Description class="text-xs">
+                      {i18nManager.t('settings.updates.interval_desc')}
+                    </Field.Description>
+                  </Field.Content>
+                  <Select.Root
+                    type="single"
+                    value={String(appUpdateManager.autoCheckIntervalHours)}
+                    onValueChange={(value) => appUpdateManager.setAutoCheckInterval(value)}
+                    disabled={!appUpdateManager.autoCheckUpdates}
+                  >
+                    <Select.Trigger
+                      id="auto-check-interval"
+                      data-testid="auto-check-interval"
+                      class="w-full text-xs sm:w-44"
+                    >
+                      <span class="truncate">{selectedUpdateIntervalLabel}</span>
+                    </Select.Trigger>
+                    <Select.Content>
+                      <Select.Group>
+                        {#each updateIntervalOptions as option (option.value)}
+                          <Select.Item value={option.value} label={option.label} />
+                        {/each}
+                      </Select.Group>
+                    </Select.Content>
+                  </Select.Root>
+                </Field.Field>
+
+                <Field.Field
+                  orientation="responsive"
+                  class={appUpdateManager.hasUpdate ? 'py-3 settings-update-row' : 'py-3'}
+                >
+                  <Field.Content>
+                    <Field.Label for="check-for-updates" class="text-sm">
+                      {i18nManager.t('settings.updates.title')}
+                    </Field.Label>
+                    <Field.Description
+                      class="text-xs"
+                      role="status"
+                      aria-live="polite"
+                      data-testid="update-status"
+                    >
+                      {#if appUpdateManager.status === 'checking'}
+                        {i18nManager.t('update.status.checking')}
+                      {:else if appUpdateManager.status === 'downloading'}
+                        {i18nManager.t('update.status.downloading')}
+                      {:else if appUpdateManager.status === 'installing'}
+                        {i18nManager.t('update.status.installing')}
+                      {:else if appUpdateManager.status === 'ready'}
+                        {i18nManager.t('update.status.ready')}
+                      {:else if appUpdateManager.status === 'error'}
+                        {i18nManager.t('update.status.error', { error: appUpdateManager.error })}
+                      {:else if appUpdateManager.hasUpdate}
+                        {i18nManager.t('update.status.available', { version: appUpdateManager.latestVersion })}
+                      {:else if appUpdateManager.status === 'latest'}
+                        {i18nManager.t('update.status.latest', { currentVersion: appUpdateManager.currentVersion })}
+                      {:else}
+                        {i18nManager.t('update.status.idle')}
+                      {/if}
+                    </Field.Description>
+                  </Field.Content>
+                  {#if appUpdateManager.hasUpdate}
+                    <Button
+                      size="sm"
+                      class="settings-update-action"
+                      onclick={() => appUpdateManager.openUpdateDialog()}
+                    >
+                      {appUpdateManager.status === 'downloading'
+                        ? i18nManager.t('update.status.downloading')
+                        : appUpdateManager.status === 'installing'
+                          ? i18nManager.t('update.status.installing')
+                        : appUpdateManager.status === 'ready'
+                          ? i18nManager.t('update.action.restart')
+                          : i18nManager.t('update.action.download')}
+                    </Button>
+                  {:else}
+                    <Button
+                      id="check-for-updates"
+                      data-testid="check-for-updates"
+                      variant="outline"
+                      size="sm"
+                      disabled={appUpdateManager.isBusy}
+                      onclick={() => void appUpdateManager.checkForUpdates()}
+                    >
+                      {appUpdateManager.status === 'checking'
+                        ? i18nManager.t('update.action.checking')
+                        : i18nManager.t('update.action.check_now')}
+                    </Button>
+                  {/if}
+                </Field.Field>
+              </Field.Group>
+            </section>
           {/if}
         </div>
       </main>
     </Sidebar.Provider>
   </Dialog.Content>
 </Dialog.Root>
+
+<style>
+  :global(.settings-update-row) {
+    border: 1px solid rgb(22 163 74 / 18%);
+    border-radius: 8px;
+    margin: 8px -14px;
+    padding: 12px 14px;
+    background: rgb(22 163 74 / 5%);
+  }
+
+  :global(.dark .settings-update-row) {
+    border-color: rgb(74 222 128 / 22%);
+    background: rgb(74 222 128 / 6%);
+  }
+
+  :global(.settings-update-action) {
+    color: #16a34a;
+    border-color: rgb(22 163 74 / 30%);
+    background: rgb(22 163 74 / 8%);
+    animation: settings-update-action-pulse 2.4s infinite ease-in-out;
+  }
+
+  @keyframes settings-update-action-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(22 163 74 / 35%);
+    }
+    50% {
+      box-shadow: 0 0 0 5px rgb(22 163 74 / 0%);
+      transform: scale(1.02);
+    }
+  }
+</style>

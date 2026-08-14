@@ -4,6 +4,7 @@ export type Settings = {
   theme?: string;
   language?: string;
   autoCheckUpdates?: boolean;
+  autoCheckIntervalHours?: number;
 };
 
 export type SettingKey = keyof Settings;
@@ -18,10 +19,15 @@ function legacyLocalSettings(): Settings {
   const autoCheckUpdates =
     window.localStorage.getItem('harness-lens:auto-check-updates') ??
     window.localStorage.getItem('codex-timeline:auto-check-updates');
+  const interval = window.localStorage.getItem('autoCheckIntervalHours');
+  const autoCheckIntervalHours = interval === null ? undefined : Number(interval);
   return {
     theme,
     language,
     autoCheckUpdates: autoCheckUpdates === null ? undefined : autoCheckUpdates !== 'false',
+    autoCheckIntervalHours: Number.isFinite(autoCheckIntervalHours)
+      ? autoCheckIntervalHours
+      : undefined,
   };
 }
 
@@ -41,12 +47,16 @@ async function loadDesktopSettings(): Promise<Settings> {
     if (key === 'theme') migrated.theme = legacyValue as string;
     if (key === 'language') migrated.language = legacyValue as string;
     if (key === 'autoCheckUpdates') migrated.autoCheckUpdates = legacyValue as boolean;
+    if (key === 'autoCheckIntervalHours') {
+      migrated.autoCheckIntervalHours = legacyValue as number;
+    }
   }
 
   window.localStorage.removeItem('theme');
   window.localStorage.removeItem('language');
   window.localStorage.removeItem('harness-lens:auto-check-updates');
   window.localStorage.removeItem('codex-timeline:auto-check-updates');
+  window.localStorage.removeItem('autoCheckIntervalHours');
 
   return migrated;
 }

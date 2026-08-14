@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import { goto } from '$app/navigation';
+import AppUpdateDialog from '$lib/components/AppUpdateDialog.svelte';
 import SettingsDialog from '$lib/components/settings-dialog.svelte';
 import { i18nManager } from '$lib/i18n.svelte';
 import { installFrontendErrorLogging, logWarn } from '$lib/logger';
@@ -12,7 +12,12 @@ import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
 import '../app.css';
 
-const syncTrayMenuLabels = async (labels: { showMain: string; settings: string; quit: string }) => {
+const syncTrayMenuLabels = async (labels: {
+  showMain: string;
+  settings: string;
+  checkUpdates: string;
+  quit: string;
+}) => {
   const { isTauri } = await import('@tauri-apps/api/core');
   if (!isTauri()) return;
 
@@ -28,6 +33,7 @@ $effect(() => {
   void syncTrayMenuLabels({
     showMain: i18nManager.t('tray.show_main'),
     settings: i18nManager.t('tray.settings'),
+    checkUpdates: i18nManager.t('tray.check_updates'),
     quit: i18nManager.t('tray.quit'),
   });
 });
@@ -68,7 +74,7 @@ onMount(() => {
     registerUnlistener(unlistenFocus);
 
     const unlistenUpdate = await listen('check-for-updates', () => {
-      void goto('/settings');
+      settingsDialogManager.show('updates');
       void appUpdateManager.checkForUpdates();
     });
     registerUnlistener(unlistenUpdate);
@@ -147,6 +153,7 @@ let isWindowInactive = $state(false);
     <TitleBar />
     <AboutDialog />
     <SettingsDialog bind:open={settingsDialogManager.open} />
+    <AppUpdateDialog />
     <div class="min-h-0 flex-1 overflow-auto bg-background">
       {@render children()}
     </div>

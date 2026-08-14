@@ -6,14 +6,17 @@ use crate::window;
 const TRAY_ID: &str = "main-tray";
 const SHOW_MAIN_MENU_ID: &str = "tray-show-main";
 const SETTINGS_MENU_ID: &str = "tray-settings";
+const CHECK_UPDATES_MENU_ID: &str = "tray-check-updates";
 const QUIT_MENU_ID: &str = "tray-quit";
 const OPEN_SETTINGS_EVENT: &str = "open-settings";
+const CHECK_UPDATES_EVENT: &str = "check-for-updates";
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrayMenuLabels {
     show_main: String,
     settings: String,
+    check_updates: String,
     quit: String,
 }
 
@@ -27,6 +30,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             SHOW_MAIN_MENU_ID => window::focus_main_window(app),
             SETTINGS_MENU_ID => open_settings(app),
+            CHECK_UPDATES_MENU_ID => check_for_updates(app),
             QUIT_MENU_ID => app.exit(0),
             _ => {}
         })
@@ -72,6 +76,7 @@ fn default_menu_labels() -> TrayMenuLabels {
     TrayMenuLabels {
         show_main: "Show HarnessLens".to_owned(),
         settings: "Settings".to_owned(),
+        check_updates: "Check for Updates...".to_owned(),
         quit: "Quit".to_owned(),
     }
 }
@@ -89,11 +94,19 @@ fn build_menu(
     )?;
     let settings_item =
         MenuItem::with_id(app, SETTINGS_MENU_ID, &labels.settings, true, None::<&str>)?;
+    let check_updates_item = MenuItem::with_id(
+        app,
+        CHECK_UPDATES_MENU_ID,
+        &labels.check_updates,
+        true,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, QUIT_MENU_ID, &labels.quit, true, None::<&str>)?;
 
     MenuBuilder::new(app)
         .item(&show_main_item)
         .item(&settings_item)
+        .item(&check_updates_item)
         .separator()
         .item(&quit_item)
         .build()
@@ -102,6 +115,11 @@ fn build_menu(
 fn open_settings(app: &tauri::AppHandle) {
     window::focus_main_window(app);
     let _ = tauri::Emitter::emit(app, OPEN_SETTINGS_EVENT, ());
+}
+
+fn check_for_updates(app: &tauri::AppHandle) {
+    window::focus_main_window(app);
+    let _ = tauri::Emitter::emit(app, CHECK_UPDATES_EVENT, ());
 }
 
 #[cfg(target_os = "macos")]

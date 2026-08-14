@@ -154,6 +154,32 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'about.unknown': 'Unknown',
     'about.close': 'Close',
 
+    // Updates
+    'update.status.idle': 'Updates have not been checked yet.',
+    'update.status.checking': 'Checking for updates…',
+    'update.status.available': 'Version {version} is available.',
+    'update.status.downloading': 'Downloading update…',
+    'update.status.installing': 'Installing update…',
+    'update.status.ready': 'Update downloaded. Restart to apply it.',
+    'update.status.latest': 'Up to date ({currentVersion}).',
+    'update.status.error': 'Update failed: {error}',
+    'update.action.check_now': 'Check now',
+    'update.action.checking': 'Checking…',
+    'update.action.download': 'Download update',
+    'update.action.restart': 'Restart now',
+    'update.action.later': 'Later',
+    'update.action.retry': 'Retry',
+    'update.dialog.title': 'Update available',
+    'update.dialog.description': 'Version {version} is ready to download.',
+    'update.dialog.downloading_title': 'Downloading update',
+    'update.dialog.downloading_description': 'Downloading version {version}…',
+    'update.dialog.installing_title': 'Installing update',
+    'update.dialog.installing_description': 'Installing the downloaded update…',
+    'update.dialog.ready_title': 'Ready to restart',
+    'update.dialog.ready_description': 'Version {version} has been downloaded.',
+    'update.dialog.restart_description': 'Install the update and restart HarnessLens now?',
+    'update.dialog.error_title': 'Update failed',
+
     // Control Bar
     'control.update_available': 'Update available: v{version}',
     'control.theme_light': 'Switch to Light Theme',
@@ -170,10 +196,20 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Tray Menu
     'tray.show_main': 'Show HarnessLens',
     'tray.settings': 'Settings',
+    'tray.check_updates': 'Check for Updates…',
     'tray.quit': 'Quit',
 
     // Settings General
     'settings.general.title': 'General Settings',
+    'settings.updates.title': 'Application Updates',
+    'settings.updates.auto_check': 'Check for updates automatically',
+    'settings.updates.auto_check_desc': 'Check shortly after startup and at the selected interval.',
+    'settings.updates.interval': 'Automatic check interval',
+    'settings.updates.interval_desc': 'Choose how often to check while the app is running.',
+    'settings.updates.interval.12_hours': 'Every 12 hours',
+    'settings.updates.interval.24_hours': 'Every 24 hours',
+    'settings.updates.interval.3_days': 'Every 3 days',
+    'settings.updates.interval.7_days': 'Every 7 days',
 
     // Settings Appearance
     'settings.appearance.title': 'App Theme',
@@ -195,32 +231,12 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-    // Update Statuses
-    'update.status.checking': 'Checking for updates...',
-    'update.status.installing': 'Installing update...',
-    'update.status.ready': 'Update installed successfully. Please restart.',
-    'update.status.error': 'Update failed: {error}',
-    'update.status.available_prefix': 'New version ',
-    'update.status.available_suffix': ' is available (Current: v{currentVersion})',
-    'update.status.latest': 'Up to date (v{currentVersion})',
-
-    // Update Action Buttons
-    'update.action.restart': 'Restart App',
-    'update.action.install': 'Install Update',
-    'update.action.checking': 'Checking...',
-    'update.action.check_now': 'Check now',
-
-    // Restart Modal
-    'modal.restart.title': 'Restart Required',
-    'modal.restart.desc':
-      'The application has been successfully updated. Restart now to apply the changes?',
-    'modal.restart.later': 'Restart Later',
-    'modal.restart.now': 'Restart Now',
   },
   zh: {
     // Shared / Navigation
     'nav.general': '通用设置',
     'nav.appearance': '外观设置',
+    'nav.updates': '更新',
 
     // Main Page
     'main.title': 'HarnessLens',
@@ -363,6 +379,32 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'about.unknown': '未知',
     'about.close': '关闭',
 
+    // Updates
+    'update.status.idle': '尚未检查更新。',
+    'update.status.checking': '正在检查更新…',
+    'update.status.available': '发现新版本 {version}。',
+    'update.status.downloading': '正在下载安装包…',
+    'update.status.installing': '正在安装更新…',
+    'update.status.ready': '更新已下载完成，重启后生效。',
+    'update.status.latest': '当前已是最新版本（{currentVersion}）。',
+    'update.status.error': '更新失败：{error}',
+    'update.action.check_now': '立即检查',
+    'update.action.checking': '检查中…',
+    'update.action.download': '下载更新',
+    'update.action.restart': '立即重启',
+    'update.action.later': '稍后',
+    'update.action.retry': '重试',
+    'update.dialog.title': '发现新版本',
+    'update.dialog.description': '新版本 {version} 已准备好下载。',
+    'update.dialog.downloading_title': '正在下载更新',
+    'update.dialog.downloading_description': '正在下载版本 {version}…',
+    'update.dialog.installing_title': '正在安装更新',
+    'update.dialog.installing_description': '正在安装已下载的更新…',
+    'update.dialog.ready_title': '更新已准备好',
+    'update.dialog.ready_description': '版本 {version} 已下载完成。',
+    'update.dialog.restart_description': '现在安装更新并重启 HarnessLens 吗？',
+    'update.dialog.error_title': '更新失败',
+
     // Control Bar
     'control.update_available': '有可用更新: v{version}',
     'control.theme_light': '切换为浅色主题',
@@ -379,10 +421,20 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Tray Menu
     'tray.show_main': '显示窗口',
     'tray.settings': '设置',
+    'tray.check_updates': '检查更新…',
     'tray.quit': '退出',
 
     // Settings General
     'settings.general.title': '通用设置',
+    'settings.updates.title': '应用更新',
+    'settings.updates.auto_check': '自动检查更新',
+    'settings.updates.auto_check_desc': '应用启动后检查，并按选择的间隔自动检查。',
+    'settings.updates.interval': '自动检查间隔',
+    'settings.updates.interval_desc': '选择应用运行期间自动检查更新的频率。',
+    'settings.updates.interval.12_hours': '每 12 小时',
+    'settings.updates.interval.24_hours': '每 24 小时',
+    'settings.updates.interval.3_days': '每 3 天',
+    'settings.updates.interval.7_days': '每 7 天',
 
     // Settings Appearance
     'settings.appearance.title': '应用主题',
@@ -404,26 +456,6 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.lang_es': 'Español',
     'settings.language.lang_fr': 'Français',
     'settings.language.lang_de': 'Deutsch',
-    // Update Statuses
-    'update.status.checking': '正在检查更新...',
-    'update.status.installing': '正在安装更新...',
-    'update.status.ready': '更新已成功安装，请重启应用。',
-    'update.status.error': '更新失败: {error}',
-    'update.status.available_prefix': '新版本 ',
-    'update.status.available_suffix': ' 已可用（当前版本：v{currentVersion}）',
-    'update.status.latest': '已是最新版本（v{currentVersion}）',
-
-    // Update Action Buttons
-    'update.action.restart': '重启应用',
-    'update.action.install': '安装更新',
-    'update.action.checking': '正在检查...',
-    'update.action.check_now': '立即检查',
-
-    // Restart Modal
-    'modal.restart.title': '需要重启',
-    'modal.restart.desc': '应用已成功更新。现在重启以应用更改吗？',
-    'modal.restart.later': '稍后重启',
-    'modal.restart.now': '现在重启',
   },
   zh_tw: {
     // Shared / Navigation

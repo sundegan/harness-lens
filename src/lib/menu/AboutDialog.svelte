@@ -1,8 +1,10 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import { Button } from '$lib/components/ui/button/index.js';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Separator } from '$lib/components/ui/separator';
 import { i18nManager } from '$lib/i18n.svelte';
+import { appUpdateManager } from '$lib/update.svelte';
 
 let appVersion = $state('');
 let isOpen = $state(false);
@@ -58,5 +60,34 @@ onMount(() => {
       <dt class="text-sm font-medium text-muted-foreground">{i18nManager.t('about.version')}</dt>
       <dd class="text-sm font-semibold">{appVersion || i18nManager.t('about.unknown')}</dd>
     </dl>
+
+    <div class="mt-4 flex items-center justify-between gap-3">
+      <p class="text-xs text-muted-foreground">
+        {#if appUpdateManager.status === 'checking'}
+          {i18nManager.t('update.status.checking')}
+        {:else if appUpdateManager.status === 'downloading'}
+          {i18nManager.t('update.status.downloading')}
+        {:else if appUpdateManager.status === 'installing'}
+          {i18nManager.t('update.status.installing')}
+        {:else if appUpdateManager.status === 'ready'}
+          {i18nManager.t('update.status.ready')}
+        {:else if appUpdateManager.hasUpdate}
+          {i18nManager.t('update.status.available', { version: appUpdateManager.latestVersion })}
+        {:else if appUpdateManager.status === 'latest'}
+          {i18nManager.t('update.status.latest', { currentVersion: appUpdateManager.currentVersion || appVersion })}
+        {:else}
+          {i18nManager.t('update.status.idle')}
+        {/if}
+      </p>
+      {#if appUpdateManager.status === 'ready'}
+        <Button size="sm" onclick={() => appUpdateManager.openUpdateDialog()}>{i18nManager.t('update.action.restart')}</Button>
+      {:else if appUpdateManager.status === 'available'}
+        <Button size="sm" onclick={() => appUpdateManager.openUpdateDialog()}>{i18nManager.t('update.action.download')}</Button>
+      {:else}
+        <Button variant="outline" size="sm" disabled={appUpdateManager.isBusy} onclick={() => void appUpdateManager.checkForUpdates()}>
+          {appUpdateManager.status === 'checking' ? i18nManager.t('update.action.checking') : i18nManager.t('update.action.check_now')}
+        </Button>
+      {/if}
+    </div>
   </Dialog.Content>
 </Dialog.Root>

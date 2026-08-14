@@ -1,7 +1,9 @@
 class SettingsDialogManager {
   open = $state(false);
+  activeSection = $state<'general' | 'appearance' | 'updates'>('general');
 
-  show() {
+  show(section: 'general' | 'appearance' | 'updates' = 'general') {
+    this.activeSection = section;
     this.open = true;
   }
 }
