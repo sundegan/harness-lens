@@ -27,6 +27,101 @@ fn cleanup(path: &std::path::Path) {
     }
 }
 
+fn create_legacy_v8_database(path: &std::path::Path) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let connection = Connection::open(path).unwrap();
+    connection
+        .execute_batch(
+            "
+            PRAGMA foreign_keys = ON;
+
+            CREATE TABLE provider_sync_state (
+                source_id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL
+            );
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                source_session_id TEXT NOT NULL,
+                source_id TEXT,
+                project_key TEXT
+            );
+            CREATE TABLE rollout_sources (
+                path TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL
+            );
+            CREATE TABLE agent_invocations (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+                source_path TEXT NOT NULL
+            );
+            CREATE TABLE skill_invocations (
+                id TEXT PRIMARY KEY NOT NULL,
+                invocation_id TEXT NOT NULL REFERENCES agent_invocations(id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE
+            );
+            CREATE TABLE pending_skill_reads (
+                source_path TEXT NOT NULL,
+                call_id TEXT NOT NULL,
+                invocation_id TEXT NOT NULL REFERENCES agent_invocations(id) ON DELETE CASCADE,
+                PRIMARY KEY (source_path, call_id)
+            );
+            CREATE TABLE token_usage_records (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+                invocation_id TEXT REFERENCES agent_invocations(id) ON DELETE SET NULL,
+                source_path TEXT NOT NULL
+            );
+            CREATE TABLE session_events (
+                id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+                source_path TEXT NOT NULL
+            );
+            CREATE TABLE tool_call (
+                id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+                source_path TEXT NOT NULL,
+                call_id TEXT NOT NULL,
+                retry_class TEXT NOT NULL DEFAULT 'none'
+                    CHECK (retry_class IN ('none', 'explicit', 'inferred'))
+            );
+
+            INSERT INTO provider_sync_state VALUES ('codex:legacy', 'codex');
+            INSERT INTO agent_sessions
+                VALUES ('session:legacy', 'codex', 'legacy-session', 'codex:legacy', 'legacy-project');
+            INSERT INTO rollout_sources VALUES ('legacy.jsonl', 'codex', 'session:legacy');
+            INSERT INTO agent_invocations VALUES ('invocation:legacy', 'session:legacy', 'legacy.jsonl');
+            INSERT INTO skill_invocations
+                VALUES ('skill:legacy', 'invocation:legacy', 'session:legacy');
+            INSERT INTO pending_skill_reads
+                VALUES ('legacy.jsonl', 'call:legacy', 'invocation:legacy');
+            INSERT INTO token_usage_records
+                VALUES ('usage:legacy', 'session:legacy', 'invocation:legacy', 'legacy.jsonl');
+            INSERT INTO session_events
+                VALUES ('event:legacy', 'codex', 'session:legacy', 'legacy.jsonl');
+            INSERT INTO tool_call
+                VALUES (
+                    'tool:legacy',
+                    'codex',
+                    'codex:legacy',
+                    'session:legacy',
+                    'legacy.jsonl',
+                    'call:legacy',
+                    'explicit'
+                );
+            ",
+        )
+        .unwrap();
+    connection
+        .pragma_update(None, "application_id", APPLICATION_ID)
+        .unwrap();
+    connection.pragma_update(None, "user_version", 8).unwrap();
+}
+
 #[test]
 fn initialize_creates_versioned_analytics_database() {
     let path = test_database_path("empty");
@@ -46,7 +141,9 @@ fn initialize_creates_versioned_analytics_database() {
                 'agent_invocations',
                 'skill_invocations',
                 'token_usage_records',
-                'session_events'
+                'session_events',
+                'mcp_tool_call',
+                'mcp_tool_call_retry'
               )
             ",
             [],
@@ -72,16 +169,24 @@ fn initialize_creates_versioned_analytics_database() {
     let auto_vacuum: u32 = connection
         .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
         .unwrap();
+    let tool_call_indexes: Vec<String> = connection
+        .prepare("SELECT name FROM pragma_index_list('mcp_tool_call') ORDER BY name")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
 
     assert!(path.is_file());
     assert_eq!(database.schema_version().unwrap(), current_schema_version());
-    assert_eq!(analytics_table_count, 7);
+    assert_eq!(analytics_table_count, 9);
     assert_eq!(foreign_keys, 1);
     assert_eq!(journal_mode, "wal");
     assert_eq!(application_id, APPLICATION_ID);
     assert_eq!(
         sync_state_columns,
         [
+            "source_id",
             "provider",
             "checkpoint_json",
             "status",
@@ -93,6 +198,8 @@ fn initialize_creates_versioned_analytics_database() {
         ]
     );
     assert_eq!(auto_vacuum, 2);
+    assert!(tool_call_indexes.contains(&"mcp_tool_call_call_event_idx".to_owned()));
+    assert!(tool_call_indexes.contains(&"mcp_tool_call_result_event_idx".to_owned()));
 
     drop(connection);
     cleanup(&path);
@@ -101,7 +208,105 @@ fn initialize_creates_versioned_analytics_database() {
 #[test]
 fn embedded_migration_directory_is_valid() {
     validate_embedded_migrations().unwrap();
-    assert_eq!(current_schema_version(), 7);
+    assert_eq!(current_schema_version(), 10);
+}
+
+#[test]
+fn version_8_projection_is_backed_up_and_rebuilt_as_mcp_only() {
+    let path = test_database_path("version-8-mcp-only");
+    create_legacy_v8_database(&path);
+
+    let database = Database::initialize(&path).unwrap();
+    let connection = database.connect().unwrap();
+    let backups = database.list_backups().unwrap();
+    let rebuilt_projection_rows: i64 = connection
+        .query_row(
+            "
+            SELECT
+                (SELECT COUNT(*) FROM provider_sync_state) +
+                (SELECT COUNT(*) FROM agent_sessions) +
+                (SELECT COUNT(*) FROM rollout_sources) +
+                (SELECT COUNT(*) FROM agent_invocations) +
+                (SELECT COUNT(*) FROM skill_invocations) +
+                (SELECT COUNT(*) FROM pending_skill_reads) +
+                (SELECT COUNT(*) FROM token_usage_records) +
+                (SELECT COUNT(*) FROM session_events) +
+                (SELECT COUNT(*) FROM mcp_tool_call) +
+                (SELECT COUNT(*) FROM mcp_tool_call_retry)
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let required_source_columns: i64 = connection
+        .query_row(
+            "
+            SELECT
+                (SELECT COUNT(*) FROM pragma_table_info('rollout_sources') WHERE name = 'source_id') +
+                (SELECT COUNT(*) FROM pragma_table_info('agent_invocations') WHERE name = 'source_id') +
+                (SELECT COUNT(*) FROM pragma_table_info('session_events') WHERE name = 'source_id')
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let retry_table_exists: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'mcp_tool_call_retry'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let legacy_tool_table_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('tool_call', 'tool_call_retry')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    connection
+        .execute(
+            "
+            INSERT INTO agent_sessions (id, provider, source_id, source_session_id)
+            VALUES ('session:new', 'codex', 'codex:new', 'new-session')
+            ",
+            [],
+        )
+        .unwrap();
+    let explicit_retry_insert = connection.execute(
+        "
+        INSERT INTO mcp_tool_call (
+            id, provider, source_id, session_id, source_path, call_id, retry_class
+        ) VALUES (
+            'tool:new', 'codex', 'codex:new', 'session:new', 'new.jsonl', 'call:new', 'explicit'
+        )
+        ",
+        [],
+    );
+
+    assert_eq!(database.schema_version().unwrap(), 10);
+    assert_eq!(rebuilt_projection_rows, 0);
+    assert_eq!(required_source_columns, 3);
+    assert_eq!(retry_table_exists, 1);
+    assert_eq!(legacy_tool_table_count, 0);
+    assert!(explicit_retry_insert.is_err());
+    assert_eq!(backups.len(), 1);
+    assert!(backups[0].file_name.contains("pre-migration-v8-to-v10"));
+
+    let backup_path = path
+        .parent()
+        .unwrap()
+        .join("backups")
+        .join(&backups[0].file_name);
+    let backup_connection = Connection::open(backup_path).unwrap();
+    let backed_up_tool_call: String = backup_connection
+        .query_row("SELECT id FROM tool_call", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(backed_up_tool_call, "tool:legacy");
+
+    drop(backup_connection);
+    drop(connection);
+    cleanup(&path);
 }
 
 #[test]

@@ -37,14 +37,17 @@ import {
   type SessionPage,
 } from '$lib/session-history';
 import { createTrailingRefresh } from '$lib/trailing-refresh';
+import { getWorkspaceNavigation } from '$lib/workspace-navigation.svelte';
 
 let { active = true }: { active?: boolean } = $props();
+const navigation = getWorkspaceNavigation();
 
 type ArchiveFilter = 'all' | 'current' | 'archived';
 type StatusBadgeVariant = 'success' | 'warning' | 'outline' | 'destructive';
 
 let pageData = $state.raw<SessionPage | null>(null);
 let selectedDetail = $state.raw<SessionDetail | null>(null);
+let selectedEventId = $state<string | null>(null);
 let loading = $state(true);
 let detailLoading = $state(false);
 let error = $state('');
@@ -97,6 +100,13 @@ onMount(() => {
   };
 });
 
+$effect(() => {
+  const target = navigation.sessionTarget;
+  if (!active || !target) return;
+  navigation.clearSessionTarget();
+  void openSessionById(target.sessionId, target.eventId);
+});
+
 export function activate() {
   if (refreshWhenActive) {
     refreshWhenActive = false;
@@ -134,15 +144,20 @@ async function loadPage() {
 }
 
 async function openSession(session: SessionListItem) {
+  await openSessionById(session.id);
+}
+
+async function openSessionById(sessionId: string, eventId: string | undefined = undefined) {
   const sequence = ++detailRequestSequence;
   selectedDetail = null;
   detailError = '';
   detailLoading = true;
   try {
-    const result = await getSessionDetail(session.id);
+    const result = await getSessionDetail(sessionId);
     if (sequence !== detailRequestSequence) return;
     if (result) {
       selectedDetail = result;
+      selectedEventId = eventId ?? null;
     } else {
       detailError = i18nManager.t('sessions.detail.not_found');
     }
@@ -157,6 +172,7 @@ async function openSession(session: SessionListItem) {
 function closeDetail() {
   detailRequestSequence += 1;
   selectedDetail = null;
+  selectedEventId = null;
   detailError = '';
   detailLoading = false;
 }
@@ -258,7 +274,7 @@ function statusDotClass(status: string): string {
 </script>
 
 {#if selectedDetail}
-  <SessionDetailView detail={selectedDetail} onback={closeDetail} />
+  <SessionDetailView detail={selectedDetail} targetEventId={selectedEventId} onback={closeDetail} />
 {:else if detailLoading}
   <div class="flex min-h-[36rem] w-full flex-col p-5 sm:p-6" role="status">
     <span class="sr-only">{i18nManager.t('sessions.detail.loading')}</span>

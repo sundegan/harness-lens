@@ -13,9 +13,6 @@ use super::model::{
 };
 use crate::database::{Database, DatabaseError};
 
-#[cfg(any(not(feature = "e2e"), test))]
-pub(super) const PROVIDER: &str = "codex";
-
 pub(super) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -24,16 +21,19 @@ pub(super) fn now_ms() -> i64 {
 }
 
 #[cfg(not(feature = "e2e"))]
-pub(super) fn load_checkpoint(database: &Database) -> Result<Option<String>, DatabaseError> {
+pub(super) fn load_checkpoint(
+    database: &Database,
+    source_id: &str,
+) -> Result<Option<String>, DatabaseError> {
     database
         .connect()?
         .query_row(
             "
             SELECT checkpoint_json
             FROM provider_sync_state
-            WHERE provider = ?1
+            WHERE source_id = ?1
             ",
-            [PROVIDER],
+            [source_id],
             |row| row.get(0),
         )
         .optional()
@@ -44,6 +44,8 @@ pub(super) fn load_checkpoint(database: &Database) -> Result<Option<String>, Dat
 #[cfg(not(feature = "e2e"))]
 pub(super) fn update_sync_status(
     database: &Database,
+    provider: &str,
+    source_id: &str,
     status: &str,
     phase: &str,
     last_error: Option<&str>,
@@ -53,37 +55,47 @@ pub(super) fn update_sync_status(
         .execute(
             "
             INSERT INTO provider_sync_state (
+                source_id,
                 provider,
                 status,
                 phase,
                 last_error,
                 updated_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5)
-            ON CONFLICT(provider) DO UPDATE SET
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            ON CONFLICT(source_id) DO UPDATE SET
+                provider = excluded.provider,
                 status = excluded.status,
                 phase = excluded.phase,
                 last_error = excluded.last_error,
                 updated_at_ms = excluded.updated_at_ms
             ",
-            params![PROVIDER, status, phase, last_error, now_ms()],
+            params![source_id, provider, status, phase, last_error, now_ms()],
         )
         .map_err(|source| DatabaseError::sqlite("update the analytics sync status", source))?;
     Ok(())
 }
 
 #[cfg(any(not(feature = "e2e"), test))]
+pub(super) struct BatchState<'a> {
+    pub provider: &'a str,
+    pub source_id: &'a str,
+    pub checkpoint_json: &'a str,
+    pub status: &'a str,
+    pub phase: &'a str,
+    pub processed_records: usize,
+    pub diagnostic_count: usize,
+}
+
+#[cfg(any(not(feature = "e2e"), test))]
 pub(super) fn save_batch_state(
     transaction: &Transaction<'_>,
-    checkpoint_json: &str,
-    status: &str,
-    phase: &str,
-    processed_records: usize,
-    diagnostic_count: usize,
+    state: BatchState<'_>,
 ) -> Result<(), DatabaseError> {
     transaction
         .execute(
             "
             INSERT INTO provider_sync_state (
+                source_id,
                 provider,
                 checkpoint_json,
                 status,
@@ -92,8 +104,9 @@ pub(super) fn save_batch_state(
                 diagnostic_count,
                 last_error,
                 updated_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)
-            ON CONFLICT(provider) DO UPDATE SET
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)
+            ON CONFLICT(source_id) DO UPDATE SET
+                provider = excluded.provider,
                 checkpoint_json = excluded.checkpoint_json,
                 status = excluded.status,
                 phase = excluded.phase,
@@ -105,12 +118,13 @@ pub(super) fn save_batch_state(
                 updated_at_ms = excluded.updated_at_ms
             ",
             params![
-                PROVIDER,
-                checkpoint_json,
-                status,
-                phase,
-                processed_records as i64,
-                diagnostic_count as i64,
+                state.source_id,
+                state.provider,
+                state.checkpoint_json,
+                state.status,
+                state.phase,
+                state.processed_records as i64,
+                state.diagnostic_count as i64,
                 now_ms()
             ],
         )

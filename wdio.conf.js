@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const appName = process.platform === 'win32' ? 'harness-lens.exe' : 'harness-lens';
 const appBinaryPath = path.join(rootDir, 'target', 'debug', appName);
+process.env.HARNESS_LENS_E2E_DATA_DIR ??= path.join(rootDir, 'target', 'e2e-data');
 
 export const config = {
   runner: 'local',

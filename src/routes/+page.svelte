@@ -3,15 +3,21 @@ import BlocksIcon from '@lucide/svelte/icons/blocks';
 import DownloadIcon from '@lucide/svelte/icons/download';
 import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 import SettingsIcon from '@lucide/svelte/icons/settings';
+import WrenchIcon from '@lucide/svelte/icons/wrench';
 import SessionBrowser from '$lib/components/session-history/SessionBrowser.svelte';
 import SkillAnalysis from '$lib/components/skill-analysis/SkillAnalysis.svelte';
+import ToolCallAnalysis from '$lib/components/tool-call-analysis/ToolCallAnalysis.svelte';
 import * as Sidebar from '$lib/components/ui/sidebar';
 import { i18nManager } from '$lib/i18n.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
 import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
+import {
+  type MainModuleId,
+  setWorkspaceNavigation,
+  WorkspaceNavigation,
+} from '$lib/workspace-navigation.svelte';
 
-type MainModuleId = 'sessions' | 'skills';
 type MainModule = {
   id: MainModuleId;
   labelKey: string;
@@ -26,18 +32,33 @@ const modules = [
     id: 'skills',
     labelKey: 'main.nav.skills',
   },
+  {
+    id: 'tool-calls',
+    labelKey: 'main.nav.tool_calls',
+  },
 ] as const satisfies ReadonlyArray<MainModule>;
 
-let activeModule = $state<MainModuleId>('sessions');
+const navigation = setWorkspaceNavigation(new WorkspaceNavigation());
 let skillModuleMounted = $state(false);
+let toolCallModuleMounted = $state(false);
 let sessionBrowser = $state<{ activate(): void }>();
 let skillAnalysis = $state<{ activate(): void }>();
+let toolCallAnalysis = $state<{ activate(): void }>();
+
+$effect(() => {
+  const module = navigation.activeModule;
+  if (module === 'skills') skillModuleMounted = true;
+  if (module === 'tool-calls') toolCallModuleMounted = true;
+});
 
 function activateModule(module: MainModuleId) {
-  activeModule = module;
+  navigation.activeModule = module;
   if (module === 'skills') {
     skillModuleMounted = true;
     skillAnalysis?.activate();
+  } else if (module === 'tool-calls') {
+    toolCallModuleMounted = true;
+    toolCallAnalysis?.activate();
   } else {
     sessionBrowser?.activate();
   }
@@ -74,7 +95,7 @@ function activateModule(module: MainModuleId) {
         <Sidebar.GroupContent>
           <Sidebar.Menu class="gap-1">
         {#each modules as module (module.id)}
-          {@const isActive = activeModule === module.id}
+          {@const isActive = navigation.activeModule === module.id}
           <Sidebar.MenuItem>
             <Sidebar.MenuButton
               isActive={isActive}
@@ -89,8 +110,10 @@ function activateModule(module: MainModuleId) {
             >
               {#if module.id === 'sessions'}
                 <MessageSquareIcon strokeWidth={1.8} aria-hidden="true" />
-              {:else}
+              {:else if module.id === 'skills'}
                 <BlocksIcon strokeWidth={1.8} aria-hidden="true" />
+              {:else if module.id === 'tool-calls'}
+                <WrenchIcon strokeWidth={1.8} aria-hidden="true" />
               {/if}
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>
@@ -135,19 +158,28 @@ function activateModule(module: MainModuleId) {
   <Sidebar.Inset id="main-workspace" class="min-h-0 min-w-0 overflow-hidden">
     <div class="min-h-0 flex-1 overflow-auto bg-background">
       <section
-        class={cn('min-h-full w-full bg-card', activeModule === 'sessions' ? 'flex' : 'hidden')}
+        class={cn('min-h-full w-full bg-card', navigation.activeModule === 'sessions' ? 'flex' : 'hidden')}
         aria-label={i18nManager.t('main.nav.sessions')}
-        aria-hidden={activeModule !== 'sessions'}
+        aria-hidden={navigation.activeModule !== 'sessions'}
       >
-        <SessionBrowser bind:this={sessionBrowser} active={activeModule === 'sessions'} />
+        <SessionBrowser bind:this={sessionBrowser} active={navigation.activeModule === 'sessions'} />
       </section>
       {#if skillModuleMounted}
         <section
-          class={cn('min-h-full w-full bg-card', activeModule === 'skills' ? 'flex' : 'hidden')}
+          class={cn('min-h-full w-full bg-card', navigation.activeModule === 'skills' ? 'flex' : 'hidden')}
           aria-label={i18nManager.t('main.nav.skills')}
-          aria-hidden={activeModule !== 'skills'}
+          aria-hidden={navigation.activeModule !== 'skills'}
         >
-          <SkillAnalysis bind:this={skillAnalysis} active={activeModule === 'skills'} />
+          <SkillAnalysis bind:this={skillAnalysis} active={navigation.activeModule === 'skills'} />
+        </section>
+      {/if}
+      {#if toolCallModuleMounted}
+        <section
+          class={cn('min-h-full w-full bg-card', navigation.activeModule === 'tool-calls' ? 'flex' : 'hidden')}
+          aria-label={i18nManager.t('main.nav.tool_calls')}
+          aria-hidden={navigation.activeModule !== 'tool-calls'}
+        >
+          <ToolCallAnalysis bind:this={toolCallAnalysis} active={navigation.activeModule === 'tool-calls'} />
         </section>
       {/if}
     </div>

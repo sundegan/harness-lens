@@ -3,14 +3,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use coding_agent_data::{
+    providers::{claude_code::ClaudeCodeProvider, codex::CodexProvider},
     Actor, AgentInvocation, AgentInvocationStatus, Batch, Change, Checkpoint, DataQuality, Event,
-    EventData, EventSequence, Message, MessageRole, Record, RecordData, RecordId, Session,
-    SourceId, SourceLocation, SourceRef, StopReason, Timestamp, TokenUsage, ToolCall, ToolKind,
-    ToolResult, ToolStatus, UsageReport,
+    EventData, EventSequence, Message, MessageRole, Provider, Record, RecordData, RecordId, Retry,
+    Session, SourceId, SourceLocation, SourceRef, StopReason, Timestamp, TokenUsage, ToolCall,
+    ToolKind, ToolResult, ToolSourceKind, ToolStatus, UsageReport,
 };
 use serde_json::{json, Value};
 
-use super::{apply_batch, skill_names_from_tool_output};
+use super::{
+    apply_batch as apply_provider_batch, apply_test_batch as apply_batch,
+    skill_names_from_tool_output, ProviderContext,
+};
 use crate::analytics::model::SessionPageRequest;
 use crate::analytics::repository::{
     analytics_snapshot, session_detail, session_page, skill_analysis,
@@ -19,6 +23,15 @@ use crate::database::Database;
 
 static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
 const SOURCE_ID: &str = "codex:test";
+
+#[derive(Debug)]
+struct RealProjectionSummary {
+    provider: String,
+    batches: usize,
+    changes: usize,
+    diagnostics: usize,
+    mcp_tool_calls: i64,
+}
 
 fn test_database_path() -> PathBuf {
     std::env::temp_dir()
@@ -229,16 +242,36 @@ fn tool_call_record(
     call_id: &str,
     input: Value,
 ) -> Record {
+    tool_call_record_with_status(
+        transcript,
+        session,
+        invocation,
+        call_id,
+        input,
+        ToolStatus::Pending,
+    )
+}
+
+fn tool_call_record_with_status(
+    transcript: &Path,
+    session: &str,
+    invocation: &str,
+    call_id: &str,
+    input: Value,
+    status: ToolStatus,
+) -> Record {
     let mut event = Event::new(
         EventSequence::new(1, 0),
         Actor::Agent,
         EventData::ToolCall(ToolCall {
             call_id: call_id.to_owned(),
-            name: "exec_command".to_owned(),
-            namespace: None,
+            name: "query".to_owned(),
+            namespace: Some("database".to_owned()),
+            source_kind: ToolSourceKind::Mcp,
+            server_name: Some("database".to_owned()),
             title: None,
             kind: ToolKind::Execute,
-            status: ToolStatus::Pending,
+            status,
             input,
             locations: Vec::new(),
         }),
@@ -291,6 +324,495 @@ fn tool_result_record(
     record.session = Some(session_id(session));
     record.invocation = Some(invocation_id(transcript, invocation));
     record
+}
+
+fn retry_record(
+    transcript: &Path,
+    session: &str,
+    invocation: &str,
+    retry_id: &str,
+    parent_call_id: Option<&str>,
+) -> Record {
+    let mut event = Event::new(
+        EventSequence::new(3, 0),
+        Actor::Agent,
+        EventData::Retry(Retry {
+            attempt: Some(2),
+            reason: Some("sanitized fixture".to_owned()),
+            delay_ms: Some(100),
+        }),
+    );
+    event.parent =
+        parent_call_id.map(|call_id| RecordId::new(format!("{SOURCE_ID}:tool-call:{call_id}")));
+    let mut record = Record::new(
+        RecordId::new(format!("{SOURCE_ID}:retry:{retry_id}")),
+        SourceId::new(SOURCE_ID),
+        origin(transcript),
+        RecordData::Event(event),
+    );
+    record.session = Some(session_id(session));
+    record.invocation = Some(invocation_id(transcript, invocation));
+    record
+}
+
+#[test]
+fn explicit_retry_evidence_is_attributed_without_self_referencing_calls() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("explicit-retry.jsonl");
+    let batch = Batch {
+        changes: vec![
+            Change::upsert(session_record("session-retry", "Retry", &transcript, 0)),
+            Change::upsert(invocation_record(
+                &transcript,
+                "session-retry",
+                "invocation-retry",
+                AgentInvocationStatus::InProgress,
+                (1_700_000_000, None, None),
+                None,
+            )),
+            Change::upsert(tool_call_record(
+                &transcript,
+                "session-retry",
+                "invocation-retry",
+                "call-retry",
+                json!({"value": 1}),
+            )),
+            Change::upsert(retry_record(
+                &transcript,
+                "session-retry",
+                "invocation-retry",
+                "attributed",
+                Some("call-retry"),
+            )),
+            Change::upsert(retry_record(
+                &transcript,
+                "session-retry",
+                "invocation-retry",
+                "unattributed",
+                None,
+            )),
+        ],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &batch, "ready", "watching").unwrap();
+
+    let connection = database.connect().unwrap();
+    let call: (i64, String, Option<String>) = connection
+        .query_row(
+            "SELECT explicit_retry_count, retry_class, retry_of_id FROM mcp_tool_call WHERE call_id = 'call-retry'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    let evidence: i64 = connection
+        .query_row("SELECT COUNT(*) FROM mcp_tool_call_retry", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(call, (1, "none".to_owned(), None));
+    assert_eq!(evidence, 1);
+
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn built_in_tool_events_remain_in_history_but_not_in_mcp_projection() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("built-in.jsonl");
+    let mut built_in = tool_call_record(
+        &transcript,
+        "session-built-in",
+        "invocation-built-in",
+        "call-built-in",
+        json!({"cmd": "pwd"}),
+    );
+    let RecordData::Event(event) = &mut built_in.data else {
+        unreachable!();
+    };
+    let EventData::ToolCall(call) = &mut event.data else {
+        unreachable!();
+    };
+    call.name = "exec_command".to_owned();
+    call.namespace = None;
+    call.source_kind = ToolSourceKind::BuiltIn;
+    call.server_name = None;
+    call.kind = ToolKind::Execute;
+
+    let batch = Batch {
+        changes: vec![
+            Change::upsert(session_record(
+                "session-built-in",
+                "Built in",
+                &transcript,
+                0,
+            )),
+            Change::upsert(invocation_record(
+                &transcript,
+                "session-built-in",
+                "invocation-built-in",
+                AgentInvocationStatus::InProgress,
+                (1_700_000_000, None, None),
+                None,
+            )),
+            Change::upsert(built_in),
+        ],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &batch, "ready", "watching").unwrap();
+
+    let connection = database.connect().unwrap();
+    let history_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM session_events WHERE event_type = 'tool_call'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let projection_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM mcp_tool_call", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(history_count, 1);
+    assert_eq!(projection_count, 0);
+
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn creates_and_upgrades_fallback_session_for_out_of_order_records() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("out-of-order.jsonl");
+    let invocation = invocation_record(
+        &transcript,
+        "session-out-of-order",
+        "invocation-out-of-order",
+        AgentInvocationStatus::InProgress,
+        (1_700_000_000, None, None),
+        None,
+    );
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![Change::upsert(invocation)],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: true,
+        },
+        "syncing",
+        "initial_scan",
+    )
+    .unwrap();
+
+    let fallback: (i64, String, String) = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "SELECT metadata_present, data_quality, title FROM agent_sessions WHERE id = ?1",
+            [session_id("session-out-of-order").as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(fallback, (0, "partial".to_owned(), String::new()));
+
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![Change::upsert(session_record(
+                "session-out-of-order",
+                "Recovered metadata",
+                &transcript,
+                42,
+            ))],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: false,
+        },
+        "ready",
+        "watching",
+    )
+    .unwrap();
+    let upgraded: (i64, String, String) = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "SELECT metadata_present, data_quality, title FROM agent_sessions WHERE id = ?1",
+            [session_id("session-out-of-order").as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        upgraded,
+        (1, "complete".to_owned(), "Recovered metadata".to_owned())
+    );
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn projects_tool_calls_results_repeats_and_inferred_retries() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("tool-calls.jsonl");
+    let input = json!({"path": "README.md", "options": {"b": 2, "a": 1}});
+    let equivalent_input = json!({"options": {"a": 1, "b": 2}, "path": "README.md"});
+    let batch = Batch {
+        changes: vec![
+            Change::upsert(session_record("session-tools", "Tools", &transcript, 0)),
+            Change::upsert(invocation_record(
+                &transcript,
+                "session-tools",
+                "invocation-tools",
+                AgentInvocationStatus::InProgress,
+                (1_700_000_000, None, None),
+                None,
+            )),
+            Change::upsert(tool_call_record(
+                &transcript,
+                "session-tools",
+                "invocation-tools",
+                "failed",
+                input,
+            )),
+            Change::upsert(tool_result_record(
+                &transcript,
+                "session-tools",
+                "invocation-tools",
+                "failed",
+                json!({"error": "fixture"}),
+                false,
+            )),
+            Change::upsert(tool_call_record(
+                &transcript,
+                "session-tools",
+                "invocation-tools",
+                "retry",
+                equivalent_input,
+            )),
+            Change::upsert(tool_result_record(
+                &transcript,
+                "session-tools",
+                "invocation-tools",
+                "retry",
+                json!({"ok": true}),
+                true,
+            )),
+        ],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+
+    apply_batch(&database, &batch, "ready", "watching").unwrap();
+    let connection = database.connect().unwrap();
+    let rows = connection
+        .prepare(
+            "SELECT call_id, status, has_result, repeat_index, retry_class, call_event_id IS NOT NULL, result_event_id IS NOT NULL FROM mcp_tool_call ORDER BY repeat_index",
+        )
+        .unwrap()
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0],
+        (
+            "failed".to_owned(),
+            "failed".to_owned(),
+            1,
+            0,
+            "none".to_owned(),
+            1,
+            1
+        )
+    );
+    assert_eq!(
+        rows[1],
+        (
+            "retry".to_owned(),
+            "completed".to_owned(),
+            1,
+            1,
+            "inferred".to_owned(),
+            1,
+            1
+        )
+    );
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn result_before_call_is_reconciled_and_declined_is_not_inferred_retry() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("out-of-order.jsonl");
+    let same = json!({"cmd": "safe fixture"});
+    let batch = Batch {
+        changes: vec![
+            Change::upsert(session_record("session-order", "Order", &transcript, 0)),
+            Change::upsert(invocation_record(
+                &transcript,
+                "session-order",
+                "invocation-order",
+                AgentInvocationStatus::InProgress,
+                (1_700_000_000, None, None),
+                None,
+            )),
+            Change::upsert(tool_result_record(
+                &transcript,
+                "session-order",
+                "invocation-order",
+                "out-of-order",
+                json!({"ok": true}),
+                true,
+            )),
+            Change::upsert(tool_call_record(
+                &transcript,
+                "session-order",
+                "invocation-order",
+                "out-of-order",
+                json!({"value": 1}),
+            )),
+            Change::upsert(tool_call_record_with_status(
+                &transcript,
+                "session-order",
+                "invocation-order",
+                "declined",
+                same.clone(),
+                ToolStatus::Declined,
+            )),
+            Change::upsert(tool_call_record(
+                &transcript,
+                "session-order",
+                "invocation-order",
+                "after-declined",
+                same,
+            )),
+        ],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+
+    apply_batch(&database, &batch, "ready", "watching").unwrap();
+    let connection = database.connect().unwrap();
+    let reconciled: (String, i64, i64) = connection
+        .query_row(
+            "SELECT tool_name, has_result, call_event_id IS NOT NULL FROM mcp_tool_call WHERE call_id = 'out-of-order'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    let retry_class: String = connection
+        .query_row(
+            "SELECT retry_class FROM mcp_tool_call WHERE call_id = 'after-declined'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(reconciled, ("query".to_owned(), 1, 1));
+    assert_eq!(retry_class, "none");
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn deleting_tool_evidence_updates_or_removes_the_projection() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("delete-tool.jsonl");
+    let call = tool_call_record(
+        &transcript,
+        "session-delete-tool",
+        "invocation-delete-tool",
+        "delete-me",
+        json!({"value": 1}),
+    );
+    let call_id = call.id.clone();
+    let result = tool_result_record(
+        &transcript,
+        "session-delete-tool",
+        "invocation-delete-tool",
+        "delete-me",
+        json!({"ok": true}),
+        true,
+    );
+    let result_id = result.id.clone();
+    let initial = Batch {
+        changes: vec![
+            Change::upsert(session_record(
+                "session-delete-tool",
+                "Delete tool",
+                &transcript,
+                0,
+            )),
+            Change::upsert(invocation_record(
+                &transcript,
+                "session-delete-tool",
+                "invocation-delete-tool",
+                AgentInvocationStatus::InProgress,
+                (1_700_000_000, None, None),
+                None,
+            )),
+            Change::upsert(call),
+            Change::upsert(result),
+        ],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &initial, "ready", "watching").unwrap();
+    let delete_result = Batch {
+        changes: vec![Change::Delete(result_id)],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &delete_result, "ready", "watching").unwrap();
+    let projection: (i64, String, Option<i64>, Option<i64>) = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "SELECT has_result, status, completed_at_ms, duration_ms FROM mcp_tool_call WHERE call_id = 'delete-me'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(projection, (0, "pending".to_owned(), None, None));
+
+    let delete_call = Batch {
+        changes: vec![Change::Delete(call_id)],
+        checkpoint: checkpoint(),
+        diagnostics: Vec::new(),
+        has_more: false,
+    };
+    apply_batch(&database, &delete_call, "ready", "watching").unwrap();
+    let count: i64 = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM mcp_tool_call WHERE call_id = 'delete-me'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 0);
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
 }
 
 #[test]
@@ -1019,4 +1541,144 @@ fn skill_parser_extracts_unique_names_from_successful_tool_output() {
     ]));
 
     assert_eq!(names.into_iter().collect::<Vec<_>>(), vec!["valid-skill"]);
+}
+
+fn project_real_provider<P: Provider>(database: &Database, provider: &P) -> RealProjectionSummary {
+    let context = ProviderContext {
+        provider: provider.info().id.as_str().to_owned(),
+        source_id: provider.info().source.as_str().to_owned(),
+    };
+    let mut checkpoint = None;
+    let mut batches = 0;
+    let mut changes = 0;
+    let mut diagnostics = 0;
+    loop {
+        let batch = provider
+            .scan(checkpoint.as_ref())
+            .unwrap_or_else(|error| panic!("{} real-data scan failed: {error}", context.provider));
+        batches += 1;
+        changes += batch.changes.len();
+        diagnostics += batch.diagnostics.len();
+        apply_provider_batch(
+            database,
+            &context,
+            &batch,
+            if batch.has_more { "syncing" } else { "ready" },
+            "real_data_validation",
+        )
+        .unwrap_or_else(|error| {
+            panic!("{} real-data projection failed: {error}", context.provider)
+        });
+        checkpoint = Some(batch.checkpoint.clone());
+        if !batch.has_more {
+            break;
+        }
+    }
+    let mcp_tool_calls = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM mcp_tool_call WHERE source_id = ?1",
+            [&context.source_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    RealProjectionSummary {
+        provider: context.provider,
+        batches,
+        changes,
+        diagnostics,
+        mcp_tool_calls,
+    }
+}
+
+fn integrity_count(database: &Database, query: &str) -> i64 {
+    database
+        .connect()
+        .unwrap()
+        .query_row(query, [], |row| row.get(0))
+        .unwrap()
+}
+
+#[test]
+#[ignore = "scans the developer's local Codex and Claude Code sources read-only"]
+fn real_local_mcp_tool_call_projection_is_consistent() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let mut summaries = Vec::new();
+    let provider_filter = std::env::var("HARNESS_LENS_REAL_PROVIDER").ok();
+    if provider_filter
+        .as_deref()
+        .is_none_or(|value| value == "codex")
+    {
+        match CodexProvider::discover() {
+            Ok(provider) => summaries.push(project_real_provider(&database, &provider)),
+            Err(error) => eprintln!("provider=codex unavailable={error}"),
+        }
+    }
+    if provider_filter
+        .as_deref()
+        .is_none_or(|value| value == "claude-code")
+    {
+        match ClaudeCodeProvider::discover() {
+            Ok(provider) => summaries.push(project_real_provider(&database, &provider)),
+            Err(error) => eprintln!("provider=claude-code unavailable={error}"),
+        }
+    }
+
+    let connection = database.connect().unwrap();
+    assert_eq!(
+        connection
+            .query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0))
+            .unwrap(),
+        "ok"
+    );
+    drop(connection);
+
+    let checks = [
+        (
+            "foreign_keys",
+            "SELECT COUNT(*) FROM pragma_foreign_key_check",
+        ),
+        (
+            "orphan_sessions",
+            "SELECT COUNT(*) FROM mcp_tool_call tc LEFT JOIN agent_sessions s ON s.id = tc.session_id WHERE s.id IS NULL",
+        ),
+        (
+            "orphan_call_events",
+            "SELECT COUNT(*) FROM mcp_tool_call tc LEFT JOIN session_events e ON e.id = tc.call_event_id WHERE tc.call_event_id IS NOT NULL AND e.id IS NULL",
+        ),
+        (
+            "orphan_result_events",
+            "SELECT COUNT(*) FROM mcp_tool_call tc LEFT JOIN session_events e ON e.id = tc.result_event_id WHERE tc.result_event_id IS NOT NULL AND e.id IS NULL",
+        ),
+        (
+            "duplicate_source_calls",
+            "SELECT COUNT(*) FROM (SELECT 1 FROM mcp_tool_call GROUP BY source_id, source_path, call_id HAVING COUNT(*) > 1)",
+        ),
+        (
+            "orphan_retry_events",
+            "SELECT COUNT(*) FROM mcp_tool_call_retry retry LEFT JOIN session_events e ON e.id = retry.id WHERE e.id IS NULL",
+        ),
+        (
+            "non_mcp_call_events",
+            "SELECT COUNT(*) FROM mcp_tool_call tc JOIN session_events e ON e.id = tc.call_event_id WHERE COALESCE(json_extract(e.event_json, '$.data.value.source_kind'), '') <> 'mcp'",
+        ),
+    ];
+    for (name, query) in checks {
+        let count = integrity_count(&database, query);
+        eprintln!("integrity={name} count={count}");
+        assert_eq!(count, 0, "real-data integrity check failed: {name}");
+    }
+    for summary in summaries {
+        eprintln!(
+            "provider={} batches={} changes={} diagnostics={} mcp_tool_calls={}",
+            summary.provider,
+            summary.batches,
+            summary.changes,
+            summary.diagnostics,
+            summary.mcp_tool_calls
+        );
+    }
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
 }

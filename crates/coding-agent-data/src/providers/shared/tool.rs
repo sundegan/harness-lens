@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{FileChange, FileChangeKind, ToolKind, ToolLocation, ToolStatus};
+use crate::{FileChange, FileChangeKind, ToolKind, ToolLocation, ToolSourceKind, ToolStatus};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ObservedTool {
     pub name: String,
     pub namespace: Option<String>,
+    pub source_kind: ToolSourceKind,
+    pub server_name: Option<String>,
     pub kind: ToolKind,
     pub input: Value,
     pub locations: Vec<ToolLocation>,
@@ -25,7 +27,17 @@ impl ObservedTool {
             input: input.clone(),
             name,
             namespace,
+            source_kind: ToolSourceKind::Unknown,
+            server_name: None,
         }
+    }
+
+    pub fn with_source(mut self, source_kind: ToolSourceKind, server_name: Option<&str>) -> Self {
+        self.source_kind = source_kind;
+        self.server_name = server_name
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        self
     }
 }
 

@@ -18,7 +18,8 @@ use crate::{
     RateLimitReason, RateLimitScope, RateLimitWindow, Reasoning, ReasoningVisibility, Record,
     RecordData, RecordId, Rollback, SandboxPolicy, Session, SessionHistory, SessionRelation,
     SessionRelationKind, SourceLocation, SourceRef, SpendLimit, StopReason, Timestamp, ToolCall,
-    ToolKind, ToolLocation, ToolResult, ToolStatus, UnknownEvent, UnknownRecord, WorldState,
+    ToolKind, ToolLocation, ToolResult, ToolSourceKind, ToolStatus, UnknownEvent, UnknownRecord,
+    WorldState,
 };
 
 use super::checkpoint::RolloutContext;
@@ -1756,6 +1757,8 @@ fn materialized_tool_records(
                 call_id: tool.call_id.clone(),
                 name: tool.observed.name.clone(),
                 namespace: tool.observed.namespace.clone(),
+                source_kind: tool.observed.source_kind,
+                server_name: tool.observed.server_name.clone(),
                 title: tool.title,
                 kind: tool.observed.kind,
                 status: tool.status,
@@ -2897,11 +2900,9 @@ fn normalize_materialized_mcp_call(
     terminal: bool,
 ) -> Vec<Record> {
     let input = event.get("arguments").cloned().unwrap_or(Value::Null);
-    let observed = ObservedTool::new(
-        string(event, "tool").unwrap_or_default(),
-        string(event, "server"),
-        &input,
-    );
+    let server = string(event, "server");
+    let observed = ObservedTool::new(string(event, "tool").unwrap_or_default(), server, &input)
+        .with_source(ToolSourceKind::Mcp, server);
     let status = string(event, "status")
         .map(tool_status)
         .unwrap_or(if terminal {
@@ -3008,7 +3009,8 @@ fn normalize_patch_event(
     let input = serde_json::json!({
         "changes": payload.get("changes").cloned().unwrap_or(Value::Null)
     });
-    let observed = ObservedTool::new("apply_patch", None, &input);
+    let observed =
+        ObservedTool::new("apply_patch", None, &input).with_source(ToolSourceKind::BuiltIn, None);
     context
         .tool_calls
         .insert(call_id.to_owned(), observed.clone());
@@ -3033,6 +3035,8 @@ fn normalize_patch_event(
                 call_id: call_id.to_owned(),
                 name: observed.name,
                 namespace: observed.namespace,
+                source_kind: observed.source_kind,
+                server_name: observed.server_name,
                 title: None,
                 kind: observed.kind,
                 status,
@@ -3200,7 +3204,8 @@ fn normalize_mcp_event(
     let server = string(invocation, "server").unwrap_or_default();
     let tool = string(invocation, "tool").unwrap_or_default();
     let input = invocation.get("arguments").cloned().unwrap_or(Value::Null);
-    let observed = ObservedTool::new(tool, (!server.is_empty()).then_some(server), &input);
+    let observed = ObservedTool::new(tool, (!server.is_empty()).then_some(server), &input)
+        .with_source(ToolSourceKind::Mcp, (!server.is_empty()).then_some(server));
     let terminal = payload.get("type").and_then(Value::as_str) == Some("mcp_tool_call_end");
     let result = payload.get("result").unwrap_or(&Value::Null);
     let ok = result.get("Ok");
@@ -3245,6 +3250,8 @@ fn normalize_mcp_event(
                 call_id: call_id.to_owned(),
                 name: observed.name.clone(),
                 namespace: observed.namespace.clone(),
+                source_kind: observed.source_kind,
+                server_name: observed.server_name.clone(),
                 title: (!server.is_empty()).then(|| server.to_owned()),
                 kind: observed.kind,
                 status,
@@ -3406,6 +3413,8 @@ fn normalize_exec_command_end(
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
+                    source_kind: observed.source_kind,
+                    server_name: observed.server_name.clone(),
                     title: None,
                     kind: observed.kind,
                     status,
@@ -3475,7 +3484,8 @@ fn normalize_web_search_end(
         .get("action")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "query": string(payload, "query") }));
-    let observed = ObservedTool::new("web_search", None, &input);
+    let observed = ObservedTool::new("web_search", None, &input)
+        .with_source(ToolSourceKind::ProviderHosted, None);
     context
         .tool_calls
         .insert(call_id.to_owned(), observed.clone());
@@ -3504,6 +3514,8 @@ fn normalize_web_search_end(
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
+                    source_kind: observed.source_kind,
+                    server_name: observed.server_name.clone(),
                     title: None,
                     kind: observed.kind,
                     status: ToolStatus::Completed,
@@ -3585,7 +3597,8 @@ fn normalize_image_generation_end(
         "prompt": payload.get("revised_prompt").cloned().unwrap_or(Value::Null),
         "saved_path": payload.get("saved_path").cloned().unwrap_or(Value::Null),
     });
-    let observed = ObservedTool::new("image_generation", None, &input);
+    let observed = ObservedTool::new("image_generation", None, &input)
+        .with_source(ToolSourceKind::ProviderHosted, None);
     context
         .tool_calls
         .insert(call_id.to_owned(), observed.clone());
@@ -3610,6 +3623,8 @@ fn normalize_image_generation_end(
                     call_id: call_id.to_owned(),
                     name: observed.name.clone(),
                     namespace: observed.namespace.clone(),
+                    source_kind: observed.source_kind,
+                    server_name: observed.server_name.clone(),
                     title: None,
                     kind: observed.kind,
                     status,
@@ -3730,6 +3745,8 @@ fn normalize_view_image(
                     call_id: call_id.to_owned(),
                     name: "view_image".to_owned(),
                     namespace: None,
+                    source_kind: ToolSourceKind::BuiltIn,
+                    server_name: None,
                     title: None,
                     kind: ToolKind::Read,
                     status: ToolStatus::Completed,
@@ -4134,7 +4151,8 @@ fn normalize_response_item(
                 .filter(|value| !value.is_empty())
                 .unwrap_or(position);
             let input = payload.get("action").cloned().unwrap_or(Value::Null);
-            let observed = ObservedTool::new("local_shell", Some("codex"), &input);
+            let observed = ObservedTool::new("local_shell", Some("codex"), &input)
+                .with_source(ToolSourceKind::BuiltIn, None);
             let status = string(payload, "status")
                 .map(tool_status)
                 .unwrap_or(ToolStatus::Unknown);
@@ -4164,6 +4182,8 @@ fn normalize_response_item(
                         call_id: call_id.to_owned(),
                         name: observed.name,
                         namespace: observed.namespace,
+                        source_kind: observed.source_kind,
+                        server_name: observed.server_name,
                         title: None,
                         kind: observed.kind,
                         status,
@@ -4194,7 +4214,14 @@ fn normalize_response_item(
                 .unwrap_or(Value::Null);
             let provider_name = string(payload, "name").unwrap_or_default();
             let namespace = string(payload, "namespace");
-            let observed = ObservedTool::new(provider_name, namespace, &input);
+            let source_kind =
+                if payload.get("type").and_then(Value::as_str) == Some("custom_tool_call") {
+                    ToolSourceKind::Custom
+                } else {
+                    ToolSourceKind::Unknown
+                };
+            let observed =
+                ObservedTool::new(provider_name, namespace, &input).with_source(source_kind, None);
             context
                 .tool_calls
                 .insert(call_id.to_owned(), observed.clone());
@@ -4223,6 +4250,8 @@ fn normalize_response_item(
                         kind: observed.kind,
                         name: observed.name,
                         namespace: observed.namespace,
+                        source_kind: observed.source_kind,
+                        server_name: observed.server_name,
                         status,
                         input,
                         locations: observed.locations,
@@ -4426,6 +4455,8 @@ fn normalize_response_item(
                         call_id: call_id.to_owned(),
                         name: observed.name,
                         namespace: observed.namespace,
+                        source_kind: observed.source_kind,
+                        server_name: observed.server_name,
                         title: None,
                         kind: observed.kind,
                         status: payload
@@ -4482,6 +4513,8 @@ fn normalize_response_item(
                         call_id: call_id.to_owned(),
                         name: observed.name.clone(),
                         namespace: observed.namespace,
+                        source_kind: observed.source_kind,
+                        server_name: observed.server_name,
                         title: None,
                         kind: observed.kind,
                         status,

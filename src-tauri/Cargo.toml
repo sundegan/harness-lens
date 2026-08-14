@@ -24,6 +24,7 @@ tauri-build = { version = "=2.5.5", features = [] }
 [dependencies]
 coding-agent-data = { path = "../crates/coding-agent-data", default-features = false, features = [
     "codex-watch",
+    "claude-code-watch",
     "sqlite-bundled",
 ] }
 tauri = { version = "=2.10.2", features = ["image-png", "macos-private-api", "tray-icon"] }
@@ -33,6 +34,9 @@ tauri-plugin-updater = "=2.9.0"
 tauri-plugin-wdio = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+chrono = "0.4"
+chrono-tz = "0.10"
 dirs = "5.0"
 log = "0.4"
 include_dir = "0.7.4"

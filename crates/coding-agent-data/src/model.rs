@@ -1170,6 +1170,30 @@ pub enum ToolKind {
     Other,
 }
 
+/// Origin category of a tool exposed by a coding agent.
+///
+/// This is deliberately separate from [`ToolCall::namespace`]. A namespace can
+/// group built-in or provider-hosted tools and therefore must not be treated as
+/// proof that a call came from an MCP server.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[serde(rename_all = "snake_case")]
+pub enum ToolSourceKind {
+    /// A tool implemented by the coding-agent runtime.
+    BuiltIn,
+    /// A tool supplied through the Model Context Protocol.
+    Mcp,
+    /// A tool executed by the model or coding-agent provider.
+    ProviderHosted,
+    /// A tool contributed by a plugin or extension.
+    Plugin,
+    /// A custom tool registered by the caller.
+    Custom,
+    /// The durable source does not identify the tool origin.
+    #[default]
+    Unknown,
+}
+
 /// Current lifecycle state of a tool invocation.
 ///
 /// See [ACP v2 tool-call status](https://agentclientprotocol.com/protocol/v2/tool-calls#status).
@@ -1225,6 +1249,12 @@ pub struct ToolCall {
     /// Tool server, namespace, or plugin name, when reported separately.
     #[serde(default)]
     pub namespace: Option<String>,
+    /// Explicit origin category reported or established by the provider adapter.
+    #[serde(default)]
+    pub source_kind: ToolSourceKind,
+    /// MCP server identity, only when [`Self::source_kind`] is [`ToolSourceKind::Mcp`].
+    #[serde(default)]
+    pub server_name: Option<String>,
     /// Human-readable operation title, when reported.
     pub title: Option<String>,
     /// Broad operation category.

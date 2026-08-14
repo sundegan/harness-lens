@@ -16,8 +16,8 @@ use crate::{
     ModeChangeKind, ModelInvocation, ModelInvocationStatus, Notice, NoticeLevel, OriginalData,
     ProviderInfo, QueueOperation, Reasoning, ReasoningVisibility, Record, RecordData, RecordId,
     Session, SessionRelation, SessionRelationKind, SourceLocation, SourceRef, StopReason,
-    Timestamp, TokenUsage, ToolCall, ToolResult, ToolStatus, UnknownEvent, UnknownRecord,
-    UsageReport,
+    Timestamp, TokenUsage, ToolCall, ToolResult, ToolSourceKind, ToolStatus, UnknownEvent,
+    UnknownRecord, UsageReport,
 };
 
 use super::checkpoint::{SessionSummary, TranscriptContext, UsageSnapshot};
@@ -1070,8 +1070,19 @@ pub(super) fn line_records(
                                 .unwrap_or_default();
                             let input = block.get("input").cloned().unwrap_or(Value::Null);
                             let namespace = mcp_namespace(value, block);
+                            let source_kind = match block.get("type").and_then(Value::as_str) {
+                                Some("mcp_tool_use") => ToolSourceKind::Mcp,
+                                Some("server_tool_use") => ToolSourceKind::ProviderHosted,
+                                _ => ToolSourceKind::BuiltIn,
+                            };
                             let observed =
-                                ObservedTool::new(provider_name, namespace.as_deref(), &input);
+                                ObservedTool::new(provider_name, namespace.as_deref(), &input)
+                                    .with_source(
+                                        source_kind,
+                                        matches!(source_kind, ToolSourceKind::Mcp)
+                                            .then_some(namespace.as_deref())
+                                            .flatten(),
+                                    );
                             context
                                 .tool_calls
                                 .insert(call_id.to_owned(), observed.clone());
@@ -1100,6 +1111,8 @@ pub(super) fn line_records(
                                         kind: observed.kind,
                                         name: observed.name.clone(),
                                         namespace: observed.namespace.clone(),
+                                        source_kind: observed.source_kind,
+                                        server_name: observed.server_name.clone(),
                                         status: ToolStatus::Pending,
                                         input,
                                         locations: observed.locations.clone(),

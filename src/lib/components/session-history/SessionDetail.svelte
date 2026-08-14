@@ -15,6 +15,7 @@ import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 import TerminalSquareIcon from '@lucide/svelte/icons/square-terminal';
 import UserIcon from '@lucide/svelte/icons/user';
 import WorkflowIcon from '@lucide/svelte/icons/workflow';
+import { onMount } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import { Badge } from '$lib/components/ui/badge';
 import { Button } from '$lib/components/ui/button';
@@ -60,7 +61,19 @@ type InvocationGroup = {
   technicalEvents: SessionEventItem[];
 };
 
-let { detail, onback }: { detail: SessionDetail; onback: () => void } = $props();
+let {
+  detail,
+  targetEventId = null,
+  onback,
+}: { detail: SessionDetail; targetEventId?: string | null; onback: () => void } = $props();
+
+onMount(() => {
+  if (!targetEventId) return;
+  requestAnimationFrame(() => {
+    const element = document.getElementById(`session-event-${targetEventId}`);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+});
 
 const title = $derived(detail.session.title.trim() || i18nManager.t('sessions.untitled'));
 const groups = $derived(buildInvocationGroups(detail.events));
@@ -406,7 +419,15 @@ function statusVariant(status: string): 'success' | 'warning' | 'outline' | 'des
 
             <div class="relative mx-4 my-5 ml-8 flex flex-col gap-3 border-l border-primary/20 pl-8 sm:mx-5 sm:ml-9">
             {#each group.items as item (item.event.id)}
-              <article class="relative">
+              <article
+                id={`session-event-${item.event.id}`}
+                data-testid={`session-event-${item.event.id}`}
+                data-targeted={targetEventId === item.event.id ? 'true' : undefined}
+                class={[
+                  'relative rounded-xl',
+                  targetEventId === item.event.id ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '',
+                ]}
+              >
                 <span
                   class={[
                     'absolute top-3.5 -left-[2.9rem] flex size-7 items-center justify-center rounded-lg border shadow-xs',

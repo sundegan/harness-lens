@@ -127,3 +127,162 @@ pub struct SessionEventItem {
     pub event_type: String,
     pub event: Value,
 }
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallFilters {
+    pub start_at_ms: Option<i64>,
+    pub end_at_ms: Option<i64>,
+    #[serde(default)]
+    pub providers: Vec<String>,
+    #[serde(default)]
+    pub project_keys: Vec<String>,
+    #[serde(default)]
+    pub tool_names: Vec<String>,
+    #[serde(default)]
+    pub mcp_servers: Vec<String>,
+    pub timezone: Option<String>,
+    pub bucket: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallAnalysisRequest {
+    #[serde(flatten)]
+    pub filters: ToolCallFilters,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallFilterOptionsRequest {
+    #[serde(flatten)]
+    pub filters: ToolCallFilters,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetricRate {
+    pub numerator: i64,
+    pub denominator: i64,
+    pub rate: Option<f64>,
+    pub unknown_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallSummary {
+    pub call_count: i64,
+    pub tool_count: i64,
+    pub session_count: i64,
+    pub project_count: i64,
+    pub average_duration_ms: Option<f64>,
+    pub success_rate: MetricRate,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallTrendPoint {
+    pub bucket_start_ms: i64,
+    pub label: String,
+    pub call_count: i64,
+    pub failed_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallComparison {
+    pub key: String,
+    pub label: String,
+    pub call_count: i64,
+    pub session_count: i64,
+    pub project_count: i64,
+    pub failed_count: i64,
+    pub declined_count: i64,
+    pub cancelled_count: i64,
+    pub average_duration_ms: Option<f64>,
+    pub exact_repeat_count: i64,
+    pub success_rate: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallAnalysis {
+    pub summary: ToolCallSummary,
+    pub time_trend: Vec<ToolCallTrendPoint>,
+    pub status_distribution: Vec<ToolCallComparison>,
+    pub tool_ranking: Vec<ToolCallComparison>,
+    pub provider_comparison: Vec<ToolCallComparison>,
+    pub project_comparison: Vec<ToolCallComparison>,
+    pub mcp_server_comparison: Vec<ToolCallComparison>,
+    pub generated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallFilterOption {
+    pub value: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallFilterOptions {
+    pub providers: Vec<ToolCallFilterOption>,
+    pub projects: Vec<ToolCallFilterOption>,
+    pub tool_names: Vec<ToolCallFilterOption>,
+    pub mcp_servers: Vec<ToolCallFilterOption>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallPageRequest {
+    #[serde(flatten)]
+    pub filters: ToolCallFilters,
+    pub page: u32,
+    pub page_size: u32,
+    pub query: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_direction: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallListItem {
+    pub id: String,
+    pub provider: String,
+    pub session_id: String,
+    pub source_session_id: String,
+    pub session_title: String,
+    pub project_name: String,
+    pub agent_version: Option<String>,
+    pub tool_name: String,
+    pub mcp_server: Option<String>,
+    pub tool_kind: String,
+    pub started_at_ms: Option<i64>,
+    pub completed_at_ms: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub status: String,
+    pub has_result: bool,
+    pub call_event_id: Option<String>,
+    pub result_event_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallPage {
+    pub items: Vec<ToolCallListItem>,
+    pub page: u32,
+    pub page_size: u32,
+    pub total: i64,
+    pub generated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallDetail {
+    pub call: ToolCallListItem,
+    pub call_event: Option<SessionEventItem>,
+    pub result_event: Option<SessionEventItem>,
+    pub session_event_id: Option<String>,
+}

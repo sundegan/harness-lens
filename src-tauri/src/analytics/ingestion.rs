@@ -12,15 +12,17 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 #[cfg(not(feature = "e2e"))]
-use coding_agent_data::providers::codex::CodexProvider;
+use coding_agent_data::providers::{claude_code::ClaudeCodeProvider, codex::CodexProvider};
 use coding_agent_data::{
     AgentInvocation, AgentInvocationStatus, Batch, Change, DataQuality, Event, EventData, Record,
-    RecordData, Session, ToolCall, ToolResult, ToolStatus, UsageReport,
+    RecordData, Retry, Session, ToolCall, ToolKind, ToolResult, ToolSourceKind, ToolStatus,
+    UsageReport,
 };
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::{Checkpoint, Provider, WatchProvider};
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 #[cfg(not(feature = "e2e"))]
 use tauri::{AppHandle, Emitter};
 
@@ -33,20 +35,39 @@ const ANALYTICS_UPDATED_EVENT: &str = "analytics-updated";
 #[cfg(not(feature = "e2e"))]
 pub struct AgentDataMonitor {
     stop: Arc<AtomicBool>,
-    worker: Option<JoinHandle<()>>,
+    workers: Vec<JoinHandle<()>>,
+}
+
+#[derive(Clone, Debug)]
+struct ProviderContext {
+    provider: String,
+    source_id: String,
 }
 
 #[cfg(not(feature = "e2e"))]
 impl AgentDataMonitor {
     pub fn start(database_path: PathBuf, app: AppHandle) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
-        let worker_stop = Arc::clone(&stop);
-        let worker = thread::Builder::new()
-            .name("harness-lens-agent-data".to_owned())
-            .spawn(move || run(database_path, app, worker_stop))?;
+        let codex_path = database_path.clone();
+        let codex_app = app.clone();
+        let codex_stop = Arc::clone(&stop);
+        let codex = thread::Builder::new()
+            .name("harness-lens-codex".to_owned())
+            .spawn(move || match CodexProvider::discover() {
+                Ok(provider) => run_provider(codex_path, codex_app, codex_stop, provider),
+                Err(error) => record_discovery_error(codex_path, codex_app, "codex", &error),
+            })?;
+
+        let claude_stop = Arc::clone(&stop);
+        let claude = thread::Builder::new()
+            .name("harness-lens-claude-code".to_owned())
+            .spawn(move || match ClaudeCodeProvider::discover() {
+                Ok(provider) => run_provider(database_path, app, claude_stop, provider),
+                Err(error) => record_discovery_error(database_path, app, "claude-code", &error),
+            })?;
         Ok(Self {
             stop,
-            worker: Some(worker),
+            workers: vec![codex, claude],
         })
     }
 }
@@ -55,14 +76,40 @@ impl AgentDataMonitor {
 impl Drop for AgentDataMonitor {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        if let Some(worker) = self.worker.take() {
+        for worker in self.workers.drain(..) {
             let _ = worker.join();
         }
     }
 }
 
 #[cfg(not(feature = "e2e"))]
-fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
+fn record_discovery_error(
+    database_path: PathBuf,
+    app: AppHandle,
+    provider: &str,
+    error: &coding_agent_data::Error,
+) {
+    log::warn!("{provider} data monitoring is unavailable: {error}");
+    if let Ok(database) = Database::initialize(database_path) {
+        set_error_status(
+            &database,
+            &ProviderContext {
+                provider: provider.to_owned(),
+                source_id: format!("{provider}:unavailable"),
+            },
+            "unavailable",
+            "discovery",
+            &error.to_string(),
+        );
+        emit_updated(&app);
+    }
+}
+
+#[cfg(not(feature = "e2e"))]
+fn run_provider<P>(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>, provider: P)
+where
+    P: Provider + WatchProvider,
+{
     let database = match Database::initialize(database_path) {
         Ok(database) => database,
         Err(error) => {
@@ -70,18 +117,13 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
             return;
         }
     };
-    let provider = match CodexProvider::discover() {
-        Ok(provider) => provider,
-        Err(error) => {
-            log::warn!("Codex data monitoring is unavailable: {error}");
-            set_error_status(&database, "unavailable", "discovery", &error.to_string());
-            emit_updated(&app);
-            return;
-        }
+    let context = ProviderContext {
+        provider: provider.info().id.as_str().to_owned(),
+        source_id: provider.info().source.as_str().to_owned(),
     };
 
-    log::info!("starting Codex analytics synchronization");
-    let stored_checkpoint = match repository::load_checkpoint(&database) {
+    log::info!("starting {} analytics synchronization", context.provider);
+    let stored_checkpoint = match repository::load_checkpoint(&database, &context.source_id) {
         Ok(checkpoint) => checkpoint,
         Err(error) => {
             log::warn!("failed to load the analytics checkpoint: {error}");
@@ -100,13 +142,20 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
             });
 
     if checkpoint.is_none() {
-        if let Err(error) = reset_provider_data(&database) {
-            set_error_status(&database, "error", "initial_scan", &error);
+        if let Err(error) = reset_provider_data(&database, &context) {
+            set_error_status(&database, &context, "error", "initial_scan", &error);
             emit_updated(&app);
             return;
         }
     }
-    if let Err(error) = repository::update_sync_status(&database, "syncing", "initial_scan", None) {
+    if let Err(error) = repository::update_sync_status(
+        &database,
+        &context.provider,
+        &context.source_id,
+        "syncing",
+        "initial_scan",
+        None,
+    ) {
         log::warn!("failed to publish the analytics sync status: {error}");
     }
     emit_updated(&app);
@@ -115,24 +164,37 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
         Ok(batch) => batch,
         Err(error) if checkpoint.is_some() => {
             log::warn!(
-                "the saved Codex checkpoint could not be used ({error}); rebuilding analytics"
+                "the saved {} checkpoint could not be used ({error}); rebuilding analytics",
+                context.provider
             );
-            if let Err(reset_error) = reset_provider_data(&database) {
-                set_error_status(&database, "error", "initial_scan", &reset_error);
+            if let Err(reset_error) = reset_provider_data(&database, &context) {
+                set_error_status(&database, &context, "error", "initial_scan", &reset_error);
                 emit_updated(&app);
                 return;
             }
             match provider.scan(None) {
                 Ok(batch) => batch,
                 Err(error) => {
-                    set_error_status(&database, "error", "initial_scan", &error.to_string());
+                    set_error_status(
+                        &database,
+                        &context,
+                        "error",
+                        "initial_scan",
+                        &error.to_string(),
+                    );
                     emit_updated(&app);
                     return;
                 }
             }
         }
         Err(error) => {
-            set_error_status(&database, "error", "initial_scan", &error.to_string());
+            set_error_status(
+                &database,
+                &context,
+                "error",
+                "initial_scan",
+                &error.to_string(),
+            );
             emit_updated(&app);
             return;
         }
@@ -142,16 +204,17 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
         let has_more = batch.has_more;
         if let Err(error) = apply_batch(
             &database,
+            &context,
             &batch,
             if has_more { "syncing" } else { "ready" },
             if has_more { "initial_scan" } else { "watching" },
         ) {
-            log::error!("failed to import Codex analytics: {error}");
-            set_error_status(&database, "error", "initial_scan", &error);
+            log::error!("failed to import {} analytics: {error}", context.provider);
+            set_error_status(&database, &context, "error", "initial_scan", &error);
             emit_updated(&app);
             return;
         }
-        log_batch("initial", &batch);
+        log_batch(&context.provider, "initial", &batch);
         emit_updated(&app);
 
         if !has_more || stop.load(Ordering::Acquire) {
@@ -160,7 +223,13 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
         batch = match provider.scan(Some(&batch.checkpoint)) {
             Ok(batch) => batch,
             Err(error) => {
-                set_error_status(&database, "error", "initial_scan", &error.to_string());
+                set_error_status(
+                    &database,
+                    &context,
+                    "error",
+                    "initial_scan",
+                    &error.to_string(),
+                );
                 emit_updated(&app);
                 return;
             }
@@ -173,7 +242,7 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
     let watcher = match provider.watch(batch.checkpoint) {
         Ok(watcher) => watcher,
         Err(error) => {
-            set_error_status(&database, "error", "watching", &error.to_string());
+            set_error_status(&database, &context, "error", "watching", &error.to_string());
             emit_updated(&app);
             return;
         }
@@ -182,36 +251,55 @@ fn run(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>) {
         match watcher.recv_timeout(Duration::from_millis(250)) {
             Ok(Some(batch)) => {
                 let status = if batch.has_more { "syncing" } else { "ready" };
-                if let Err(error) = apply_batch(&database, &batch, status, "watching") {
-                    log::error!("failed to import incremental Codex analytics: {error}");
-                    set_error_status(&database, "error", "watching", &error);
+                if let Err(error) = apply_batch(&database, &context, &batch, status, "watching") {
+                    log::error!(
+                        "failed to import incremental {} analytics: {error}",
+                        context.provider
+                    );
+                    set_error_status(&database, &context, "error", "watching", &error);
                     emit_updated(&app);
                     return;
                 }
-                log_batch("incremental", &batch);
+                log_batch(&context.provider, "incremental", &batch);
                 emit_updated(&app);
             }
             Ok(None) => {}
             Err(coding_agent_data::Error::SubscriptionClosed) => {
                 if !stop.load(Ordering::Acquire) {
-                    let message = "Codex data monitoring stopped unexpectedly";
+                    let message =
+                        format!("{} data monitoring stopped unexpectedly", context.provider);
                     log::error!("{message}");
-                    set_error_status(&database, "error", "watching", message);
+                    set_error_status(&database, &context, "error", "watching", &message);
                     emit_updated(&app);
                 }
                 return;
             }
             Err(error) => {
-                log::warn!("Codex data monitoring transient error: {error}");
+                log::warn!(
+                    "{} data monitoring transient error: {error}",
+                    context.provider
+                );
             }
         }
     }
 }
 
 #[cfg(not(feature = "e2e"))]
-fn set_error_status(database: &Database, status: &str, phase: &str, error: &str) {
-    if let Err(status_error) = repository::update_sync_status(database, status, phase, Some(error))
-    {
+fn set_error_status(
+    database: &Database,
+    context: &ProviderContext,
+    status: &str,
+    phase: &str,
+    error: &str,
+) {
+    if let Err(status_error) = repository::update_sync_status(
+        database,
+        &context.provider,
+        &context.source_id,
+        status,
+        phase,
+        Some(error),
+    ) {
         log::error!("failed to record analytics error status: {status_error}");
     }
 }
@@ -224,27 +312,27 @@ fn emit_updated(app: &AppHandle) {
 }
 
 #[cfg(not(feature = "e2e"))]
-fn reset_provider_data(database: &Database) -> Result<(), String> {
+fn reset_provider_data(database: &Database, context: &ProviderContext) -> Result<(), String> {
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let transaction = connection
         .transaction()
         .map_err(|error| format!("failed to begin the analytics reset: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM agent_sessions WHERE provider = ?1",
-            [repository::PROVIDER],
+            "DELETE FROM agent_sessions WHERE source_id = ?1",
+            [&context.source_id],
         )
         .map_err(|error| format!("failed to reset sessions: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM rollout_sources WHERE provider = ?1",
-            [repository::PROVIDER],
+            "DELETE FROM rollout_sources WHERE source_id = ?1",
+            [&context.source_id],
         )
         .map_err(|error| format!("failed to reset rollout state: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM provider_sync_state WHERE provider = ?1 OR provider LIKE ?2",
-            params![repository::PROVIDER, format!("{}:%", repository::PROVIDER)],
+            "DELETE FROM provider_sync_state WHERE source_id = ?1",
+            [&context.source_id],
         )
         .map_err(|error| format!("failed to reset sync state: {error}"))?;
     transaction
@@ -254,6 +342,7 @@ fn reset_provider_data(database: &Database) -> Result<(), String> {
 
 fn apply_batch(
     database: &Database,
+    context: &ProviderContext,
     batch: &Batch,
     status: &str,
     phase: &str,
@@ -262,11 +351,34 @@ fn apply_batch(
     let transaction = connection
         .transaction()
         .map_err(|error| format!("failed to begin an analytics import: {error}"))?;
+    let mut affected_repeat_invocations = BTreeSet::new();
 
     for change in &batch.changes {
         match change {
-            Change::Upsert(record) => import_record(&transaction, record)?,
+            Change::Upsert(record) => import_record(
+                &transaction,
+                context,
+                record,
+                &mut affected_repeat_invocations,
+            )?,
             Change::Delete(id) => {
+                let affected_tool_call = transaction
+                    .query_row(
+                        "SELECT id, invocation_id, call_event_id = ?1, result_event_id = ?1 FROM mcp_tool_call WHERE call_event_id = ?1 OR result_event_id = ?1",
+                        [id.as_str()],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<i64>>(2)?.unwrap_or(0) != 0, row.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0)),
+                    )
+                    .optional()
+                    .map_err(|error| format!("failed to inspect the deleted tool event: {error}"))?;
+                let retry_invocation_id = transaction
+                    .query_row(
+                        "SELECT invocation_id FROM mcp_tool_call_retry WHERE id = ?1",
+                        [id.as_str()],
+                        |row| row.get::<_, Option<String>>(0),
+                    )
+                    .optional()
+                    .map_err(|error| format!("failed to inspect deleted retry evidence: {error}"))?
+                    .flatten();
                 let usage_invocation_id = transaction
                     .query_row(
                         "SELECT invocation_id FROM token_usage_records WHERE id = ?1",
@@ -279,8 +391,50 @@ fn apply_batch(
                     })?
                     .flatten();
                 transaction
+                    .execute(
+                        "DELETE FROM mcp_tool_call_retry WHERE id = ?1",
+                        [id.as_str()],
+                    )
+                    .map_err(|error| format!("failed to delete retry evidence: {error}"))?;
+                transaction
                     .execute("DELETE FROM session_events WHERE id = ?1", [id.as_str()])
                     .map_err(|error| format!("failed to delete a session event: {error}"))?;
+                if let Some((tool_call_id, invocation_id, deleted_call, deleted_result)) =
+                    affected_tool_call
+                {
+                    if deleted_call {
+                        transaction
+                            .execute(
+                                "UPDATE mcp_tool_call SET call_event_id = NULL, input_fingerprint = NULL, evidence_quality = 'unknown' WHERE id = ?1",
+                                [&tool_call_id],
+                            )
+                            .map_err(|error| format!("failed to clear deleted tool-call evidence: {error}"))?;
+                    }
+                    if deleted_result {
+                        let fallback_status = projected_call_status(&transaction, &tool_call_id)?;
+                        transaction
+                            .execute(
+                                "UPDATE mcp_tool_call SET result_event_id = NULL, has_result = 0, has_error = 0, completed_at_ms = NULL, duration_ms = NULL, duration_source = 'unknown', status = ?2 WHERE id = ?1",
+                                params![tool_call_id, fallback_status],
+                            )
+                            .map_err(|error| format!("failed to clear deleted tool-result evidence: {error}"))?;
+                    }
+                    let evidence_count: i64 = transaction
+                        .query_row(
+                            "SELECT (call_event_id IS NOT NULL) + (result_event_id IS NOT NULL) FROM mcp_tool_call WHERE id = ?1",
+                            [&tool_call_id],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or(0);
+                    if evidence_count == 0 {
+                        transaction
+                            .execute("DELETE FROM mcp_tool_call WHERE id = ?1", [&tool_call_id])
+                            .map_err(|error| {
+                                format!("failed to remove an evidence-free tool call: {error}")
+                            })?;
+                    }
+                    affected_repeat_invocations.extend(invocation_id);
+                }
                 transaction
                     .execute(
                         "DELETE FROM token_usage_records WHERE id = ?1",
@@ -292,22 +446,27 @@ fn apply_batch(
                     .map_err(|error| format!("failed to delete a invocation record: {error}"))?;
                 transaction
                     .execute(
-                        "DELETE FROM agent_sessions WHERE provider = ?1 AND id = ?2",
-                        params![repository::PROVIDER, id.as_str()],
+                        "DELETE FROM agent_sessions WHERE source_id = ?1 AND id = ?2",
+                        params![context.source_id, id.as_str()],
                     )
                     .map_err(|error| format!("failed to delete a session record: {error}"))?;
                 if let Some(invocation_id) = usage_invocation_id {
                     refresh_invocation_tokens(&transaction, &invocation_id)?;
                 }
+                affected_repeat_invocations.extend(retry_invocation_id);
             }
             Change::Reset(source) => {
-                reset_rollout_source(&transaction, &source.path)?;
+                reset_rollout_source(&transaction, context, &source.path)?;
             }
             Change::Remove(source) => {
-                remove_rollout_source(&transaction, &source.path)?;
+                remove_rollout_source(&transaction, context, &source.path)?;
             }
             _ => {}
         }
+    }
+
+    for invocation_id in affected_repeat_invocations {
+        refresh_repeat_chain(&transaction, Some(&invocation_id))?;
     }
 
     let checkpoint_json = batch
@@ -316,11 +475,15 @@ fn apply_batch(
         .map_err(|error| format!("failed to serialize the analytics checkpoint: {error}"))?;
     repository::save_batch_state(
         &transaction,
-        &checkpoint_json,
-        status,
-        phase,
-        batch.changes.len(),
-        batch.diagnostics.len(),
+        repository::BatchState {
+            provider: &context.provider,
+            source_id: &context.source_id,
+            checkpoint_json: &checkpoint_json,
+            status,
+            phase,
+            processed_records: batch.changes.len(),
+            diagnostic_count: batch.diagnostics.len(),
+        },
     )
     .map_err(|error| error.to_string())?;
     transaction
@@ -328,19 +491,88 @@ fn apply_batch(
         .map_err(|error| format!("failed to commit the analytics import: {error}"))
 }
 
-fn import_record(transaction: &Transaction<'_>, record: &Record) -> Result<(), String> {
+fn projected_call_status(
+    transaction: &Transaction<'_>,
+    tool_call_id: &str,
+) -> Result<&'static str, String> {
+    let event_json = transaction
+        .query_row(
+            "SELECT event.event_json FROM mcp_tool_call call JOIN session_events event ON event.id = call.call_event_id WHERE call.id = ?1",
+            [tool_call_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("failed to load the surviving tool-call evidence: {error}"))?;
+    let Some(event_json) = event_json else {
+        return Ok("unknown");
+    };
+    let event = serde_json::from_str::<Event>(&event_json)
+        .map_err(|error| format!("failed to decode the surviving tool-call evidence: {error}"))?;
+    Ok(match event.data {
+        EventData::ToolCall(call) => tool_status(call.status),
+        _ => "unknown",
+    })
+}
+
+#[cfg(test)]
+fn apply_test_batch(
+    database: &Database,
+    batch: &Batch,
+    status: &str,
+    phase: &str,
+) -> Result<(), String> {
+    apply_batch(
+        database,
+        &ProviderContext {
+            provider: "codex".to_owned(),
+            source_id: "codex:test".to_owned(),
+        },
+        batch,
+        status,
+        phase,
+    )
+}
+
+fn import_record(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+    affected_repeat_invocations: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    ensure_record_session(transaction, context, record)?;
     match &record.data {
-        RecordData::Session(session) => import_session(transaction, record, session),
+        RecordData::Session(session) => import_session(transaction, context, record, session),
         RecordData::AgentInvocation(invocation) => {
-            import_agent_invocation(transaction, record, invocation)
+            import_agent_invocation(transaction, context, record, invocation)
         }
-        RecordData::UsageReport(usage) => import_usage(transaction, record, usage),
+        RecordData::UsageReport(usage) => import_usage(transaction, context, record, usage),
         RecordData::Event(event) => {
-            import_event(transaction, record, event)?;
+            import_event(transaction, context, record, event)?;
             match &event.data {
-                EventData::ToolCall(call) => remember_skill_read_call(transaction, record, call),
+                EventData::ToolCall(call) => {
+                    if call.source_kind == ToolSourceKind::Mcp {
+                        import_tool_call(
+                            transaction,
+                            context,
+                            record,
+                            call,
+                            affected_repeat_invocations,
+                        )?;
+                    }
+                    remember_skill_read_call(transaction, context, record, call)
+                }
                 EventData::ToolResult(result) => {
-                    complete_skill_read_call(transaction, record, result)
+                    import_tool_result(
+                        transaction,
+                        context,
+                        record,
+                        result,
+                        affected_repeat_invocations,
+                    )?;
+                    complete_skill_read_call(transaction, context, record, result)
+                }
+                EventData::Retry(retry) => {
+                    import_explicit_retry(transaction, context, record, event, retry)
                 }
                 _ => Ok(()),
             }
@@ -350,8 +582,486 @@ fn import_record(transaction: &Transaction<'_>, record: &Record) -> Result<(), S
     }
 }
 
+fn ensure_record_session(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+) -> Result<(), String> {
+    if matches!(record.data, RecordData::Session(_)) {
+        return Ok(());
+    }
+    let Some(session_id) = record.session.as_ref().map(|id| id.as_str()) else {
+        return Ok(());
+    };
+    let timestamp_ms = record.timestamp.map(|timestamp| timestamp.as_millis());
+    transaction
+        .execute(
+            "
+            INSERT INTO agent_sessions (
+                id, provider, source_id, source_session_id, title, project_name,
+                created_at_ms, updated_at_ms, metadata_present, data_quality
+            ) VALUES (?1, ?2, ?3, ?1, '', '', ?4, ?4, 0, 'partial')
+            ON CONFLICT(id) DO NOTHING
+            ",
+            params![
+                session_id,
+                context.provider,
+                context.source_id,
+                timestamp_ms
+            ],
+        )
+        .map_err(|error| format!("failed to ensure fallback session metadata: {error}"))?;
+    Ok(())
+}
+
+fn project_key(session: &Session) -> String {
+    let remote = session
+        .git_remote_url
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(normalize_git_remote);
+    let cwd = session
+        .cwd
+        .as_deref()
+        .map(|path| path.to_string_lossy().replace('\\', "/"));
+    let identity = format!(
+        "{}\0{}",
+        remote.as_deref().unwrap_or_default(),
+        cwd.as_deref().unwrap_or_default()
+    );
+    format!("v1:{:x}", Sha256::digest(identity.as_bytes()))
+}
+
+fn normalize_git_remote(value: &str) -> String {
+    let trimmed = value.trim().trim_end_matches('/').trim_end_matches(".git");
+    if let Some((scheme, rest)) = trimmed.split_once("://") {
+        let authority_and_path = rest.rsplit_once('@').map_or(rest, |(_, safe)| safe);
+        return format!("{}://{}", scheme.to_ascii_lowercase(), authority_and_path);
+    }
+    trimmed.to_owned()
+}
+
+fn tool_call_id(context: &ProviderContext, path: &str, call_id: &str) -> String {
+    let digest = Sha256::digest(format!("{}\0{}\0{}", context.source_id, path, call_id).as_bytes());
+    format!("tool-call:{digest:x}")
+}
+
+fn canonical_json(value: &Value) -> String {
+    fn canonicalize(value: &Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let sorted = map
+                    .iter()
+                    .map(|(key, value)| (key.clone(), canonicalize(value)))
+                    .collect();
+                Value::Object(sorted)
+            }
+            Value::Array(values) => Value::Array(values.iter().map(canonicalize).collect()),
+            _ => value.clone(),
+        }
+    }
+    serde_json::to_string(&canonicalize(value)).unwrap_or_else(|_| "null".to_owned())
+}
+
+fn input_fingerprint(context: &ProviderContext, call: &ToolCall) -> String {
+    let identity = format!(
+        "{}\0mcp\0{}\0{}\0{}\0{}",
+        context.provider,
+        call.namespace.as_deref().unwrap_or_default(),
+        call.server_name.as_deref().unwrap_or_default(),
+        call.name,
+        canonical_json(&call.input)
+    );
+    format!("sha256:{:x}", Sha256::digest(identity.as_bytes()))
+}
+
+fn resolve_tool_owner(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+) -> Result<Option<(String, Option<String>)>, String> {
+    let path = record.origin.path.to_string_lossy();
+    let session_id = record
+        .session
+        .as_ref()
+        .map(|id| id.as_str().to_owned())
+        .or_else(|| {
+            transaction
+                .query_row(
+                    "SELECT session_id FROM rollout_sources WHERE source_id = ?1 AND path = ?2",
+                    params![context.source_id, path],
+                    |row| row.get(0),
+                )
+                .optional()
+                .ok()
+                .flatten()
+                .flatten()
+        });
+    let Some(session_id) = session_id else {
+        return Ok(None);
+    };
+    let requested_invocation = record.invocation.as_ref().map(|id| id.as_str().to_owned());
+    let invocation_id = match requested_invocation {
+        Some(id) if invocation_exists(transaction, &id)? => Some(id),
+        _ => current_invocation(transaction, context, &path)?.map(|(id, _, _)| id),
+    };
+    Ok(Some((session_id, invocation_id)))
+}
+
+fn import_tool_call(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+    call: &ToolCall,
+    affected_repeat_invocations: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let Some((session_id, invocation_id)) = resolve_tool_owner(transaction, context, record)?
+    else {
+        return Ok(());
+    };
+    let path = record.origin.path.to_string_lossy();
+    let id = tool_call_id(context, &path, &call.call_id);
+    let started_at_ms = record.timestamp.map(|timestamp| timestamp.as_millis());
+    transaction
+        .execute(
+            "
+            INSERT INTO mcp_tool_call (
+                id, provider, source_id, session_id, invocation_id, source_path, call_id,
+                tool_name, namespace, mcp_server, tool_kind, title,
+                started_at_ms, status, call_event_id, input_fingerprint, evidence_quality
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, 'observed'
+            )
+            ON CONFLICT(source_id, source_path, call_id) DO UPDATE SET
+                provider = excluded.provider,
+                session_id = excluded.session_id,
+                invocation_id = COALESCE(excluded.invocation_id, mcp_tool_call.invocation_id),
+                tool_name = excluded.tool_name,
+                namespace = excluded.namespace,
+                mcp_server = excluded.mcp_server,
+                tool_kind = excluded.tool_kind,
+                title = excluded.title,
+                started_at_ms = COALESCE(mcp_tool_call.started_at_ms, excluded.started_at_ms),
+                status = CASE WHEN mcp_tool_call.has_result = 1 THEN mcp_tool_call.status ELSE excluded.status END,
+                call_event_id = excluded.call_event_id,
+                input_fingerprint = excluded.input_fingerprint,
+                evidence_quality = 'observed'
+            ",
+            params![
+                id,
+                context.provider,
+                context.source_id,
+                session_id,
+                invocation_id,
+                path,
+                call.call_id,
+                call.name,
+                call.namespace,
+                call.server_name,
+                tool_kind(call.kind),
+                call.title,
+                started_at_ms,
+                tool_status(call.status),
+                record.id.as_str(),
+                input_fingerprint(context, call),
+            ],
+        )
+        .map_err(|error| format!("failed to import a tool call: {error}"))?;
+    reconcile_stored_mcp_result(transaction, context, &path, &call.call_id)?;
+    affected_repeat_invocations.extend(invocation_id);
+    Ok(())
+}
+
+fn reconcile_stored_mcp_result(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    path: &str,
+    call_id: &str,
+) -> Result<(), String> {
+    let stored_result = transaction
+        .query_row(
+            "
+            SELECT id, event_json
+            FROM session_events
+            WHERE source_id = ?1 AND source_path = ?2 AND event_type = 'tool_result'
+              AND json_extract(event_json, '$.data.value.call_id') = ?3
+            ORDER BY sequence_position DESC, sequence_part DESC
+            LIMIT 1
+            ",
+            params![context.source_id, path, call_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| format!("failed to find an earlier MCP tool result: {error}"))?;
+    let Some((event_id, event_json)) = stored_result else {
+        return Ok(());
+    };
+    let event = serde_json::from_str::<Event>(&event_json)
+        .map_err(|error| format!("failed to decode an earlier MCP tool result: {error}"))?;
+    let EventData::ToolResult(result) = event.data else {
+        return Ok(());
+    };
+    let completed_at_ms = transaction
+        .query_row(
+            "SELECT timestamp_ms FROM session_events WHERE id = ?1",
+            [&event_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .map_err(|error| format!("failed to read an earlier MCP result timestamp: {error}"))?;
+    transaction
+        .execute(
+            "
+            UPDATE mcp_tool_call
+            SET completed_at_ms = ?2,
+                duration_ms = COALESCE(?3,
+                    CASE WHEN started_at_ms IS NOT NULL AND ?2 >= started_at_ms
+                         THEN ?2 - started_at_ms END),
+                duration_source = CASE
+                    WHEN ?3 IS NOT NULL THEN 'normalized'
+                    WHEN started_at_ms IS NOT NULL AND ?2 >= started_at_ms THEN 'event_delta'
+                    ELSE 'unknown'
+                END,
+                status = ?4,
+                has_result = 1,
+                has_error = ?5,
+                result_event_id = ?6
+            WHERE source_id = ?1 AND source_path = ?7 AND call_id = ?8
+            ",
+            params![
+                context.source_id,
+                completed_at_ms,
+                result.duration_ms,
+                tool_status(result.status),
+                i64::from(result.status == ToolStatus::Failed || result.error.is_some()),
+                event_id,
+                path,
+                call_id,
+            ],
+        )
+        .map_err(|error| format!("failed to reconcile an earlier MCP tool result: {error}"))?;
+    Ok(())
+}
+
+fn import_tool_result(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+    result: &ToolResult,
+    affected_repeat_invocations: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let Some((session_id, invocation_id)) = resolve_tool_owner(transaction, context, record)?
+    else {
+        return Ok(());
+    };
+    let path = record.origin.path.to_string_lossy();
+    let completed_at_ms = record.timestamp.map(|timestamp| timestamp.as_millis());
+    transaction
+        .execute(
+            "
+            UPDATE mcp_tool_call
+            SET session_id = ?1,
+                invocation_id = COALESCE(?2, invocation_id),
+                tool_name = CASE WHEN tool_name = '' THEN ?3 ELSE tool_name END,
+                completed_at_ms = ?4,
+                duration_ms = COALESCE(?5,
+                    CASE
+                        WHEN started_at_ms IS NOT NULL AND ?4 >= started_at_ms
+                        THEN ?4 - started_at_ms
+                    END),
+                duration_source = CASE
+                    WHEN ?5 IS NOT NULL THEN 'normalized'
+                    WHEN started_at_ms IS NOT NULL AND ?4 >= started_at_ms THEN 'event_delta'
+                    ELSE 'unknown'
+                END,
+                status = ?6,
+                has_result = 1,
+                has_error = ?7,
+                result_event_id = ?8
+            WHERE source_id = ?9 AND source_path = ?10 AND call_id = ?11
+            ",
+            params![
+                session_id,
+                invocation_id,
+                result.name.as_deref().unwrap_or_default(),
+                completed_at_ms,
+                result.duration_ms,
+                tool_status(result.status),
+                i64::from(result.status == ToolStatus::Failed || result.error.is_some()),
+                record.id.as_str(),
+                context.source_id,
+                path,
+                result.call_id,
+            ],
+        )
+        .map_err(|error| format!("failed to import an MCP tool result: {error}"))?;
+    if transaction.changes() > 0 {
+        affected_repeat_invocations.extend(invocation_id);
+    }
+    Ok(())
+}
+
+fn import_explicit_retry(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    record: &Record,
+    event: &Event,
+    retry: &Retry,
+) -> Result<(), String> {
+    let Some((session_id, invocation_id)) = resolve_tool_owner(transaction, context, record)?
+    else {
+        return Ok(());
+    };
+    let path = record.origin.path.to_string_lossy();
+    let tool_call_id = event.parent.as_ref().and_then(|parent| {
+        transaction
+            .query_row(
+                "SELECT id FROM mcp_tool_call WHERE source_id = ?1 AND source_path = ?2 AND call_event_id = ?3",
+                params![context.source_id, path, parent.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    });
+    let Some(tool_call_id) = tool_call_id else {
+        return Ok(());
+    };
+    transaction
+        .execute(
+            "
+            INSERT INTO mcp_tool_call_retry (
+                id, provider, source_id, session_id, invocation_id, source_path,
+                timestamp_ms, mcp_tool_call_id, attempt, delay_ms, evidence_quality
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'observed')
+            ON CONFLICT(id) DO UPDATE SET
+                session_id = excluded.session_id,
+                invocation_id = excluded.invocation_id,
+                timestamp_ms = excluded.timestamp_ms,
+                mcp_tool_call_id = excluded.mcp_tool_call_id,
+                attempt = excluded.attempt,
+                delay_ms = excluded.delay_ms
+            ",
+            params![
+                record.id.as_str(),
+                context.provider,
+                context.source_id,
+                session_id,
+                invocation_id,
+                path,
+                record.timestamp.map(|timestamp| timestamp.as_millis()),
+                tool_call_id,
+                retry.attempt.map(i64::from),
+                retry.delay_ms.and_then(|value| i64::try_from(value).ok()),
+            ],
+        )
+        .map_err(|error| format!("failed to import explicit retry evidence: {error}"))?;
+    Ok(())
+}
+
+fn refresh_repeat_chain(
+    transaction: &Transaction<'_>,
+    invocation_id: Option<&str>,
+) -> Result<(), String> {
+    let Some(invocation_id) = invocation_id else {
+        return Ok(());
+    };
+    let mut statement = transaction
+        .prepare(
+            "
+            SELECT id, input_fingerprint, status
+            FROM mcp_tool_call
+            WHERE invocation_id = ?1 AND input_fingerprint IS NOT NULL
+            ORDER BY COALESCE(started_at_ms, completed_at_ms, 9223372036854775807), rowid
+            ",
+        )
+        .map_err(|error| format!("failed to prepare repeat-chain refresh: {error}"))?;
+    let rows = statement
+        .query_map([invocation_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|error| format!("failed to query repeat-chain members: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to read repeat-chain members: {error}"))?;
+    drop(statement);
+
+    let mut previous = std::collections::HashMap::<String, (String, String, i64)>::new();
+    for (id, fingerprint, status) in rows {
+        let group_id = format!(
+            "repeat:{:x}",
+            Sha256::digest(format!("{invocation_id}\0{fingerprint}").as_bytes())
+        );
+        let entry = previous.get(&fingerprint).cloned();
+        let (repeat_of, repeat_index, inferred_retry, retry_of) = match entry {
+            Some((previous_id, previous_status, index)) => (
+                Some(previous_id.clone()),
+                index + 1,
+                previous_status == "failed",
+                (previous_status == "failed").then_some(previous_id),
+            ),
+            None => (None, 0, false, None),
+        };
+        transaction
+            .execute(
+                "
+                UPDATE mcp_tool_call
+                SET repeat_group_id = ?2,
+                    repeat_of_id = ?3,
+                    repeat_index = ?4,
+                    retry_class = CASE WHEN ?5 = 1 THEN 'inferred' ELSE 'none' END,
+                    retry_of_id = ?6
+                WHERE id = ?1
+                ",
+                params![
+                    id,
+                    group_id,
+                    repeat_of,
+                    repeat_index,
+                    i64::from(inferred_retry),
+                    retry_of
+                ],
+            )
+            .map_err(|error| format!("failed to update a repeat-chain member: {error}"))?;
+        previous.insert(fingerprint, (id, status, repeat_index));
+    }
+    Ok(())
+}
+
+fn tool_kind(value: ToolKind) -> &'static str {
+    match value {
+        ToolKind::Read => "read",
+        ToolKind::Edit => "edit",
+        ToolKind::Delete => "delete",
+        ToolKind::Move => "move",
+        ToolKind::Search => "search",
+        ToolKind::Execute => "execute",
+        ToolKind::Think => "think",
+        ToolKind::Fetch => "fetch",
+        ToolKind::SwitchMode => "switch_mode",
+        _ => "other",
+    }
+}
+
+fn tool_status(value: ToolStatus) -> &'static str {
+    match value {
+        ToolStatus::Pending => "pending",
+        ToolStatus::AwaitingApproval => "awaiting_approval",
+        ToolStatus::InProgress => "in_progress",
+        ToolStatus::Completed => "completed",
+        ToolStatus::Failed => "failed",
+        ToolStatus::Cancelled => "cancelled",
+        ToolStatus::Declined => "declined",
+        _ => "unknown",
+    }
+}
+
 fn import_session(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     session: &Session,
 ) -> Result<(), String> {
@@ -387,11 +1097,12 @@ fn import_session(
                 "
                 UPDATE agent_sessions
                 SET rollout_path = NULL
-                WHERE rollout_path = ?1
-                  AND id <> ?2
+                WHERE source_id = ?1
+                  AND rollout_path = ?2
+                  AND id <> ?3
                   AND metadata_present = 0
                 ",
-                params![path, id],
+                params![context.source_id, path, id],
             )
             .map_err(|error| format!("failed to replace fallback session metadata: {error}"))?;
     }
@@ -419,12 +1130,15 @@ fn import_session(
                 git_branch,
                 git_commit,
                 git_remote_url,
-                data_quality
+                data_quality,
+                source_id,
+                project_key
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+                ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
             )
             ON CONFLICT(id) DO UPDATE SET
+                source_session_id = excluded.source_session_id,
                 title = excluded.title,
                 project_name = excluded.project_name,
                 cwd = excluded.cwd,
@@ -442,11 +1156,14 @@ fn import_session(
                 git_branch = excluded.git_branch,
                 git_commit = excluded.git_commit,
                 git_remote_url = excluded.git_remote_url,
-                data_quality = excluded.data_quality
+                data_quality = excluded.data_quality,
+                provider = excluded.provider,
+                source_id = excluded.source_id,
+                project_key = excluded.project_key
             ",
             params![
                 id,
-                repository::PROVIDER,
+                context.provider,
                 source_session_id,
                 title,
                 project_name,
@@ -465,7 +1182,9 @@ fn import_session(
                 session.git_branch.as_deref(),
                 session.git_commit.as_deref(),
                 session.git_remote_url.as_deref(),
-                data_quality
+                data_quality,
+                context.source_id,
+                project_key(session)
             ],
         )
         .map_err(|error| format!("failed to import session metadata: {error}"))?;
@@ -473,6 +1192,7 @@ fn import_session(
     if let Some(path) = rollout_path.as_deref() {
         upsert_rollout_source(
             transaction,
+            context,
             path,
             Some(id),
             session.quality == DataQuality::Complete,
@@ -483,6 +1203,7 @@ fn import_session(
 
 fn import_event(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     event: &Event,
 ) -> Result<(), String> {
@@ -492,8 +1213,8 @@ fn import_event(
     } else {
         transaction
             .query_row(
-                "SELECT session_id FROM rollout_sources WHERE path = ?1",
-                [&path],
+                "SELECT session_id FROM rollout_sources WHERE source_id = ?1 AND path = ?2",
+                params![context.source_id, path],
                 |row| row.get(0),
             )
             .optional()
@@ -518,6 +1239,7 @@ fn import_event(
             INSERT INTO session_events (
                 id,
                 provider,
+                source_id,
                 session_id,
                 invocation_id,
                 source_path,
@@ -527,8 +1249,10 @@ fn import_event(
                 logical_ordinal,
                 event_type,
                 event_json
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             ON CONFLICT(id) DO UPDATE SET
+                provider = excluded.provider,
+                source_id = excluded.source_id,
                 session_id = excluded.session_id,
                 invocation_id = excluded.invocation_id,
                 source_path = excluded.source_path,
@@ -541,7 +1265,8 @@ fn import_event(
             ",
             params![
                 record.id.as_str(),
-                repository::PROVIDER,
+                context.provider,
+                context.source_id,
                 session_id,
                 record.invocation.as_ref().map(|id| id.as_str()),
                 path,
@@ -587,18 +1312,19 @@ fn event_type(data: &EventData) -> &'static str {
 
 fn import_agent_invocation(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     invocation: &AgentInvocation,
 ) -> Result<(), String> {
     match invocation.status {
         AgentInvocationStatus::InProgress => {
-            import_running_invocation(transaction, record, invocation)
+            import_running_invocation(transaction, context, record, invocation)
         }
         AgentInvocationStatus::Completed
         | AgentInvocationStatus::Failed
         | AgentInvocationStatus::Cancelled
         | AgentInvocationStatus::Interrupted => {
-            import_terminal_invocation(transaction, record, invocation)
+            import_terminal_invocation(transaction, context, record, invocation)
         }
         _ => Ok(()),
     }
@@ -606,6 +1332,7 @@ fn import_agent_invocation(
 
 fn import_running_invocation(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     invocation: &AgentInvocation,
 ) -> Result<(), String> {
@@ -615,18 +1342,19 @@ fn import_running_invocation(
     let path = record.origin.path.to_string_lossy();
     let invocation_id = record.id.as_str();
     let started_at_ms = invocation.started_at.map(|timestamp| timestamp.as_millis());
-    upsert_rollout_source(transaction, &path, Some(session_id), false)?;
+    upsert_rollout_source(transaction, context, &path, Some(session_id), false)?;
 
     transaction
         .execute(
             "
             UPDATE agent_invocations
             SET status = 'unknown'
-            WHERE source_path = ?1
+            WHERE source_id = ?1
+              AND source_path = ?2
               AND status = 'in_progress'
-              AND id <> ?2
+              AND id <> ?3
             ",
-            params![path, invocation_id],
+            params![context.source_id, path, invocation_id],
         )
         .map_err(|error| format!("failed to close the previous incomplete invocation: {error}"))?;
     transaction
@@ -637,10 +1365,10 @@ fn import_running_invocation(
             WHERE invocation_id IN (
                 SELECT id
                 FROM agent_invocations
-                WHERE source_path = ?1 AND status = 'unknown'
+                WHERE source_id = ?1 AND source_path = ?2 AND status = 'unknown'
             ) AND status = 'in_progress'
             ",
-            [&path],
+            params![context.source_id, path],
         )
         .map_err(|error| format!("failed to close incomplete skill invocations: {error}"))?;
     transaction
@@ -648,27 +1376,35 @@ fn import_running_invocation(
             "
             INSERT INTO agent_invocations (
                 id,
+                source_id,
                 session_id,
                 source_path,
                 started_at_ms,
                 status
-            ) VALUES (?1, ?2, ?3, ?4, 'in_progress')
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 'in_progress')
             ON CONFLICT(id) DO UPDATE SET
+                source_id = excluded.source_id,
                 session_id = excluded.session_id,
                 source_path = excluded.source_path,
                 started_at_ms = COALESCE(agent_invocations.started_at_ms, excluded.started_at_ms)
             ",
-            params![invocation_id, session_id, path, started_at_ms],
+            params![
+                invocation_id,
+                context.source_id,
+                session_id,
+                path,
+                started_at_ms
+            ],
         )
         .map_err(|error| format!("failed to import a task start: {error}"))?;
     transaction
         .execute(
             "
             UPDATE rollout_sources
-            SET current_invocation_id = ?2, updated_at_ms = ?3
-            WHERE path = ?1
+            SET current_invocation_id = ?3, updated_at_ms = ?4
+            WHERE source_id = ?1 AND path = ?2
             ",
-            params![path, invocation_id, repository::now_ms()],
+            params![context.source_id, path, invocation_id, repository::now_ms()],
         )
         .map_err(|error| format!("failed to track the current invocation: {error}"))?;
     Ok(())
@@ -676,6 +1412,7 @@ fn import_running_invocation(
 
 fn remember_skill_read_call(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     call: &ToolCall,
 ) -> Result<(), String> {
@@ -686,7 +1423,7 @@ fn remember_skill_read_call(
     let invocation_id = if let Some(invocation_id) = &record.invocation {
         invocation_id.as_str().to_owned()
     } else {
-        let Some((invocation_id, _, _)) = current_invocation(transaction, &path)? else {
+        let Some((invocation_id, _, _)) = current_invocation(transaction, context, &path)? else {
             return Ok(());
         };
         invocation_id
@@ -697,12 +1434,12 @@ fn remember_skill_read_call(
     transaction
         .execute(
             "
-            INSERT INTO pending_skill_reads (source_path, call_id, invocation_id)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(source_path, call_id) DO UPDATE SET
+            INSERT INTO pending_skill_reads (source_id, source_path, call_id, invocation_id)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(source_id, source_path, call_id) DO UPDATE SET
                 invocation_id = excluded.invocation_id
             ",
-            params![path, call.call_id, invocation_id],
+            params![context.source_id, path, call.call_id, invocation_id],
         )
         .map_err(|error| format!("failed to remember a possible Skill file read: {error}"))?;
     Ok(())
@@ -710,6 +1447,7 @@ fn remember_skill_read_call(
 
 fn complete_skill_read_call(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     result: &ToolResult,
 ) -> Result<(), String> {
@@ -719,9 +1457,9 @@ fn complete_skill_read_call(
             "
             SELECT invocation_id
             FROM pending_skill_reads
-            WHERE source_path = ?1 AND call_id = ?2
+            WHERE source_id = ?1 AND source_path = ?2 AND call_id = ?3
             ",
-            params![path, result.call_id],
+            params![context.source_id, path, result.call_id],
             |row| row.get(0),
         )
         .optional()
@@ -731,8 +1469,8 @@ fn complete_skill_read_call(
     };
     transaction
         .execute(
-            "DELETE FROM pending_skill_reads WHERE source_path = ?1 AND call_id = ?2",
-            params![path, result.call_id],
+            "DELETE FROM pending_skill_reads WHERE source_id = ?1 AND source_path = ?2 AND call_id = ?3",
+            params![context.source_id, path, result.call_id],
         )
         .map_err(|error| format!("failed to finish a pending Skill file read: {error}"))?;
 
@@ -787,6 +1525,7 @@ fn complete_skill_read_call(
 
 fn import_usage(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     usage: &UsageReport,
 ) -> Result<(), String> {
@@ -796,8 +1535,8 @@ fn import_usage(
     } else {
         transaction
             .query_row(
-                "SELECT session_id FROM rollout_sources WHERE path = ?1",
-                [&path],
+                "SELECT session_id FROM rollout_sources WHERE source_id = ?1 AND path = ?2",
+                params![context.source_id, path],
                 |row| row.get(0),
             )
             .optional()
@@ -812,8 +1551,8 @@ fn import_usage(
     } else {
         transaction
             .query_row(
-                "SELECT current_invocation_id FROM rollout_sources WHERE path = ?1",
-                [&path],
+                "SELECT current_invocation_id FROM rollout_sources WHERE source_id = ?1 AND path = ?2",
+                params![context.source_id, path],
                 |row| row.get(0),
             )
             .optional()
@@ -840,14 +1579,16 @@ fn import_usage(
             "
             INSERT INTO token_usage_records (
                 id,
+                source_id,
                 session_id,
                 invocation_id,
                 source_path,
                 timestamp_ms,
                 cumulative_tokens,
                 delta_tokens
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT(id) DO UPDATE SET
+                source_id = excluded.source_id,
                 session_id = excluded.session_id,
                 invocation_id = excluded.invocation_id,
                 source_path = excluded.source_path,
@@ -857,6 +1598,7 @@ fn import_usage(
             ",
             params![
                 record.id.as_str(),
+                context.source_id,
                 session_id,
                 invocation_id,
                 path,
@@ -880,6 +1622,7 @@ fn import_usage(
 
 fn import_terminal_invocation(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     record: &Record,
     invocation: &AgentInvocation,
 ) -> Result<(), String> {
@@ -907,20 +1650,27 @@ fn import_terminal_invocation(
     };
 
     if let Some(session_id) = record.session.as_ref().map(|id| id.as_str()) {
-        upsert_rollout_source(transaction, &path, Some(session_id), false)?;
+        upsert_rollout_source(transaction, context, &path, Some(session_id), false)?;
         transaction
             .execute(
                 "
-                INSERT INTO agent_invocations (
-                    id,
+            INSERT INTO agent_invocations (
+                id,
+                source_id,
+                session_id,
+                source_path,
+                started_at_ms,
+                status
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 'in_progress')
+            ON CONFLICT(id) DO NOTHING
+            ",
+                params![
+                    invocation_id,
+                    context.source_id,
                     session_id,
-                    source_path,
-                    started_at_ms,
-                    status
-                ) VALUES (?1, ?2, ?3, ?4, 'in_progress')
-                ON CONFLICT(id) DO NOTHING
-                ",
-                params![invocation_id, session_id, path, started_at_ms],
+                    path,
+                    started_at_ms
+                ],
             )
             .map_err(|error| {
                 format!("failed to recover a invocation without a start event: {error}")
@@ -962,10 +1712,10 @@ fn import_terminal_invocation(
         .execute(
             "
             UPDATE rollout_sources
-            SET current_invocation_id = NULL, updated_at_ms = ?3
-            WHERE path = ?1 AND current_invocation_id = ?2
+            SET current_invocation_id = NULL, updated_at_ms = ?4
+            WHERE source_id = ?1 AND path = ?2 AND current_invocation_id = ?3
             ",
-            params![path, invocation_id, repository::now_ms()],
+            params![context.source_id, path, invocation_id, repository::now_ms()],
         )
         .map_err(|error| format!("failed to clear the completed invocation: {error}"))?;
     update_skill_metrics(transaction, invocation_id)
@@ -1047,45 +1797,75 @@ fn refresh_invocation_tokens(
     Ok(())
 }
 
-fn remove_rollout_source(transaction: &Transaction<'_>, path: &Path) -> Result<(), String> {
+fn remove_rollout_source(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    path: &Path,
+) -> Result<(), String> {
     let path = path.to_string_lossy();
-    clear_rollout_records(transaction, &path)?;
+    clear_rollout_records(transaction, context, &path)?;
     transaction
-        .execute("DELETE FROM rollout_sources WHERE path = ?1", [&path])
+        .execute(
+            "DELETE FROM rollout_sources WHERE path = ?1 AND source_id = ?2",
+            params![path, context.source_id],
+        )
         .map_err(|error| format!("failed to clear rollout state: {error}"))?;
     Ok(())
 }
 
-fn reset_rollout_source(transaction: &Transaction<'_>, path: &Path) -> Result<(), String> {
+fn reset_rollout_source(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    path: &Path,
+) -> Result<(), String> {
     let path = path.to_string_lossy();
-    clear_rollout_records(transaction, &path)?;
+    clear_rollout_records(transaction, context, &path)?;
     transaction
         .execute(
             "
             UPDATE rollout_sources
             SET current_invocation_id = NULL, updated_at_ms = ?2
-            WHERE path = ?1
+            WHERE path = ?1 AND source_id = ?3
             ",
-            params![path, repository::now_ms()],
+            params![path, repository::now_ms(), context.source_id],
         )
         .map_err(|error| format!("failed to reset rollout state: {error}"))?;
     Ok(())
 }
 
-fn clear_rollout_records(transaction: &Transaction<'_>, path: &str) -> Result<(), String> {
+fn clear_rollout_records(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    path: &str,
+) -> Result<(), String> {
     transaction
-        .execute("DELETE FROM session_events WHERE source_path = ?1", [path])
+        .execute(
+            "DELETE FROM mcp_tool_call_retry WHERE source_id = ?1 AND source_path = ?2",
+            params![context.source_id, path],
+        )
+        .map_err(|error| format!("failed to clear rollout retry evidence: {error}"))?;
+    transaction
+        .execute(
+            "DELETE FROM mcp_tool_call WHERE source_id = ?1 AND source_path = ?2",
+            params![context.source_id, path],
+        )
+        .map_err(|error| format!("failed to clear rollout tool calls: {error}"))?;
+    transaction
+        .execute(
+            "DELETE FROM session_events WHERE source_id = ?1 AND source_path = ?2",
+            params![context.source_id, path],
+        )
         .map_err(|error| format!("failed to clear rollout session events: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM token_usage_records WHERE source_path = ?1",
-            [path],
+            "DELETE FROM token_usage_records WHERE source_id = ?1 AND source_path = ?2",
+            params![context.source_id, path],
         )
         .map_err(|error| format!("failed to clear rollout token usage: {error}"))?;
     transaction
         .execute(
-            "DELETE FROM agent_invocations WHERE source_path = ?1",
-            [path],
+            "DELETE FROM agent_invocations WHERE source_id = ?1 AND source_path = ?2",
+            params![context.source_id, path],
         )
         .map_err(|error| format!("failed to clear rollout invocations: {error}"))?;
     Ok(())
@@ -1093,6 +1873,7 @@ fn clear_rollout_records(transaction: &Transaction<'_>, path: &str) -> Result<()
 
 fn upsert_rollout_source(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     path: &str,
     session_id: Option<&str>,
     authoritative: bool,
@@ -1100,8 +1881,8 @@ fn upsert_rollout_source(
     let previous_session_id = if authoritative {
         transaction
             .query_row(
-                "SELECT session_id FROM rollout_sources WHERE path = ?1",
-                [path],
+                "SELECT session_id FROM rollout_sources WHERE source_id = ?1 AND path = ?2",
+                params![context.source_id, path],
                 |row| row.get::<_, Option<String>>(0),
             )
             .optional()
@@ -1113,9 +1894,10 @@ fn upsert_rollout_source(
     transaction
         .execute(
             "
-            INSERT INTO rollout_sources (path, provider, session_id, updated_at_ms)
-            VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(path) DO UPDATE SET
+            INSERT INTO rollout_sources (path, provider, session_id, updated_at_ms, source_id)
+            VALUES (?1, ?2, ?3, ?4, ?6)
+            ON CONFLICT(source_id, path) DO UPDATE SET
+                provider = excluded.provider,
                 session_id = CASE
                     WHEN ?5 = 1 THEN excluded.session_id
                     ELSE COALESCE(rollout_sources.session_id, excluded.session_id)
@@ -1124,10 +1906,11 @@ fn upsert_rollout_source(
             ",
             params![
                 path,
-                repository::PROVIDER,
+                context.provider,
                 session_id,
                 repository::now_ms(),
-                authoritative as i64
+                authoritative as i64,
+                context.source_id
             ],
         )
         .map_err(|error| format!("failed to track a rollout source: {error}"))?;
@@ -1136,36 +1919,45 @@ fn upsert_rollout_source(
         if let Some(session_id) = session_id {
             transaction
                 .execute(
-                    "UPDATE session_events SET session_id = ?2 WHERE source_path = ?1",
-                    params![path, session_id],
+                    "UPDATE session_events SET session_id = ?3 WHERE source_id = ?1 AND source_path = ?2",
+                    params![context.source_id, path, session_id],
                 )
                 .map_err(|error| {
                     format!("failed to update rollout session event ownership: {error}")
                 })?;
             transaction
                 .execute(
-                    "UPDATE agent_invocations SET session_id = ?2 WHERE source_path = ?1",
-                    params![path, session_id],
+                    "UPDATE agent_invocations SET session_id = ?3 WHERE source_id = ?1 AND source_path = ?2",
+                    params![context.source_id, path, session_id],
                 )
                 .map_err(|error| {
                     format!("failed to update rollout invocation ownership: {error}")
                 })?;
             transaction
                 .execute(
-                    "UPDATE token_usage_records SET session_id = ?2 WHERE source_path = ?1",
-                    params![path, session_id],
+                    "UPDATE token_usage_records SET session_id = ?3 WHERE source_id = ?1 AND source_path = ?2",
+                    params![context.source_id, path, session_id],
                 )
                 .map_err(|error| format!("failed to update rollout usage ownership: {error}"))?;
             transaction
                 .execute(
+                    "UPDATE mcp_tool_call SET session_id = ?3 WHERE source_id = ?1 AND source_path = ?2",
+                    params![context.source_id, path, session_id],
+                )
+                .map_err(|error| {
+                    format!("failed to update rollout tool-call ownership: {error}")
+                })?;
+            transaction
+                .execute(
                     "
                     UPDATE skill_invocations
-                    SET session_id = ?2
+                    SET session_id = ?3
                     WHERE invocation_id IN (
-                        SELECT id FROM agent_invocations WHERE source_path = ?1
+                        SELECT id FROM agent_invocations
+                        WHERE source_id = ?1 AND source_path = ?2
                     )
                     ",
-                    params![path, session_id],
+                    params![context.source_id, path, session_id],
                 )
                 .map_err(|error| format!("failed to update rollout skill ownership: {error}"))?;
         }
@@ -1190,6 +1982,9 @@ fn upsert_rollout_source(
                       AND NOT EXISTS (
                           SELECT 1 FROM session_events WHERE session_id = ?1
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM mcp_tool_call WHERE session_id = ?1
+                      )
                     ",
                     [previous_session_id],
                 )
@@ -1201,6 +1996,7 @@ fn upsert_rollout_source(
 
 fn current_invocation(
     transaction: &Transaction<'_>,
+    context: &ProviderContext,
     path: &str,
 ) -> Result<Option<(String, String, Option<i64>)>, String> {
     transaction
@@ -1209,9 +2005,9 @@ fn current_invocation(
             SELECT invocations.id, invocations.session_id, invocations.started_at_ms
             FROM rollout_sources sources
             JOIN agent_invocations invocations ON invocations.id = sources.current_invocation_id
-            WHERE sources.path = ?1
+            WHERE sources.source_id = ?1 AND sources.path = ?2
             ",
-            [path],
+            params![context.source_id, path],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()
@@ -1288,7 +2084,7 @@ fn is_valid_skill_name(value: &str) -> bool {
 }
 
 #[cfg(not(feature = "e2e"))]
-fn log_batch(phase: &str, batch: &Batch) {
+fn log_batch(provider: &str, phase: &str, batch: &Batch) {
     let mut upserts = 0;
     let mut deletes = 0;
     let mut resets = 0;
@@ -1301,21 +2097,21 @@ fn log_batch(phase: &str, batch: &Batch) {
         }
     }
     log::info!(
-        "Codex analytics {phase} batch: upserts={upserts}, deletes={deletes}, source_resets={resets}, diagnostics={}, has_more={}",
+        "{provider} analytics {phase} batch: upserts={upserts}, deletes={deletes}, source_resets={resets}, diagnostics={}, has_more={}",
         batch.diagnostics.len(),
         batch.has_more
     );
     for diagnostic in batch.diagnostics.iter().take(20) {
         log::warn!(
-            "Codex analytics diagnostic [{}]: {}",
+            "{provider} analytics diagnostic [{}]: {}",
             diagnostic.code,
             diagnostic.message
         );
     }
     if batch.diagnostics.len() > 20 {
         log::warn!(
-            "{} additional Codex analytics diagnostics were omitted from the log",
-            batch.diagnostics.len() - 20
+            "{} additional {provider} analytics diagnostics were omitted from the log",
+            batch.diagnostics.len() - 20,
         );
     }
 }

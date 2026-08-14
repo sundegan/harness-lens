@@ -16,7 +16,7 @@ use coding_agent_data::{
     ContentBlock, EventData, FileChangeKind, HookStatus, MessageRole, ModeChangeKind,
     ModelInvocationStatus, NoticeLevel, Provider, QueueOperation, ReasoningVisibility, Record,
     RecordData, RecordId, SessionRelationKind, SourceCoverage, SourceLocation, StopReason,
-    Timestamp, ToolKind, ToolStatus, STANDARD_CAPABILITIES,
+    Timestamp, ToolKind, ToolSourceKind, ToolStatus, STANDARD_CAPABILITIES,
 };
 use tempfile::TempDir;
 
@@ -415,6 +415,8 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
                                 EventData::ToolCall(call)
                                     if call.name == "edit_file"
                                         && call.namespace.as_deref() == Some("filesystem")
+                                        && call.source_kind == ToolSourceKind::BuiltIn
+                                        && call.server_name.is_none()
                                         && call.kind == ToolKind::Edit
                                         && call.locations.iter().any(|location|
                                             location.path
@@ -489,6 +491,40 @@ fn transcript_turns_model_requests_and_file_changes_share_normalized_identity() 
                             && session.model_provider.as_deref() == Some("anthropic")
                 )
         )
+    }));
+}
+
+#[test]
+fn explicit_claude_tool_sources_do_not_depend_on_namespace_guessing() {
+    let fixture = Fixture::new(
+        "{\"type\":\"assistant\",\"uuid\":\"assistant-sources\",\"sessionId\":\"session-1\",\"timestamp\":\"2026-01-02T03:04:06Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"mcp_tool_use\",\"id\":\"mcp-1\",\"name\":\"search\",\"server_name\":\"docs\",\"input\":{\"query\":\"api\"}},{\"type\":\"server_tool_use\",\"id\":\"hosted-1\",\"name\":\"web_search\",\"input\":{\"query\":\"api\"}}]}}\n",
+        "",
+    );
+    let batch = fixture.provider().scan(None).unwrap();
+    let calls = batch
+        .changes
+        .iter()
+        .filter_map(|change| match change {
+            Change::Upsert(record) => match &record.data {
+                RecordData::Event(event) => match &event.data {
+                    EventData::ToolCall(call) => Some(call),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(calls.iter().any(|call| {
+        call.call_id == "mcp-1"
+            && call.source_kind == ToolSourceKind::Mcp
+            && call.server_name.as_deref() == Some("docs")
+    }));
+    assert!(calls.iter().any(|call| {
+        call.call_id == "hosted-1"
+            && call.source_kind == ToolSourceKind::ProviderHosted
+            && call.server_name.is_none()
     }));
 }
 

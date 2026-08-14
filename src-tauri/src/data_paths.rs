@@ -3,6 +3,11 @@ use std::path::PathBuf;
 const APP_DATA_DIR_NAME: &str = ".harness-lens";
 
 pub fn root_dir() -> PathBuf {
+    #[cfg(feature = "e2e")]
+    if let Some(path) = std::env::var_os("HARNESS_LENS_E2E_DATA_DIR") {
+        return PathBuf::from(path);
+    }
+
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(APP_DATA_DIR_NAME)

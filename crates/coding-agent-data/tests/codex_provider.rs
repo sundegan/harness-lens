@@ -17,7 +17,7 @@ use coding_agent_data::{
     DataQuality, EventData, FileChangeKind, GoalStatus, HistoryMode, MessageRole, ModeChangeKind,
     NoticeLevel, PlanStepStatus, Provider, RateLimitReason, RateLimitScope, ReasoningVisibility,
     Record, RecordData, RecordId, SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason,
-    TokenUsage, ToolKind, ToolStatus, STANDARD_CAPABILITIES,
+    TokenUsage, ToolKind, ToolSourceKind, ToolStatus, STANDARD_CAPABILITIES,
 };
 use rusqlite::{params, Connection};
 use tempfile::TempDir;
@@ -1110,6 +1110,8 @@ fn paginated_turn_items_are_normalized_from_structured_lifecycle_records() {
                             EventData::ToolCall(call)
                                 if call.call_id == "mcp-1"
                                     && call.namespace.as_deref() == Some("filesystem")
+                                    && call.source_kind == ToolSourceKind::Mcp
+                                    && call.server_name.as_deref() == Some("filesystem")
                                     && call.name == "edit_file"
                                     && call.locations.iter().any(|location|
                                         location.path

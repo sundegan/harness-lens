@@ -2,6 +2,8 @@ mod analytics;
 mod commands;
 mod data_paths;
 pub mod database;
+#[cfg(feature = "e2e")]
+mod e2e_seed;
 #[cfg(target_os = "linux")]
 mod linux_fix;
 #[cfg(target_os = "macos")]
@@ -62,6 +64,10 @@ pub fn run() {
             analytics::get_skill_analysis,
             analytics::get_session_page,
             analytics::get_session_detail,
+            analytics::get_tool_call_analysis,
+            analytics::get_tool_call_filter_options,
+            analytics::get_tool_call_page,
+            analytics::get_tool_call_detail,
             settings::load_settings,
             settings::save_setting
         ])
@@ -82,7 +88,11 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle();
             let database_path = data_paths::database_path();
+            #[cfg(feature = "e2e")]
+            e2e_seed::reset_database_files(&database_path)?;
             let database = database::Database::initialize(&database_path)?;
+            #[cfg(feature = "e2e")]
+            e2e_seed::seed(&database)?;
             app.manage(database);
             #[cfg(not(feature = "e2e"))]
             app.manage(analytics::AgentDataMonitor::start(

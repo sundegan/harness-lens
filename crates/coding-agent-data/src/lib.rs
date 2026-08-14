@@ -65,7 +65,7 @@ pub use model::{
     ReasoningVisibility, Record, RecordData, RecordId, Retry, Rollback, SandboxPolicy, Session,
     SessionHistory, SessionRelation, SessionRelationKind, SourceId, SourceLocation, SourceRef,
     SpendLimit, StopReason, TaskArtifact, Timestamp, TokenUsage, ToolCall, ToolKind, ToolLocation,
-    ToolResult, ToolStatus, UnknownEvent, UnknownRecord, UsageReport, WorldState,
+    ToolResult, ToolSourceKind, ToolStatus, UnknownEvent, UnknownRecord, UsageReport, WorldState,
 };
 pub use provider::{
     AdapterCoverage, CapabilityCoverage, Provider, SourceCoverage, WatchProvider,

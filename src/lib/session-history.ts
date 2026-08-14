@@ -81,6 +81,8 @@ export interface ToolCallEventValue {
   call_id: string;
   name: string;
   namespace?: string | null;
+  source_kind?: string;
+  server_name?: string | null;
   title?: string | null;
   kind: string;
   status: string;
