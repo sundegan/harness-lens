@@ -27,21 +27,25 @@ fn start_database_initialization(
 ) -> std::io::Result<()> {
     thread::Builder::new()
         .name("harness-lens-database".to_owned())
-        .spawn(move || match database::Database::initialize(database_path) {
-            Ok(database) => {
-                if let Err(error) = database.validate_integrity() {
-                    log::error!("background analytics database integrity check failed: {error}");
-                    runtime.set_result(Err(error.to_string()));
-                    return;
+        .spawn(
+            move || match database::Database::initialize(database_path) {
+                Ok(database) => {
+                    if let Err(error) = database.validate_integrity() {
+                        log::error!(
+                            "background analytics database integrity check failed: {error}"
+                        );
+                        runtime.set_result(Err(error.to_string()));
+                        return;
+                    }
+                    runtime.set_result(Ok(database));
+                    log::info!("analytics database is ready");
                 }
-                runtime.set_result(Ok(database));
-                log::info!("analytics database is ready");
-            }
-            Err(error) => {
-                log::error!("failed to initialize the analytics database: {error}");
-                runtime.set_result(Err(error.to_string()));
-            }
-        })
+                Err(error) => {
+                    log::error!("failed to initialize the analytics database: {error}");
+                    runtime.set_result(Err(error.to_string()));
+                }
+            },
+        )
         .map(|_| ())
 }
 

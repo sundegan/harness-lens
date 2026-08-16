@@ -83,13 +83,9 @@ impl AgentDataMonitor {
             .name("harness-lens-claude-code".to_owned())
             .spawn(move || match ClaudeCodeProvider::discover() {
                 Ok(provider) => run_provider(claude_database, app, claude_stop, provider),
-                Err(error) => record_discovery_error(
-                    claude_database,
-                    app,
-                    "claude-code",
-                    &error,
-                    claude_stop,
-                ),
+                Err(error) => {
+                    record_discovery_error(claude_database, app, "claude-code", &error, claude_stop)
+                }
             })?;
         Ok(Self {
             stop,
