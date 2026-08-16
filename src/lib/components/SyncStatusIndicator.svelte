@@ -3,6 +3,7 @@ import { i18nManager } from '$lib/i18n.svelte';
 import { type SyncStatus, syncStatusManager } from '$lib/sync-status.svelte';
 
 type SyncIndicator =
+  | { kind: 'initializing' }
   | { kind: 'initial'; progress: number }
   | { kind: 'incremental' }
   | { kind: 'error' }
@@ -11,12 +12,14 @@ type SyncIndicator =
 const indicatorBaseClass =
   'inline-flex items-center gap-1.5 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium tracking-wide';
 const indicatorClass = {
+  initializing: 'border-primary/25 bg-primary/10 text-primary',
   initial: 'border-primary/25 bg-primary/10 text-primary',
   incremental: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   error: 'border-destructive/25 bg-destructive/10 text-destructive',
   watching: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
 } as const;
 const dotClass = {
+  initializing: 'bg-primary',
   initial: 'bg-primary',
   incremental: 'bg-amber-500',
   error: 'bg-destructive',
@@ -34,6 +37,8 @@ function scanProgress(status: SyncStatus): number {
 }
 
 const syncIndicator = $derived.by<SyncIndicator | null>(() => {
+  if (syncStatusManager.databaseStatus === 'pending') return { kind: 'initializing' };
+  if (syncStatusManager.databaseStatus === 'failed') return { kind: 'error' };
   const initialScan = syncStatusManager.activeStatuses.find(
     (status) => status.phase === 'initial_scan'
   );
@@ -46,7 +51,9 @@ const syncIndicator = $derived.by<SyncIndicator | null>(() => {
 
 {#if syncIndicator}
   {@const labelKey =
-    syncIndicator.kind === 'initial'
+    syncIndicator.kind === 'initializing'
+      ? 'sync.status.initializing'
+      : syncIndicator.kind === 'initial'
       ? 'sync.status.initial_active'
       : syncIndicator.kind === 'incremental'
         ? 'sync.status.incremental_active'

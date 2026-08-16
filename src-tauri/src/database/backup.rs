@@ -15,6 +15,8 @@ const BACKUP_PREFIX: &str = "harness-lens-";
 const BACKUP_SUFFIX: &str = ".sqlite";
 const BACKUP_PAGES_PER_STEP: i32 = 100;
 const BACKUP_STEP_PAUSE: Duration = Duration::from_millis(10);
+const MIGRATION_BACKUP_PAGES_PER_STEP: i32 = 1_000;
+const MIGRATION_BACKUP_STEP_PAUSE: Duration = Duration::ZERO;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BackupInfo {
@@ -106,7 +108,12 @@ impl Database {
         backup_path: &Path,
         staging_path: &Path,
     ) -> Result<RestoreInfo, DatabaseError> {
-        copy_database_file(backup_path, staging_path)?;
+        copy_database_file(
+            backup_path,
+            staging_path,
+            BACKUP_PAGES_PER_STEP,
+            BACKUP_STEP_PAUSE,
+        )?;
 
         let mut staging_connection = open_configured_connection(staging_path)?;
         migrations::apply_pending(&mut staging_connection)?;
@@ -142,9 +149,18 @@ impl Database {
             .map_err(|source| DatabaseError::io("create the backup directory", source))?;
         let final_path = self.unique_backup_path(&kind);
         let partial_path = final_path.with_extension("sqlite.partial");
+        let (pages_per_step, step_pause) = match kind {
+            // Migration backups run in the background initialization thread.
+            BackupKind::PreMigration { .. } => {
+                (MIGRATION_BACKUP_PAGES_PER_STEP, MIGRATION_BACKUP_STEP_PAUSE)
+            }
+            BackupKind::Manual | BackupKind::PreRestore => {
+                (BACKUP_PAGES_PER_STEP, BACKUP_STEP_PAUSE)
+            }
+        };
 
         let result = (|| {
-            copy_database_file(&self.path, &partial_path)?;
+            copy_database_file(&self.path, &partial_path, pages_per_step, step_pause)?;
             let connection = open_read_only_connection(&partial_path)?;
             migrations::validate_upgrade_source(&connection)?;
             validate_database(&connection)?;
@@ -185,7 +201,12 @@ impl Database {
     }
 }
 
-fn copy_database_file(source_path: &Path, destination_path: &Path) -> Result<(), DatabaseError> {
+fn copy_database_file(
+    source_path: &Path,
+    destination_path: &Path,
+    pages_per_step: i32,
+    step_pause: Duration,
+) -> Result<(), DatabaseError> {
     let source = open_read_only_connection(source_path)?;
     let mut destination = Connection::open(destination_path)
         .map_err(|source| DatabaseError::sqlite("open the database backup target", source))?;
@@ -193,7 +214,7 @@ fn copy_database_file(source_path: &Path, destination_path: &Path) -> Result<(),
         let backup = Backup::new(&source, &mut destination)
             .map_err(|source| DatabaseError::sqlite("start the database backup", source))?;
         backup
-            .run_to_completion(BACKUP_PAGES_PER_STEP, BACKUP_STEP_PAUSE, None)
+            .run_to_completion(pages_per_step, step_pause, None)
             .map_err(|source| DatabaseError::sqlite("copy the database backup", source))?;
     }
     Ok(())

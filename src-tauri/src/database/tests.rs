@@ -1,12 +1,17 @@
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, SchemaVersion, M};
 
 use super::migrations::{validate_embedded_migrations, APPLICATION_ID};
-use super::{current_schema_version, Database, DatabaseError};
+use super::{
+    current_schema_version, Database, DatabaseError, DatabaseRuntime, DatabaseRuntimeStatus,
+};
 
 static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -588,5 +593,72 @@ fn restore_rejects_path_traversal() {
     let error = database.restore_backup("../other.sqlite").unwrap_err();
     assert!(matches!(error, DatabaseError::InvalidBackupName));
 
+    cleanup(&path);
+}
+
+#[test]
+fn database_runtime_waits_until_database_is_ready() {
+    let path = test_database_path("runtime-ready");
+    let database = Database::initialize(&path).unwrap();
+    let runtime = DatabaseRuntime::pending();
+    assert_eq!(runtime.status(), DatabaseRuntimeStatus::Pending);
+
+    let (waiting_sender, waiting_receiver) = mpsc::channel();
+    let (result_sender, result_receiver) = mpsc::channel();
+    let waiter_runtime = runtime.clone();
+    let waiter = thread::spawn(move || {
+        waiting_sender.send(()).unwrap();
+        result_sender
+            .send(
+                waiter_runtime
+                    .wait()
+                    .map(|database| database.schema_version()),
+            )
+            .unwrap();
+    });
+
+    waiting_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap();
+    assert!(result_receiver
+        .recv_timeout(Duration::from_millis(25))
+        .is_err());
+
+    runtime.set_result(Ok(database));
+    assert_eq!(
+        result_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        current_schema_version()
+    );
+    assert_eq!(runtime.status(), DatabaseRuntimeStatus::Ready);
+    waiter.join().unwrap();
+    cleanup(&path);
+}
+
+#[test]
+fn database_runtime_propagates_initialization_failure() {
+    let runtime = DatabaseRuntime::pending();
+    let waiter_runtime = runtime.clone();
+    let waiter = thread::spawn(move || waiter_runtime.wait());
+
+    runtime.set_result(Err("migration failed".to_owned()));
+    assert_eq!(waiter.join().unwrap().unwrap_err(), "migration failed");
+    assert_eq!(runtime.status(), DatabaseRuntimeStatus::Failed);
+}
+
+#[test]
+fn ready_database_runtime_returns_database_immediately() {
+    let path = test_database_path("runtime-direct");
+    let database = Database::initialize(&path).unwrap();
+    let runtime = DatabaseRuntime::ready(database);
+
+    assert_eq!(runtime.status(), DatabaseRuntimeStatus::Ready);
+    assert_eq!(
+        runtime.wait().unwrap().schema_version().unwrap(),
+        current_schema_version()
+    );
     cleanup(&path);
 }

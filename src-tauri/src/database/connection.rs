@@ -46,6 +46,11 @@ impl Database {
         migrations::schema_version(&connection)
     }
 
+    pub fn validate_integrity(&self) -> Result<(), DatabaseError> {
+        let connection = self.connect()?;
+        validate_database(&connection)
+    }
+
     fn initialize_storage(&self) -> Result<(), DatabaseError> {
         create_parent_directory(&self.path)?;
         fs::create_dir_all(&self.backup_dir)
@@ -61,8 +66,9 @@ impl Database {
         migrations::validate_upgrade_source(&connection)?;
         let from_version = migrations::schema_version(&connection)?;
         let target_version = current_schema_version();
+        let needs_migration = from_version < target_version;
         let needs_backup = existed_before
-            && from_version < target_version
+            && needs_migration
             && (from_version > 0 || has_application_objects(&connection)?);
         drop(connection);
 
@@ -72,7 +78,6 @@ impl Database {
 
         connection = open_configured_connection(&self.path)?;
         migrations::apply_pending(&mut connection)?;
-        validate_database(&connection)?;
         Ok(())
     }
 }

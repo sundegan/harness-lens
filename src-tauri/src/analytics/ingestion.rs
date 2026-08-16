@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 #[cfg(not(feature = "e2e"))]
-use std::path::PathBuf;
-#[cfg(not(feature = "e2e"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(feature = "e2e"))]
 use std::sync::Arc;
@@ -29,7 +27,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 use super::repository;
-use crate::database::Database;
+use crate::database::{Database, DatabaseRuntime};
 
 #[cfg(not(feature = "e2e"))]
 const ANALYTICS_UPDATED_EVENT: &str = "analytics-updated";
@@ -65,24 +63,33 @@ struct StoredFirstUserMessage {
 
 #[cfg(not(feature = "e2e"))]
 impl AgentDataMonitor {
-    pub fn start(database_path: PathBuf, app: AppHandle) -> std::io::Result<Self> {
+    pub fn start(database: DatabaseRuntime, app: AppHandle) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
-        let codex_path = database_path.clone();
+        let codex_database = database.clone();
         let codex_app = app.clone();
         let codex_stop = Arc::clone(&stop);
         let codex = thread::Builder::new()
             .name("harness-lens-codex".to_owned())
             .spawn(move || match CodexProvider::discover() {
-                Ok(provider) => run_provider(codex_path, codex_app, codex_stop, provider),
-                Err(error) => record_discovery_error(codex_path, codex_app, "codex", &error),
+                Ok(provider) => run_provider(codex_database, codex_app, codex_stop, provider),
+                Err(error) => {
+                    record_discovery_error(codex_database, codex_app, "codex", &error, codex_stop)
+                }
             })?;
 
+        let claude_database = database;
         let claude_stop = Arc::clone(&stop);
         let claude = thread::Builder::new()
             .name("harness-lens-claude-code".to_owned())
             .spawn(move || match ClaudeCodeProvider::discover() {
-                Ok(provider) => run_provider(database_path, app, claude_stop, provider),
-                Err(error) => record_discovery_error(database_path, app, "claude-code", &error),
+                Ok(provider) => run_provider(claude_database, app, claude_stop, provider),
+                Err(error) => record_discovery_error(
+                    claude_database,
+                    app,
+                    "claude-code",
+                    &error,
+                    claude_stop,
+                ),
             })?;
         Ok(Self {
             stop,
@@ -103,38 +110,36 @@ impl Drop for AgentDataMonitor {
 
 #[cfg(not(feature = "e2e"))]
 fn record_discovery_error(
-    database_path: PathBuf,
+    database: DatabaseRuntime,
     app: AppHandle,
     provider: &str,
     error: &coding_agent_data::Error,
+    stop: Arc<AtomicBool>,
 ) {
     log::warn!("{provider} data monitoring is unavailable: {error}");
-    if let Ok(database) = Database::initialize(database_path) {
-        set_error_status(
-            &database,
-            &ProviderContext {
-                provider: provider.to_owned(),
-                source_id: format!("{provider}:unavailable"),
-            },
-            "unavailable",
-            "discovery",
-            &error.to_string(),
-        );
-        emit_updated(&app);
-    }
+    let Some(database) = wait_for_database(database, &stop) else {
+        return;
+    };
+    set_error_status(
+        &database,
+        &ProviderContext {
+            provider: provider.to_owned(),
+            source_id: format!("{provider}:unavailable"),
+        },
+        "unavailable",
+        "discovery",
+        &error.to_string(),
+    );
+    emit_updated(&app);
 }
 
 #[cfg(not(feature = "e2e"))]
-fn run_provider<P>(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>, provider: P)
+fn run_provider<P>(database: DatabaseRuntime, app: AppHandle, stop: Arc<AtomicBool>, provider: P)
 where
     P: Provider + ScanProgressProvider + WatchProvider,
 {
-    let database = match Database::initialize(database_path) {
-        Ok(database) => database,
-        Err(error) => {
-            log::error!("failed to open the analytics database: {error}");
-            return;
-        }
+    let Some(database) = wait_for_database(database, &stop) else {
+        return;
     };
     let context = ProviderContext {
         provider: provider.info().id.as_str().to_owned(),
@@ -393,6 +398,21 @@ where
             }
         }
     }
+}
+
+#[cfg(not(feature = "e2e"))]
+fn wait_for_database(database: DatabaseRuntime, stop: &AtomicBool) -> Option<Database> {
+    while !stop.load(Ordering::Acquire) {
+        match database.wait_timeout(Duration::from_millis(100)) {
+            Ok(Some(database)) => return Some(database),
+            Ok(None) => {}
+            Err(error) => {
+                log::error!("failed to initialize the analytics database: {error}");
+                return None;
+            }
+        }
+    }
+    None
 }
 
 #[cfg(not(feature = "e2e"))]

@@ -13,7 +13,37 @@ mod settings;
 mod tray;
 mod window;
 
+#[cfg(not(feature = "e2e"))]
+use std::path::PathBuf;
+#[cfg(not(feature = "e2e"))]
+use std::thread;
+
 use tauri::Manager;
+
+#[cfg(not(feature = "e2e"))]
+fn start_database_initialization(
+    runtime: database::DatabaseRuntime,
+    database_path: PathBuf,
+) -> std::io::Result<()> {
+    thread::Builder::new()
+        .name("harness-lens-database".to_owned())
+        .spawn(move || match database::Database::initialize(database_path) {
+            Ok(database) => {
+                if let Err(error) = database.validate_integrity() {
+                    log::error!("background analytics database integrity check failed: {error}");
+                    runtime.set_result(Err(error.to_string()));
+                    return;
+                }
+                runtime.set_result(Ok(database));
+                log::info!("analytics database is ready");
+            }
+            Err(error) => {
+                log::error!("failed to initialize the analytics database: {error}");
+                runtime.set_result(Err(error.to_string()));
+            }
+        })
+        .map(|_| ())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -60,8 +90,10 @@ pub fn run() {
             commands::restart_app,
             commands::set_window_theme,
             commands::desktop_platform,
+            commands::get_database_runtime_status,
             commands::set_tray_menu_labels,
             analytics::get_skill_analysis,
+            analytics::get_sync_status,
             analytics::get_session_page,
             analytics::get_session_detail,
             analytics::get_tool_call_analysis,
@@ -87,16 +119,22 @@ pub fn run() {
             let app_handle = app.handle();
             let database_path = data_paths::database_path();
             #[cfg(feature = "e2e")]
-            e2e_seed::reset_database_files(&database_path)?;
-            let database = database::Database::initialize(&database_path)?;
-            #[cfg(feature = "e2e")]
-            e2e_seed::seed(&database)?;
-            app.manage(database);
+            {
+                e2e_seed::reset_database_files(&database_path)?;
+                let database = database::Database::initialize(&database_path)?;
+                e2e_seed::seed(&database)?;
+                app.manage(database::DatabaseRuntime::ready(database));
+            }
             #[cfg(not(feature = "e2e"))]
-            app.manage(analytics::AgentDataMonitor::start(
-                database_path,
-                app_handle.clone(),
-            )?);
+            {
+                let database_runtime = database::DatabaseRuntime::pending();
+                app.manage(database_runtime.clone());
+                app.manage(analytics::AgentDataMonitor::start(
+                    database_runtime.clone(),
+                    app_handle.clone(),
+                )?);
+                start_database_initialization(database_runtime, database_path)?;
+            }
             tray::setup(app_handle)?;
             window::restore_main_window(app_handle);
             window::schedule_main_window_bounds_clamp(app_handle);

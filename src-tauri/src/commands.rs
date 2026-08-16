@@ -29,6 +29,13 @@ pub fn desktop_platform() -> &'static str {
 }
 
 #[tauri::command]
+pub fn get_database_runtime_status(
+    database: tauri::State<'_, crate::database::DatabaseRuntime>,
+) -> crate::database::DatabaseRuntimeStatus {
+    database.status()
+}
+
+#[tauri::command]
 pub fn set_tray_menu_labels(
     app: tauri::AppHandle,
     labels: crate::tray::TrayMenuLabels,

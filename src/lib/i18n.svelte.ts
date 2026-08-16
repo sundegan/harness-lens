@@ -138,6 +138,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': 'No Skill calls were detected.',
     'dashboard.empty.filtered': 'No results match the current filters.',
     'dashboard.sync.error': 'Sync error',
+    'sync.status.initializing': 'Syncing',
 
     // Pagination
     'pagination.rows_per_page': 'Rows per page',
@@ -363,6 +364,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': '未检测到 Skill 调用。',
     'dashboard.empty.filtered': '没有符合当前筛选条件的结果。',
     'dashboard.sync.error': '同步失败',
+    'sync.status.initializing': '同步中',
 
     // Pagination
     'pagination.rows_per_page': '每页行数',
@@ -482,6 +484,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': '未偵測到 Skill 呼叫。',
     'dashboard.empty.filtered': '沒有符合目前篩選條件的結果。',
     'dashboard.sync.error': '同步失敗',
+    'sync.status.initializing': '同步中',
 
     // Pagination
     'pagination.rows_per_page': '每頁行數',
