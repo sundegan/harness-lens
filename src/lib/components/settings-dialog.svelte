@@ -236,6 +236,21 @@ const selectedUpdateIntervalLabel = $derived(
               <Field.Group>
                 <Field.Field orientation="responsive" class="border-b py-3">
                   <Field.Content>
+                    <Field.Label for="current-app-version" class="text-sm">
+                      {i18nManager.t('about.version')}
+                    </Field.Label>
+                  </Field.Content>
+                  <output
+                    id="current-app-version"
+                    data-testid="current-app-version"
+                    class="w-full text-xs font-medium text-muted-foreground sm:w-44 sm:text-right"
+                  >
+                    {appUpdateManager.currentVersion || i18nManager.t('about.unknown')}
+                  </output>
+                </Field.Field>
+
+                <Field.Field orientation="responsive" class="border-b py-3">
+                  <Field.Content>
                     <Field.Label for="auto-check-updates" class="text-sm">
                       {i18nManager.t('settings.updates.auto_check')}
                     </Field.Label>

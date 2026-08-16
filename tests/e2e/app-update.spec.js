@@ -29,6 +29,7 @@ describe('application updates', () => {
     await $('[data-testid="main-nav-settings"]').click();
     await $('[data-testid="settings-nav-updates"]').click();
     await expect($('#auto-check-updates')).toExist();
+    await expect($('#current-app-version')).toHaveText(expect.stringMatching(/\d+\.\d+\.\d+/));
 
     const autoCheckUpdates = $('#auto-check-updates');
     const wasAutoCheckEnabled = (await autoCheckUpdates.getAttribute('data-state')) === 'checked';
