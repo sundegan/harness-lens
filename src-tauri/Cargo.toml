@@ -30,6 +30,7 @@ coding-agent-data = { path = "../crates/coding-agent-data", default-features = f
 tauri = { version = "=2.10.2", features = ["image-png", "macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "=2.5.0"
 tauri-plugin-single-instance = "=2.4.2"
+tauri-plugin-autostart = "=2.5.1"
 tauri-plugin-updater = "=2.9.0"
 tauri-plugin-wdio = "1"
 serde = { version = "1", features = ["derive"] }

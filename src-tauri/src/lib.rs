@@ -20,6 +20,12 @@ use std::thread;
 
 use tauri::Manager;
 
+const AUTOSTART_ARGUMENT: &str = "--autostart";
+
+fn launched_at_login() -> bool {
+    std::env::args().any(|argument| argument == AUTOSTART_ARGUMENT)
+}
+
 #[cfg(not(feature = "e2e"))]
 fn start_database_initialization(
     runtime: database::DatabaseRuntime,
@@ -88,6 +94,11 @@ pub fn run() {
     }));
 
     let app = builder
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args([AUTOSTART_ARGUMENT])
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -122,6 +133,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle();
             let database_path = data_paths::database_path();
+            let launched_at_login = launched_at_login();
             #[cfg(feature = "e2e")]
             {
                 e2e_seed::reset_database_files(&database_path)?;
@@ -140,10 +152,16 @@ pub fn run() {
                 start_database_initialization(database_runtime, database_path)?;
             }
             tray::setup(app_handle)?;
-            window::restore_main_window(app_handle);
+            if launched_at_login {
+                window::enter_background_mode(app_handle);
+            } else {
+                window::restore_main_window(app_handle);
+            }
             window::schedule_main_window_bounds_clamp(app_handle);
-            #[cfg(not(feature = "e2e"))]
-            window::focus_main_window(app_handle);
+            if !launched_at_login {
+                #[cfg(not(feature = "e2e"))]
+                window::focus_main_window(app_handle);
+            }
             #[cfg(target_os = "macos")]
             window::apply_macos_native_titlebar(app_handle);
             Ok(())

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import { autoStartManager } from '$lib/autostart.svelte';
 import AppUpdateDialog from '$lib/components/AppUpdateDialog.svelte';
 import SettingsDialog from '$lib/components/settings-dialog.svelte';
 import { i18nManager } from '$lib/i18n.svelte';
@@ -50,6 +51,7 @@ onMount(() => {
   void themeManager.init();
   void i18nManager.init();
   void appUpdateManager.init();
+  void autoStartManager.init();
   void syncStatusManager.init();
   void installFrontendErrorLogging()
     .then(registerUnlistener)

@@ -18,6 +18,7 @@
     "core:window:allow-is-always-on-top",
     "opener:default",
     "log:default",
+    "autostart:default",
     "updater:default",
     "wdio:default"
   ]

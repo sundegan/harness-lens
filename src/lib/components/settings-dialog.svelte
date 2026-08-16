@@ -3,6 +3,7 @@ import MonitorCogIcon from '@lucide/svelte/icons/monitor-cog';
 import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 import SettingsIcon from '@lucide/svelte/icons/settings';
 import XIcon from '@lucide/svelte/icons/x';
+import { autoStartManager } from '$lib/autostart.svelte';
 import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
 import { Button } from '$lib/components/ui/button/index.js';
 import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -164,6 +165,24 @@ const selectedUpdateIntervalLabel = $derived(
                       </Select.Group>
                     </Select.Content>
                   </Select.Root>
+                </Field.Field>
+
+                <Field.Field orientation="responsive" class="border-b py-3">
+                  <Field.Content>
+                    <Field.Label for="launch-at-login" class="text-sm">
+                      {i18nManager.t('settings.general.launch_at_login')}
+                    </Field.Label>
+                    <Field.Description class="text-xs">
+                      {i18nManager.t('settings.general.launch_at_login_desc')}
+                    </Field.Description>
+                  </Field.Content>
+                  <Checkbox
+                    id="launch-at-login"
+                    data-testid="launch-at-login"
+                    checked={autoStartManager.enabled}
+                    disabled={autoStartManager.available !== true || autoStartManager.busy}
+                    onCheckedChange={(checked) => void autoStartManager.setEnabled(checked === true)}
+                  />
                 </Field.Field>
               </Field.Group>
             </section>

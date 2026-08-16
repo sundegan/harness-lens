@@ -207,6 +207,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'General Settings',
+    'settings.general.launch_at_login': 'Launch at login',
+    'settings.general.launch_at_login_desc':
+      'Start HarnessLens automatically when you sign in.',
     'settings.updates.title': 'Application Updates',
     'settings.updates.auto_check': 'Check for updates automatically',
     'settings.updates.auto_check_desc': 'Check shortly after startup and at the selected interval.',
@@ -438,6 +441,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '通用设置',
+    'settings.general.launch_at_login': '开机自启',
+    'settings.general.launch_at_login_desc': '开机后自动启动 HarnessLens。',
     'settings.updates.title': '应用更新',
     'settings.updates.auto_check': '自动检查更新',
     'settings.updates.auto_check_desc': '应用启动后检查，并按选择的间隔自动检查。',
@@ -536,6 +541,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '通用設定',
+    'settings.general.launch_at_login': '開機自啟',
+    'settings.general.launch_at_login_desc': '開機後自動啟動 HarnessLens。',
 
     // Settings Appearance
     'settings.appearance.title': '應用主題',
@@ -613,6 +620,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '一般設定',
+    'settings.general.launch_at_login': 'ログイン時に起動',
+    'settings.general.launch_at_login_desc':
+      'サインイン時に HarnessLens を自動的に起動します。',
 
     // Settings Appearance
     'settings.appearance.title': 'テーマ',
@@ -690,6 +700,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': '일반 설정',
+    'settings.general.launch_at_login': '로그인 시 시작',
+    'settings.general.launch_at_login_desc': '로그인하면 HarnessLens를 자동으로 시작합니다.',
 
     // Settings Appearance
     'settings.appearance.title': '앱 테마',
@@ -768,6 +780,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Configuración General',
+    'settings.general.launch_at_login': 'Iniciar al iniciar sesión',
+    'settings.general.launch_at_login_desc':
+      'Inicia HarnessLens automáticamente al iniciar sesión.',
 
     // Settings Appearance
     'settings.appearance.title': 'Tema de la aplicación',
@@ -847,6 +862,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Paramètres généraux',
+    'settings.general.launch_at_login': 'Lancer à la connexion',
+    'settings.general.launch_at_login_desc':
+      'Démarrer automatiquement HarnessLens lorsque vous vous connectez.',
 
     // Settings Appearance
     'settings.appearance.title': "Thème de l'application",
@@ -927,6 +945,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
 
     // Settings General
     'settings.general.title': 'Allgemeine Einstellungen',
+    'settings.general.launch_at_login': 'Beim Anmelden starten',
+    'settings.general.launch_at_login_desc': 'HarnessLens beim Anmelden automatisch starten.',
 
     // Settings Appearance
     'settings.appearance.title': 'Design der Anwendung',
