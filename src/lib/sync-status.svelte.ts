@@ -1,0 +1,63 @@
+import { logWarn } from '$lib/logger';
+
+export interface SyncStatus {
+  provider: string;
+  sourceId: string;
+  status: string;
+  phase: string;
+  totalFiles: number;
+  processedFiles: number;
+  processedLines: number;
+  estimatedTotalLines: number | null;
+  currentFile: string | null;
+  currentLine: number;
+  estimatedRemainingMs: number | null;
+  lastError: string | null;
+  updatedAtMs: number;
+}
+
+class SyncStatusManager {
+  statuses = $state.raw<SyncStatus[]>([]);
+  #initialized = false;
+  #refreshSequence = 0;
+
+  activeStatuses = $derived(this.statuses.filter((status) => status.status === 'syncing'));
+  failedStatuses = $derived(
+    this.statuses.filter((status) => status.status === 'error' || status.status === 'unavailable')
+  );
+  watchingStatuses = $derived(
+    this.statuses.filter((status) => status.status === 'ready' && status.phase === 'watching')
+  );
+  lastUpdatedAtMs = $derived.by<number | null>(() => {
+    let latest: number | null = null;
+    for (const status of this.statuses) {
+      if (status.updatedAtMs <= 0 || (latest !== null && status.updatedAtMs <= latest)) continue;
+      latest = status.updatedAtMs;
+    }
+    return latest;
+  });
+
+  async init() {
+    if (this.#initialized || typeof window === 'undefined') return;
+    this.#initialized = true;
+    await this.refresh();
+  }
+
+  async refresh() {
+    if (typeof window === 'undefined') return;
+    const sequence = ++this.#refreshSequence;
+    try {
+      const { invoke, isTauri } = await import('@tauri-apps/api/core');
+      if (!isTauri()) {
+        if (sequence === this.#refreshSequence) this.statuses = [];
+        return;
+      }
+      const statuses = await invoke<SyncStatus[]>('get_sync_status');
+      if (sequence === this.#refreshSequence) this.statuses = statuses;
+    } catch (error) {
+      logWarn('Failed to refresh sync status', error);
+    }
+  }
+}
+
+export const syncStatusManager = new SyncStatusManager();

@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::providers::shared::jsonl::{read_bounded_line, LineRead};
@@ -17,10 +18,12 @@ use super::token_usage::{self, UsageAccountingState};
 /// the fork instant.
 const REWRITTEN_BURST_PAUSE_MS: i64 = 1_000;
 
+#[derive(Debug)]
 pub(super) struct ReplayPlan {
     entries: BTreeMap<PathBuf, ReplayEntry>,
 }
 
+#[derive(Debug)]
 struct ReplayEntry {
     parent_prefix: Vec<TokenUsage>,
     structural_prefix_len: Option<usize>,
@@ -34,6 +37,7 @@ pub(super) struct HistoryBaseMetadata<'a> {
     pub end_byte_offset: u64,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(super) struct RolloutMetadata {
     pub session_id: String,
     pub parent_id: Option<String>,
@@ -43,7 +47,7 @@ pub(super) struct RolloutMetadata {
     pub own_start_ordinal: Option<u64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(super) struct OwnedHistoryBaseMetadata {
     pub thread_id: String,
     pub end_ordinal_exclusive: u64,
@@ -73,6 +77,7 @@ impl ReplayPlan {
         files: &[PathBuf],
         index: &IndexSnapshot,
         state: &CodexCheckpoint,
+        metadata_cache: &BTreeMap<PathBuf, Option<RolloutMetadata>>,
         info: &ProviderInfo,
         max_line_bytes: usize,
         diagnostics: &mut Vec<Diagnostic>,
@@ -93,22 +98,7 @@ impl ReplayPlan {
 
         let mut metadata_by_path = BTreeMap::new();
         for path in files {
-            let needs_plan = state.rollouts.get(path).is_none_or(|rollout| {
-                matches!(
-                    rollout.context().usage_replay,
-                    UsageReplayState::Uninitialized
-                        | UsageReplayState::MatchingParent { .. }
-                        | UsageReplayState::SkippingRewrittenBurst { .. }
-                )
-            });
-            if !needs_plan {
-                continue;
-            }
-            let expected_owner = index
-                .transcripts
-                .get(path)
-                .map(|binding| binding.external_id.as_str());
-            if let Some(metadata) = read_rollout_metadata(path, max_line_bytes, expected_owner) {
+            if let Some(Some(metadata)) = metadata_cache.get(path) {
                 paths_by_session
                     .entry(metadata.session_id.clone())
                     .or_insert_with(|| path.clone());

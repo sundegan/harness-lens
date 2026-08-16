@@ -10,7 +10,7 @@ mod watch;
 use crate::providers::shared::identity::source_id_for_paths;
 use crate::{
     AdapterCoverage, Batch, CapabilityCoverage, Checkpoint, Provider, ProviderId, ProviderInfo,
-    Result, SourceCoverage,
+    Result, ScanProgress, ScanProgressProvider, SourceCoverage,
 };
 #[cfg(feature = "claude-code-watch")]
 use crate::{Subscription, WatchProvider};
@@ -228,6 +228,12 @@ impl Provider for ClaudeCodeProvider {
         let batch = transcript::scan(&self.source, &self.info, &self.limits, checkpoint)?;
         batch.validate_for(&self.info)?;
         Ok(batch)
+    }
+}
+
+impl ScanProgressProvider for ClaudeCodeProvider {
+    fn scan_progress(&self, checkpoint: Option<&Checkpoint>) -> Result<ScanProgress> {
+        transcript::progress(&self.source, &self.info, checkpoint)
     }
 }
 

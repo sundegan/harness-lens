@@ -109,11 +109,11 @@ function activateModule(module: MainModuleId) {
               onclick={() => activateModule(module.id)}
             >
               {#if module.id === 'sessions'}
-                <MessageSquareIcon strokeWidth={1.8} aria-hidden="true" />
+                <MessageSquareIcon class="size-4" strokeWidth={1.8} aria-hidden="true" />
               {:else if module.id === 'skills'}
-                <BlocksIcon strokeWidth={1.8} aria-hidden="true" />
+                <BlocksIcon class="size-4" strokeWidth={1.8} aria-hidden="true" />
               {:else if module.id === 'tool-calls'}
-                <WrenchIcon strokeWidth={1.8} aria-hidden="true" />
+                <WrenchIcon class="size-4" strokeWidth={1.8} aria-hidden="true" />
               {/if}
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>

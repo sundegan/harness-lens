@@ -1,5 +1,26 @@
 use crate::{Batch, Checkpoint, ProviderInfo, Result};
 
+/// A best-effort progress snapshot for one source scan.
+///
+/// Providers report file and line progress without doing a second full source
+/// pass only for presentation. `estimated_total_lines` is therefore an
+/// estimate, not a source contract.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScanProgress {
+    /// Number of source files discovered in the current snapshot.
+    pub total_files: u64,
+    /// Number of source files fully consumed by the checkpoint.
+    pub processed_files: u64,
+    /// Number of JSONL records consumed by the checkpoint.
+    pub processed_lines: u64,
+    /// Estimated number of JSONL records in the current source snapshot.
+    pub estimated_total_lines: Option<u64>,
+    /// Display-safe name of the file currently being consumed.
+    pub current_file: Option<String>,
+    /// One-based line currently being consumed in `current_file`.
+    pub current_line: u64,
+}
+
 /// Whether a provider's durable local source contains a capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -145,6 +166,15 @@ pub trait Provider: Send + Sync {
     /// Pass `None` to start from the beginning. When [`Batch::has_more`] is
     /// true, call `scan` again with the returned checkpoint.
     fn scan(&self, checkpoint: Option<&Checkpoint>) -> Result<Batch>;
+}
+
+/// Provides a lightweight progress snapshot for a provider scan.
+pub trait ScanProgressProvider: Provider {
+    /// Computes progress from the source catalog and an optional checkpoint.
+    ///
+    /// Implementations should avoid parsing the source records here. This
+    /// method is intended for UI/status updates before and between batches.
+    fn scan_progress(&self, checkpoint: Option<&Checkpoint>) -> Result<ScanProgress>;
 }
 
 /// Extends a provider with live change monitoring.

@@ -194,7 +194,14 @@ fn initialize_creates_versioned_analytics_database() {
             "processed_records",
             "diagnostic_count",
             "last_error",
-            "updated_at_ms"
+            "updated_at_ms",
+            "total_files",
+            "processed_files",
+            "processed_lines",
+            "estimated_total_lines",
+            "current_file",
+            "current_line",
+            "estimated_remaining_ms"
         ]
     );
     assert_eq!(auto_vacuum, 2);
@@ -208,7 +215,7 @@ fn initialize_creates_versioned_analytics_database() {
 #[test]
 fn embedded_migration_directory_is_valid() {
     validate_embedded_migrations().unwrap();
-    assert_eq!(current_schema_version(), 11);
+    assert_eq!(current_schema_version(), 12);
 }
 
 #[test]
@@ -372,7 +379,7 @@ fn version_8_projection_is_backed_up_and_rebuilt_as_mcp_only() {
         [],
     );
 
-    assert_eq!(database.schema_version().unwrap(), 11);
+    assert_eq!(database.schema_version().unwrap(), 12);
     assert_eq!(rebuilt_projection_rows, 0);
     assert_eq!(required_source_columns, 3);
     assert_eq!(first_user_message_columns, 3);
@@ -380,7 +387,7 @@ fn version_8_projection_is_backed_up_and_rebuilt_as_mcp_only() {
     assert_eq!(legacy_tool_table_count, 0);
     assert!(explicit_retry_insert.is_err());
     assert_eq!(backups.len(), 1);
-    assert!(backups[0].file_name.contains("pre-migration-v8-to-v11"));
+    assert!(backups[0].file_name.contains("pre-migration-v8-to-v12"));
 
     let backup_path = path
         .parent()

@@ -19,6 +19,11 @@ pub(super) struct CodexCheckpoint {
     /// neither the index nor any rollout metadata changed.
     #[serde(default)]
     pub rollout_catalog: Option<BTreeMap<PathBuf, RolloutFileMetadata>>,
+    /// Parsed session metadata reused while a bounded scan continues.
+    /// `None` is retained for files without usable session metadata so the
+    /// same artifact is not reparsed on every batch.
+    #[serde(default)]
+    pub rollout_metadata: BTreeMap<PathBuf, Option<super::replay::RolloutMetadata>>,
     /// Whether every tracked rollout has a persisted usage-attribution index.
     ///
     /// Checkpoints created before attribution support rebuild their rollout

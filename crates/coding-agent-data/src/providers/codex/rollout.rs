@@ -9,7 +9,9 @@ use serde_json::Value;
 use crate::providers::shared::jsonl::{
     is_complete_json_value, read_bounded_line, tail_fingerprint, LineRead,
 };
-use crate::{Change, Diagnostic, Error, ProviderInfo, RecordId, Result, Session, SourceRef};
+use crate::{
+    Change, Diagnostic, Error, ProviderInfo, RecordId, Result, ScanProgress, Session, SourceRef,
+};
 
 use super::checkpoint::{
     CodexCheckpoint, FileSignature, RolloutContext, RolloutFileMetadata, RolloutState,
@@ -17,12 +19,20 @@ use super::checkpoint::{
 use super::inheritance::InheritancePlan;
 use super::lineage::LineagePlan;
 use super::normalize::{self, Position};
-use super::replay::{read_rollout_owner, ReplayPlan};
+use super::replay::{read_rollout_owner, ReplayPlan, RolloutMetadata};
 use super::state_db::IndexSnapshot;
 use super::usage_attribution::{UsageAttributionPlan, UsageFingerprint};
 use super::CodexSource;
 
 const MAX_DIAGNOSTICS_PER_BATCH: usize = 1_000;
+
+#[derive(Debug, Default)]
+pub(super) struct ScanCache {
+    catalog: Option<BTreeMap<PathBuf, RolloutFileMetadata>>,
+    replay: Option<ReplayPlan>,
+    lineage: Option<LineagePlan>,
+    inheritance: Option<InheritancePlan>,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct ScanLimits {
@@ -57,16 +67,25 @@ struct ScanBatch<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn scan(
     source: &CodexSource,
     info: &ProviderInfo,
     limits: &ScanLimits,
     index: &IndexSnapshot,
     state: &mut CodexCheckpoint,
+    cache: &mut ScanCache,
     changes: &mut Vec<Change>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<bool> {
     let catalog = rollout_catalog(source)?;
+    if index.database_changed
+        || state.rollout_catalog.as_ref() != cache.catalog.as_ref()
+        || cache.catalog.as_ref() != Some(&catalog)
+    {
+        *cache = ScanCache::default();
+        cache.catalog = Some(catalog.clone());
+    }
     let files = catalog.keys().cloned().collect::<Vec<_>>();
     let current_files = files.iter().cloned().collect::<BTreeSet<_>>();
     let tracked_files_match = state.rollouts.keys().eq(catalog.keys());
@@ -75,10 +94,14 @@ pub(super) fn scan(
         && !index.database_changed
         && tracked_files_match
         && state.rollout_catalog.as_ref() == Some(&catalog)
+        && rollouts_are_complete(state, &catalog)
     {
         return Ok(false);
     }
 
+    let previous_catalog = (!index.database_changed)
+        .then(|| state.rollout_catalog.clone())
+        .flatten();
     let index_refresh_pending =
         remove_missing_rollouts(state, &current_files, index, info, changes);
     if !state.usage_attribution_ready {
@@ -89,25 +112,58 @@ pub(super) fn scan(
     let mut attribution = UsageAttributionPlan::build(state);
     let inconsistent_attribution = attribution.take_rebuilds();
     begin_usage_rebuilds(state, info, inconsistent_attribution, changes);
-
-    let replay = ReplayPlan::build(
-        &files,
-        index,
+    let metadata_cache = refresh_rollout_metadata(
+        &catalog,
+        previous_catalog.as_ref(),
         state,
-        info,
+        index,
         limits.max_line_bytes,
-        diagnostics,
     );
-    let lineage = LineagePlan::build(&files, index, info, limits.max_line_bytes, diagnostics);
-    let inheritance = InheritancePlan::build(source, info, &files, index, limits.max_line_bytes);
+
+    if cache.replay.is_none() {
+        cache.replay = Some(ReplayPlan::build(
+            &files,
+            index,
+            state,
+            &metadata_cache,
+            info,
+            limits.max_line_bytes,
+            diagnostics,
+        ));
+    }
+    if cache.lineage.is_none() {
+        cache.lineage = Some(LineagePlan::build(
+            &files,
+            index,
+            &metadata_cache,
+            info,
+            diagnostics,
+        ));
+    }
+    if cache.inheritance.is_none() {
+        cache.inheritance = Some(InheritancePlan::build(
+            source,
+            info,
+            &files,
+            index,
+            &metadata_cache,
+            limits.max_line_bytes,
+        ));
+    }
+    let replay = cache.replay.as_ref().expect("replay plan initialized");
+    let lineage = cache.lineage.as_ref().expect("lineage plan initialized");
+    let inheritance = cache
+        .inheritance
+        .as_ref()
+        .expect("inheritance plan initialized");
     let mut remaining = limits.max_lines_per_batch.saturating_sub(changes.len());
     let mut has_more = index_refresh_pending;
     let environment = ScanEnvironment {
         source,
         info,
-        replay: &replay,
-        lineage: &lineage,
-        inheritance: &inheritance,
+        replay,
+        lineage,
+        inheritance,
         indexed_sessions: &index.sessions,
         limits,
     };
@@ -121,7 +177,7 @@ pub(super) fn scan(
             .rollouts
             .get(&path)
             .as_ref()
-            .is_some_and(|rollout| lineage_changed(rollout, &lineage, &path))
+            .is_some_and(|rollout| lineage_changed(rollout, lineage, &path))
         {
             begin_usage_rebuilds(state, info, [path.clone()], changes);
             push_diagnostic(
@@ -160,9 +216,147 @@ pub(super) fn scan(
     if begin_usage_rebuilds(state, info, ownership_changes, changes) {
         has_more = true;
     }
-    state.rollout_catalog =
-        (!has_more && state.pending_usage_rebuilds.is_empty()).then_some(catalog);
+    state.rollout_catalog = Some(catalog);
     Ok(has_more)
+}
+
+fn rollouts_are_complete(
+    state: &CodexCheckpoint,
+    catalog: &BTreeMap<PathBuf, RolloutFileMetadata>,
+) -> bool {
+    state.rollouts.len() == catalog.len()
+        && catalog
+            .iter()
+            .all(|(path, metadata)| match state.rollouts.get(path) {
+                Some(RolloutState::Plain { offset, .. }) => *offset == metadata.len,
+                Some(RolloutState::Compressed {
+                    signature,
+                    complete,
+                    ..
+                }) => {
+                    *complete
+                        && signature.len == metadata.len
+                        && signature.modified_nanos == metadata.modified_nanos
+                }
+                None => false,
+            })
+}
+
+fn refresh_rollout_metadata(
+    catalog: &BTreeMap<PathBuf, RolloutFileMetadata>,
+    previous_catalog: Option<&BTreeMap<PathBuf, RolloutFileMetadata>>,
+    state: &mut CodexCheckpoint,
+    index: &IndexSnapshot,
+    max_line_bytes: usize,
+) -> BTreeMap<PathBuf, Option<RolloutMetadata>> {
+    let mut metadata = BTreeMap::new();
+    for path in catalog.keys() {
+        let unchanged = previous_catalog
+            .and_then(|previous| previous.get(path))
+            .is_some_and(|previous| catalog.get(path).is_some_and(|current| current == previous));
+        let value = if unchanged {
+            state
+                .rollout_metadata
+                .get(path)
+                .cloned()
+                .unwrap_or_else(|| {
+                    let expected_owner = index
+                        .transcripts
+                        .get(path)
+                        .map(|binding| binding.external_id.as_str());
+                    super::replay::read_rollout_metadata(path, max_line_bytes, expected_owner)
+                })
+        } else {
+            let expected_owner = index
+                .transcripts
+                .get(path)
+                .map(|binding| binding.external_id.as_str());
+            super::replay::read_rollout_metadata(path, max_line_bytes, expected_owner)
+        };
+        metadata.insert(path.clone(), value);
+    }
+    state.rollout_metadata = metadata.clone();
+    metadata
+}
+
+pub(super) fn progress(
+    source: &CodexSource,
+    checkpoint: Option<&CodexCheckpoint>,
+) -> Result<ScanProgress> {
+    let catalog = rollout_catalog(source)?;
+    let mut progress = ScanProgress {
+        total_files: catalog.len() as u64,
+        ..ScanProgress::default()
+    };
+    let total_bytes = catalog.values().map(|metadata| metadata.len).sum::<u64>();
+    let mut plain_sample_bytes = 0_u64;
+    let mut plain_sample_lines = 0_u64;
+    let mut compressed_files_incomplete = false;
+
+    for (path, metadata) in &catalog {
+        let state = checkpoint.and_then(|checkpoint| checkpoint.rollouts.get(path));
+        let (complete, line) = match state {
+            Some(RolloutState::Plain {
+                offset,
+                line,
+                tail_fingerprint: expected_tail,
+                ..
+            }) => {
+                let processed = (*offset).min(metadata.len);
+                let checkpoint_matches = *offset <= metadata.len
+                    && (*offset == 0
+                        || tail_fingerprint(
+                            path,
+                            *offset,
+                            "read a Codex rollout progress fingerprint",
+                        )? == *expected_tail);
+                let (processed, line) = if checkpoint_matches {
+                    (processed, *line)
+                } else {
+                    (0, 0)
+                };
+                plain_sample_bytes = plain_sample_bytes.saturating_add(processed);
+                plain_sample_lines = plain_sample_lines.saturating_add(line);
+                (checkpoint_matches && processed == metadata.len, line)
+            }
+            Some(RolloutState::Compressed {
+                signature,
+                line,
+                complete,
+                ..
+            }) => {
+                let checkpoint_matches = signature.len == metadata.len
+                    && signature.modified_nanos == metadata.modified_nanos;
+                if !checkpoint_matches || !complete {
+                    compressed_files_incomplete = true;
+                }
+                (
+                    checkpoint_matches && *complete,
+                    if checkpoint_matches { *line } else { 0 },
+                )
+            }
+            None => (false, 0),
+        };
+        progress.processed_lines = progress.processed_lines.saturating_add(line);
+        if complete {
+            progress.processed_files = progress.processed_files.saturating_add(1);
+        } else if progress.current_file.is_none() {
+            progress.current_file = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned);
+            progress.current_line = line;
+        }
+    }
+
+    if plain_sample_bytes > 0 && plain_sample_lines > 0 && !compressed_files_incomplete {
+        let estimated_plain_lines = total_bytes
+            .saturating_mul(plain_sample_lines)
+            .checked_div(plain_sample_bytes)
+            .unwrap_or(plain_sample_lines);
+        progress.estimated_total_lines = Some(estimated_plain_lines.max(progress.processed_lines));
+    }
+    Ok(progress)
 }
 
 fn remove_missing_rollouts(

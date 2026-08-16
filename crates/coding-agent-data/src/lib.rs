@@ -68,7 +68,7 @@ pub use model::{
     ToolResult, ToolSourceKind, ToolStatus, UnknownEvent, UnknownRecord, UsageReport, WorldState,
 };
 pub use provider::{
-    AdapterCoverage, CapabilityCoverage, Provider, SourceCoverage, WatchProvider,
-    STANDARD_CAPABILITIES,
+    AdapterCoverage, CapabilityCoverage, Provider, ScanProgress, ScanProgressProvider,
+    SourceCoverage, WatchProvider, STANDARD_CAPABILITIES,
 };
 pub use subscription::Subscription;

@@ -64,6 +64,24 @@ pub struct SkillSummary {
     pub max_tokens: Option<i64>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStatus {
+    pub provider: String,
+    pub source_id: String,
+    pub status: String,
+    pub phase: String,
+    pub total_files: i64,
+    pub processed_files: i64,
+    pub processed_lines: i64,
+    pub estimated_total_lines: Option<i64>,
+    pub current_file: Option<String>,
+    pub current_line: i64,
+    pub estimated_remaining_ms: Option<i64>,
+    pub last_error: Option<String>,
+    pub updated_at_ms: i64,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPageRequest {

@@ -16,8 +16,9 @@ use coding_agent_data::{
     CapabilityCoverage, Change, ContentAudience, ContentBlock, ContentIconTheme, ContentPriority,
     DataQuality, EventData, FileChangeKind, GoalStatus, HistoryMode, MessageRole, ModeChangeKind,
     NoticeLevel, PlanStepStatus, Provider, RateLimitReason, RateLimitScope, ReasoningVisibility,
-    Record, RecordData, RecordId, SandboxPolicy, SessionRelationKind, SourceCoverage, StopReason,
-    TokenUsage, ToolKind, ToolSourceKind, ToolStatus, STANDARD_CAPABILITIES,
+    Record, RecordData, RecordId, SandboxPolicy, ScanProgressProvider, SessionRelationKind,
+    SourceCoverage, StopReason, TokenUsage, ToolKind, ToolSourceKind, ToolStatus,
+    STANDARD_CAPABILITIES,
 };
 use rusqlite::{params, Connection};
 use tempfile::TempDir;
@@ -3843,6 +3844,58 @@ fn unchanged_rollout_catalog_uses_the_metadata_only_fast_path() {
     assert!(second.changes.is_empty());
     assert!(second.diagnostics.is_empty());
     assert!(!second.has_more);
+}
+
+#[test]
+fn scan_progress_reports_catalog_and_checkpoint_position() {
+    let fixture = Fixture::new(&format!("{}{}", session_meta(), token_count()));
+    let provider = fixture.provider();
+
+    let initial = provider.scan_progress(None).unwrap();
+    assert_eq!(initial.total_files, 1);
+    assert_eq!(initial.processed_files, 0);
+    assert_eq!(
+        initial.current_file.as_deref(),
+        Some("rollout-thread-1.jsonl")
+    );
+
+    let batch = provider.scan(None).unwrap();
+    let complete = provider.scan_progress(Some(&batch.checkpoint)).unwrap();
+    assert_eq!(complete.processed_files, 1);
+    assert!(complete.processed_lines > 0);
+    assert!(complete
+        .estimated_total_lines
+        .is_some_and(|total| total >= complete.processed_lines));
+}
+
+#[test]
+fn scan_progress_does_not_mark_a_truncated_rollout_complete() {
+    let fixture = Fixture::new(&format!("{}{}", session_meta(), token_count()));
+    let provider = fixture.provider();
+    let batch = provider.scan(None).unwrap();
+
+    fs::write(&fixture.rollout_path, b"{}\n").unwrap();
+    let progress = provider.scan_progress(Some(&batch.checkpoint)).unwrap();
+
+    assert_eq!(progress.processed_files, 0);
+    assert_eq!(progress.processed_lines, 0);
+    assert_eq!(
+        progress.current_file.as_deref(),
+        Some("rollout-thread-1.jsonl")
+    );
+}
+
+#[test]
+fn a_partial_rollout_scan_does_not_use_the_complete_catalog_fast_path() {
+    let fixture = Fixture::new(&format!("{}{}", session_meta(), "{}\n".repeat(100_000)));
+    let provider = fixture.provider();
+
+    let first = provider.scan(None).unwrap();
+    assert!(first.has_more);
+
+    let second = provider.scan(Some(&first.checkpoint)).unwrap();
+    assert!(!second.has_more);
+    assert!(!second.changes.is_empty());
 }
 
 #[test]

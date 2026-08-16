@@ -8,10 +8,11 @@ use crate::{Event, EventData, ProviderInfo, Record, RecordData, RecordId};
 
 use super::checkpoint::RolloutContext;
 use super::normalize::{self, Position};
-use super::replay::{open_reader, read_rollout_metadata};
+use super::replay::{open_reader, RolloutMetadata};
 use super::state_db::IndexSnapshot;
 use super::CodexSource;
 
+#[derive(Debug)]
 pub(super) struct InheritancePlan {
     parent_by_child: BTreeMap<PathBuf, PathBuf>,
     events_by_parent: BTreeMap<PathBuf, BTreeMap<EventKey, RecordId>>,
@@ -37,6 +38,7 @@ impl InheritancePlan {
         info: &ProviderInfo,
         files: &[PathBuf],
         index: &IndexSnapshot,
+        metadata_cache: &BTreeMap<PathBuf, Option<RolloutMetadata>>,
         max_line_bytes: usize,
     ) -> Self {
         let mut metadata_by_path = BTreeMap::new();
@@ -45,15 +47,11 @@ impl InheritancePlan {
             paths_by_session.insert(binding.external_id.clone(), path.clone());
         }
         for path in files {
-            let expected_owner = index
-                .transcripts
-                .get(path)
-                .map(|binding| binding.external_id.as_str());
-            if let Some(metadata) = read_rollout_metadata(path, max_line_bytes, expected_owner) {
+            if let Some(Some(metadata)) = metadata_cache.get(path) {
                 paths_by_session
                     .entry(metadata.session_id.clone())
                     .or_insert_with(|| path.clone());
-                metadata_by_path.insert(path.clone(), metadata);
+                metadata_by_path.insert(path.clone(), metadata.clone());
             }
         }
 
@@ -78,12 +76,7 @@ impl InheritancePlan {
             if events_by_parent.contains_key(parent_path) {
                 continue;
             }
-            let expected_owner = index
-                .transcripts
-                .get(parent_path)
-                .map(|binding| binding.external_id.as_str());
-            let Some(metadata) = read_rollout_metadata(parent_path, max_line_bytes, expected_owner)
-            else {
+            let Some(Some(metadata)) = metadata_cache.get(parent_path) else {
                 continue;
             };
             if let Ok(items) = read_event_index(

@@ -12,7 +12,8 @@ use crate::providers::shared::jsonl::{
     fingerprint_json, is_complete_json_value, read_bounded_line, tail_fingerprint, LineRead,
 };
 use crate::{
-    Batch, Change, Checkpoint, Diagnostic, Error, ProviderInfo, Record, RecordId, Result, SourceRef,
+    Batch, Change, Checkpoint, Diagnostic, Error, ProviderInfo, Record, RecordId, Result,
+    ScanProgress, SourceRef,
 };
 
 use super::checkpoint::{self, EmittedUsage, TranscriptContext, TranscriptState, UsageSnapshot};
@@ -119,6 +120,68 @@ pub(super) fn scan(
         diagnostics,
         has_more,
     ))
+}
+
+pub(super) fn progress(
+    source: &ClaudeCodeSource,
+    info: &ProviderInfo,
+    checkpoint: Option<&Checkpoint>,
+) -> Result<ScanProgress> {
+    let state = checkpoint::decode(info, checkpoint)?;
+    let files = transcript_files(source)?;
+    let mut progress = ScanProgress {
+        total_files: files.len() as u64,
+        ..ScanProgress::default()
+    };
+    let mut total_bytes = 0_u64;
+    let mut sampled_bytes = 0_u64;
+    let mut sampled_lines = 0_u64;
+
+    for path in files {
+        let length = fs::metadata(&path)
+            .map_err(|error| Error::io("inspect a Claude Code transcript", &path, error))?
+            .len();
+        total_bytes = total_bytes.saturating_add(length);
+        let (line, offset, expected_tail) = state
+            .transcripts
+            .get(&path)
+            .map(|state| (state.line, state.offset.min(length), state.tail_fingerprint))
+            .unwrap_or((0, 0, 0));
+        let checkpoint_matches = offset <= length
+            && (offset == 0
+                || tail_fingerprint(
+                    &path,
+                    offset,
+                    "read a Claude Code transcript progress fingerprint",
+                )? == expected_tail);
+        let (line, offset) = if checkpoint_matches {
+            (line, offset)
+        } else {
+            (0, 0)
+        };
+        let complete = checkpoint_matches && offset == length;
+        progress.processed_lines = progress.processed_lines.saturating_add(line);
+        sampled_bytes = sampled_bytes.saturating_add(offset);
+        sampled_lines = sampled_lines.saturating_add(line);
+        if complete {
+            progress.processed_files = progress.processed_files.saturating_add(1);
+        } else if progress.current_file.is_none() {
+            progress.current_file = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned);
+            progress.current_line = line;
+        }
+    }
+
+    if sampled_bytes > 0 && sampled_lines > 0 {
+        let estimated = total_bytes
+            .saturating_mul(sampled_lines)
+            .checked_div(sampled_bytes)
+            .unwrap_or(sampled_lines);
+        progress.estimated_total_lines = Some(estimated.max(progress.processed_lines));
+    }
+    Ok(progress)
 }
 
 #[allow(clippy::too_many_arguments)]

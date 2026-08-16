@@ -7,7 +7,7 @@ mod tool_call_repository;
 #[cfg(not(feature = "e2e"))]
 pub use ingestion::AgentDataMonitor;
 pub use model::{
-    SessionDetail, SessionPage, SessionPageRequest, SkillAnalysis, ToolCallAnalysis,
+    SessionDetail, SessionPage, SessionPageRequest, SkillAnalysis, SyncStatus, ToolCallAnalysis,
     ToolCallAnalysisRequest, ToolCallDetail, ToolCallFilterOptions, ToolCallFilterOptionsRequest,
     ToolCallPage, ToolCallPageRequest,
 };
@@ -16,6 +16,17 @@ use crate::database::Database;
 
 fn join_error(error: impl std::fmt::Display) -> String {
     format!("analytics query task failed: {error}")
+}
+
+#[tauri::command]
+pub async fn get_sync_status(
+    database: tauri::State<'_, Database>,
+) -> Result<Vec<SyncStatus>, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || repository::sync_status(&database))
+        .await
+        .map_err(join_error)?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

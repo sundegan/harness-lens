@@ -5,14 +5,16 @@ use std::path::{Path, PathBuf};
 use crate::{Diagnostic, HistorySegment, ProviderInfo, SourceRef};
 
 use super::normalize;
-use super::replay::{read_rollout_metadata, OwnedHistoryBaseMetadata, RolloutMetadata};
+use super::replay::{OwnedHistoryBaseMetadata, RolloutMetadata};
 use super::rollout::push_diagnostic;
 use super::state_db::IndexSnapshot;
 
+#[derive(Debug)]
 pub(super) struct LineagePlan {
     entries: BTreeMap<PathBuf, LineageEntry>,
 }
 
+#[derive(Debug)]
 struct LineageEntry {
     segments: Vec<HistorySegment>,
     own_start_ordinal: Option<u64>,
@@ -29,18 +31,14 @@ impl LineagePlan {
     pub(super) fn build(
         files: &[PathBuf],
         index: &IndexSnapshot,
+        metadata_cache: &BTreeMap<PathBuf, Option<RolloutMetadata>>,
         info: &ProviderInfo,
-        max_line_bytes: usize,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Self {
         let mut metadata_by_path = BTreeMap::new();
         for path in files {
-            let expected_owner = index
-                .transcripts
-                .get(path)
-                .map(|binding| binding.external_id.as_str());
-            if let Some(metadata) = read_rollout_metadata(path, max_line_bytes, expected_owner) {
-                metadata_by_path.insert(path.clone(), metadata);
+            if let Some(Some(metadata)) = metadata_cache.get(path) {
+                metadata_by_path.insert(path.clone(), metadata.clone());
             }
         }
 

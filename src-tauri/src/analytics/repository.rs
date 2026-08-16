@@ -1,5 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(any(not(feature = "e2e"), test))]
+use coding_agent_data::ScanProgress;
 use rusqlite::types::Type;
 #[cfg(any(not(feature = "e2e"), test))]
 use rusqlite::Transaction;
@@ -9,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use super::model::{AnalyticsSnapshot, OverallSummary, SessionSummary};
 use super::model::{
     SessionDetail, SessionEventItem, SessionListItem, SessionPage, SessionPageRequest,
-    SkillAnalysis, SkillSummary,
+    SkillAnalysis, SkillSummary, SyncStatus,
 };
 use crate::database::{Database, DatabaseError};
 
@@ -84,6 +86,8 @@ pub(super) struct BatchState<'a> {
     pub phase: &'a str,
     pub processed_records: usize,
     pub diagnostic_count: usize,
+    pub progress: Option<&'a ScanProgress>,
+    pub estimated_remaining_ms: Option<i64>,
 }
 
 #[cfg(any(not(feature = "e2e"), test))]
@@ -103,8 +107,15 @@ pub(super) fn save_batch_state(
                 processed_records,
                 diagnostic_count,
                 last_error,
-                updated_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)
+                updated_at_ms,
+                total_files,
+                processed_files,
+                processed_lines,
+                estimated_total_lines,
+                current_file,
+                current_line,
+                estimated_remaining_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(source_id) DO UPDATE SET
                 provider = excluded.provider,
                 checkpoint_json = excluded.checkpoint_json,
@@ -115,7 +126,14 @@ pub(super) fn save_batch_state(
                 diagnostic_count = provider_sync_state.diagnostic_count
                     + excluded.diagnostic_count,
                 last_error = NULL,
-                updated_at_ms = excluded.updated_at_ms
+                updated_at_ms = excluded.updated_at_ms,
+                total_files = CASE WHEN ?16 THEN excluded.total_files ELSE provider_sync_state.total_files END,
+                processed_files = CASE WHEN ?16 THEN excluded.processed_files ELSE provider_sync_state.processed_files END,
+                processed_lines = CASE WHEN ?16 THEN excluded.processed_lines ELSE provider_sync_state.processed_lines END,
+                estimated_total_lines = CASE WHEN ?16 THEN excluded.estimated_total_lines ELSE provider_sync_state.estimated_total_lines END,
+                current_file = CASE WHEN ?16 THEN excluded.current_file ELSE provider_sync_state.current_file END,
+                current_line = CASE WHEN ?16 THEN excluded.current_line ELSE provider_sync_state.current_line END,
+                estimated_remaining_ms = excluded.estimated_remaining_ms
             ",
             params![
                 state.source_id,
@@ -125,11 +143,108 @@ pub(super) fn save_batch_state(
                 state.phase,
                 state.processed_records as i64,
                 state.diagnostic_count as i64,
-                now_ms()
+                now_ms(),
+                state.progress.map(|progress| progress.total_files as i64).unwrap_or_default(),
+                state
+                    .progress
+                    .map(|progress| progress.processed_files as i64)
+                    .unwrap_or_default(),
+                state
+                    .progress
+                    .map(|progress| progress.processed_lines as i64)
+                    .unwrap_or_default(),
+                state
+                    .progress
+                    .and_then(|progress| progress.estimated_total_lines)
+                    .map(|value| value as i64),
+                state
+                    .progress
+                    .and_then(|progress| progress.current_file.as_deref()),
+                state
+                    .progress
+                    .map(|progress| progress.current_line as i64)
+                    .unwrap_or_default(),
+                state.estimated_remaining_ms,
+                state.progress.is_some(),
             ],
         )
         .map_err(|source| DatabaseError::sqlite("save the analytics checkpoint", source))?;
     Ok(())
+}
+
+#[cfg(not(feature = "e2e"))]
+pub(super) fn update_sync_progress(
+    database: &Database,
+    provider: &str,
+    source_id: &str,
+    progress: &ScanProgress,
+) -> Result<(), DatabaseError> {
+    database
+        .connect()?
+        .execute(
+            "
+            UPDATE provider_sync_state
+            SET total_files = ?1,
+                processed_files = ?2,
+                processed_lines = ?3,
+                estimated_total_lines = ?4,
+                current_file = ?5,
+                current_line = ?6,
+                updated_at_ms = ?7
+            WHERE provider = ?8 AND source_id = ?9
+            ",
+            params![
+                progress.total_files as i64,
+                progress.processed_files as i64,
+                progress.processed_lines as i64,
+                progress.estimated_total_lines.map(|value| value as i64),
+                progress.current_file.as_deref(),
+                progress.current_line as i64,
+                now_ms(),
+                provider,
+                source_id,
+            ],
+        )
+        .map_err(|source| DatabaseError::sqlite("update the analytics scan progress", source))?;
+    Ok(())
+}
+
+pub(super) fn sync_status(database: &Database) -> Result<Vec<SyncStatus>, DatabaseError> {
+    let connection = database.connect()?;
+    let mut statement = connection
+        .prepare(
+            "
+            SELECT provider, source_id, status, phase, total_files, processed_files,
+                   processed_lines, estimated_total_lines, current_file, current_line,
+                   estimated_remaining_ms, last_error, updated_at_ms
+            FROM provider_sync_state
+            ORDER BY provider, source_id
+            ",
+        )
+        .map_err(|source| {
+            DatabaseError::sqlite("prepare the analytics sync status query", source)
+        })?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SyncStatus {
+                provider: row.get(0)?,
+                source_id: row.get(1)?,
+                status: row.get(2)?,
+                phase: row.get(3)?,
+                total_files: row.get(4)?,
+                processed_files: row.get(5)?,
+                processed_lines: row.get(6)?,
+                estimated_total_lines: row.get(7)?,
+                current_file: row.get(8)?,
+                current_line: row.get(9)?,
+                estimated_remaining_ms: row.get(10)?,
+                last_error: row.get(11)?,
+                updated_at_ms: row.get(12)?,
+            })
+        })
+        .map_err(|source| DatabaseError::sqlite("query the analytics sync status", source))?;
+    rows.collect::<Result<_, _>>()
+        .map_err(|source| DatabaseError::sqlite("read the analytics sync status", source))
 }
 
 #[cfg(test)]
@@ -287,7 +402,6 @@ pub(super) fn session_page(
         page,
         page_size,
         total,
-        generated_at_ms: now_ms(),
     })
 }
 

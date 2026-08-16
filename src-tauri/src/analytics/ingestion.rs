@@ -13,13 +13,15 @@ use std::time::Duration;
 
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::providers::{claude_code::ClaudeCodeProvider, codex::CodexProvider};
+#[cfg(any(not(feature = "e2e"), test))]
+use coding_agent_data::ScanProgress;
 use coding_agent_data::{
     Actor, AgentInvocation, AgentInvocationStatus, Batch, Change, ContentBlock, DataQuality, Event,
     EventData, MessageRole, Record, RecordData, Retry, Session, ToolCall, ToolKind, ToolResult,
     ToolSourceKind, ToolStatus, UsageReport,
 };
 #[cfg(not(feature = "e2e"))]
-use coding_agent_data::{Checkpoint, Provider, WatchProvider};
+use coding_agent_data::{Checkpoint, Provider, ScanProgressProvider, WatchProvider};
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -125,7 +127,7 @@ fn record_discovery_error(
 #[cfg(not(feature = "e2e"))]
 fn run_provider<P>(database_path: PathBuf, app: AppHandle, stop: Arc<AtomicBool>, provider: P)
 where
-    P: Provider + WatchProvider,
+    P: Provider + ScanProgressProvider + WatchProvider,
 {
     let database = match Database::initialize(database_path) {
         Ok(database) => database,
@@ -165,18 +167,45 @@ where
             return;
         }
     }
+    let mut scan_phase = if checkpoint.is_some() {
+        "incremental"
+    } else {
+        "initial_scan"
+    };
     if let Err(error) = repository::update_sync_status(
         &database,
         &context.provider,
         &context.source_id,
         "syncing",
-        "initial_scan",
+        scan_phase,
         None,
     ) {
         log::warn!("failed to publish the analytics sync status: {error}");
     }
     emit_updated(&app);
 
+    let mut started_at_ms = repository::now_ms();
+    let initial_progress = scan_progress(&provider, checkpoint.as_ref());
+    let mut scan_base_processed_lines = initial_progress
+        .as_ref()
+        .map(|progress| progress.processed_lines)
+        .unwrap_or_default();
+    if let Some(progress) = initial_progress {
+        if let Err(error) = repository::update_sync_progress(
+            &database,
+            &context.provider,
+            &context.source_id,
+            &progress,
+        ) {
+            log::warn!(
+                "failed to publish the initial {} scan progress: {error}",
+                context.provider
+            );
+        }
+        emit_updated(&app);
+    }
+
+    let mut last_processed_lines = scan_base_processed_lines;
     let mut batch = match provider.scan(checkpoint.as_ref()) {
         Ok(batch) => batch,
         Err(error) if checkpoint.is_some() => {
@@ -189,6 +218,34 @@ where
                 emit_updated(&app);
                 return;
             }
+            scan_phase = "initial_scan";
+            started_at_ms = repository::now_ms();
+            scan_base_processed_lines = 0;
+            last_processed_lines = 0;
+            if let Err(status_error) = repository::update_sync_status(
+                &database,
+                &context.provider,
+                &context.source_id,
+                "syncing",
+                scan_phase,
+                None,
+            ) {
+                log::warn!("failed to publish the fallback analytics sync status: {status_error}");
+            }
+            if let Some(progress) = scan_progress(&provider, None) {
+                if let Err(progress_error) = repository::update_sync_progress(
+                    &database,
+                    &context.provider,
+                    &context.source_id,
+                    &progress,
+                ) {
+                    log::warn!(
+                        "failed to publish the fallback {} scan progress: {progress_error}",
+                        context.provider
+                    );
+                }
+            }
+            emit_updated(&app);
             match provider.scan(None) {
                 Ok(batch) => batch,
                 Err(error) => {
@@ -205,13 +262,7 @@ where
             }
         }
         Err(error) => {
-            set_error_status(
-                &database,
-                &context,
-                "error",
-                "initial_scan",
-                &error.to_string(),
-            );
+            set_error_status(&database, &context, "error", scan_phase, &error.to_string());
             emit_updated(&app);
             return;
         }
@@ -219,15 +270,29 @@ where
 
     loop {
         let has_more = batch.has_more;
-        if let Err(error) = apply_batch(
+        let progress = scan_progress(&provider, Some(&batch.checkpoint));
+        if let Some(progress) = progress.as_ref() {
+            last_processed_lines = progress.processed_lines;
+        }
+        let estimated_remaining_ms = progress.as_ref().and_then(|progress| {
+            estimate_remaining_ms(
+                progress,
+                started_at_ms,
+                scan_base_processed_lines,
+                repository::now_ms(),
+            )
+        });
+        if let Err(error) = apply_batch_with_progress(
             &database,
             &context,
             &batch,
             if has_more { "syncing" } else { "ready" },
-            if has_more { "initial_scan" } else { "watching" },
+            if has_more { scan_phase } else { "watching" },
+            progress.as_ref(),
+            estimated_remaining_ms,
         ) {
             log::error!("failed to import {} analytics: {error}", context.provider);
-            set_error_status(&database, &context, "error", "initial_scan", &error);
+            set_error_status(&database, &context, "error", scan_phase, &error);
             emit_updated(&app);
             return;
         }
@@ -240,13 +305,7 @@ where
         batch = match provider.scan(Some(&batch.checkpoint)) {
             Ok(batch) => batch,
             Err(error) => {
-                set_error_status(
-                    &database,
-                    &context,
-                    "error",
-                    "initial_scan",
-                    &error.to_string(),
-                );
+                set_error_status(&database, &context, "error", scan_phase, &error.to_string());
                 emit_updated(&app);
                 return;
             }
@@ -264,11 +323,42 @@ where
             return;
         }
     };
+    let mut incremental_started_at_ms = None;
+    let mut incremental_base_processed_lines = last_processed_lines;
     while !stop.load(Ordering::Acquire) {
         match watcher.recv_timeout(Duration::from_millis(250)) {
             Ok(Some(batch)) => {
                 let status = if batch.has_more { "syncing" } else { "ready" };
-                if let Err(error) = apply_batch(&database, &context, &batch, status, "watching") {
+                let progress = scan_progress(&provider, Some(&batch.checkpoint));
+                let scan_started_at_ms = if batch.has_more {
+                    Some(*incremental_started_at_ms.get_or_insert_with(repository::now_ms))
+                } else {
+                    incremental_started_at_ms
+                };
+                if let Some(progress) = progress.as_ref() {
+                    last_processed_lines = progress.processed_lines;
+                }
+                let estimated_remaining_ms = if batch.has_more {
+                    progress.as_ref().and_then(|progress| {
+                        estimate_remaining_ms(
+                            progress,
+                            scan_started_at_ms.unwrap_or_else(repository::now_ms),
+                            incremental_base_processed_lines,
+                            repository::now_ms(),
+                        )
+                    })
+                } else {
+                    None
+                };
+                if let Err(error) = apply_batch_with_progress(
+                    &database,
+                    &context,
+                    &batch,
+                    status,
+                    "watching",
+                    progress.as_ref(),
+                    estimated_remaining_ms,
+                ) {
                     log::error!(
                         "failed to import incremental {} analytics: {error}",
                         context.provider
@@ -279,6 +369,10 @@ where
                 }
                 log_diagnostics(&context.provider, &batch);
                 emit_updated(&app);
+                if !batch.has_more {
+                    incremental_started_at_ms = None;
+                    incremental_base_processed_lines = last_processed_lines;
+                }
             }
             Ok(None) => {}
             Err(coding_agent_data::Error::SubscriptionClosed) => {
@@ -299,6 +393,49 @@ where
             }
         }
     }
+}
+
+#[cfg(not(feature = "e2e"))]
+fn scan_progress<P: ScanProgressProvider>(
+    provider: &P,
+    checkpoint: Option<&Checkpoint>,
+) -> Option<ScanProgress> {
+    match provider.scan_progress(checkpoint) {
+        Ok(progress) => Some(progress),
+        Err(error) => {
+            log::debug!(
+                "failed to read {} scan progress: {error}",
+                provider.info().id.as_str()
+            );
+            None
+        }
+    }
+}
+
+#[cfg(any(not(feature = "e2e"), test))]
+fn estimate_remaining_ms(
+    progress: &ScanProgress,
+    started_at_ms: i64,
+    base_processed_lines: u64,
+    now_ms: i64,
+) -> Option<i64> {
+    let total = progress.estimated_total_lines?;
+    if progress.processed_lines >= total {
+        return Some(0);
+    }
+    let processed_lines = progress
+        .processed_lines
+        .saturating_sub(base_processed_lines);
+    if processed_lines == 0 {
+        return None;
+    }
+    let elapsed = now_ms.saturating_sub(started_at_ms);
+    Some(
+        elapsed
+            .saturating_mul(total.saturating_sub(progress.processed_lines) as i64)
+            .checked_div(processed_lines as i64)
+            .unwrap_or_default(),
+    )
 }
 
 #[cfg(not(feature = "e2e"))]
@@ -357,12 +494,26 @@ fn reset_provider_data(database: &Database, context: &ProviderContext) -> Result
         .map_err(|error| format!("failed to commit the analytics reset: {error}"))
 }
 
+#[cfg(test)]
 fn apply_batch(
     database: &Database,
     context: &ProviderContext,
     batch: &Batch,
     status: &str,
     phase: &str,
+) -> Result<(), String> {
+    apply_batch_with_progress(database, context, batch, status, phase, None, None)
+}
+
+#[cfg(any(not(feature = "e2e"), test))]
+fn apply_batch_with_progress(
+    database: &Database,
+    context: &ProviderContext,
+    batch: &Batch,
+    status: &str,
+    phase: &str,
+    progress: Option<&ScanProgress>,
+    estimated_remaining_ms: Option<i64>,
 ) -> Result<(), String> {
     let mut connection = database.connect().map_err(|error| error.to_string())?;
     let transaction = connection
@@ -530,6 +681,8 @@ fn apply_batch(
             phase,
             processed_records: batch.changes.len(),
             diagnostic_count: batch.diagnostics.len(),
+            progress,
+            estimated_remaining_ms,
         },
     )
     .map_err(|error| error.to_string())?;

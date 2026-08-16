@@ -7,6 +7,7 @@ import { installFrontendErrorLogging, logWarn } from '$lib/logger';
 import AboutDialog from '$lib/menu/AboutDialog.svelte';
 import TitleBar from '$lib/menu/TitleBar.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
+import { syncStatusManager } from '$lib/sync-status.svelte';
 import { themeManager } from '$lib/theme.svelte';
 import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
@@ -49,6 +50,7 @@ onMount(() => {
   void themeManager.init();
   void i18nManager.init();
   void appUpdateManager.init();
+  void syncStatusManager.init();
   void installFrontendErrorLogging()
     .then(registerUnlistener)
     .catch((error) => logWarn('Failed to install frontend error logging', error));
@@ -83,6 +85,11 @@ onMount(() => {
       if (!disposed) settingsDialogManager.show();
     });
     registerUnlistener(unlistenSettings);
+
+    const unlistenAnalytics = await listen('analytics-updated', () => {
+      if (!disposed) void syncStatusManager.refresh();
+    });
+    registerUnlistener(unlistenAnalytics);
   })().catch((error) => logWarn('Failed to initialize desktop window listeners', error));
 
   // Prevent default browser context menu globally to eliminate web feeling

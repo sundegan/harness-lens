@@ -16,10 +16,11 @@ mod watch;
 use crate::providers::shared::identity::source_id_for_paths;
 use crate::{
     AdapterCoverage, Batch, CapabilityCoverage, Checkpoint, Provider, ProviderId, ProviderInfo,
-    Result, SourceCoverage,
+    Result, ScanProgress, ScanProgressProvider, SourceCoverage,
 };
 #[cfg(feature = "codex-watch")]
 use crate::{Subscription, WatchProvider};
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "format-probe")]
 pub use format_probe::CodexFormatProbe;
@@ -195,6 +196,7 @@ pub struct CodexProvider {
     source: CodexSource,
     info: ProviderInfo,
     limits: rollout::ScanLimits,
+    scan_cache: Arc<Mutex<rollout::ScanCache>>,
     #[cfg(feature = "codex-watch")]
     watch_options: CodexWatchOptions,
 }
@@ -218,6 +220,7 @@ impl CodexProvider {
                 source: source_id,
             },
             limits: rollout::ScanLimits::default(),
+            scan_cache: Arc::new(Mutex::new(rollout::ScanCache::default())),
             #[cfg(feature = "codex-watch")]
             watch_options: CodexWatchOptions::default(),
         }
@@ -262,6 +265,10 @@ impl Provider for CodexProvider {
             &self.limits,
             &index,
             &mut state,
+            &mut self
+                .scan_cache
+                .lock()
+                .expect("Codex scan cache is poisoned"),
             &mut changes,
             &mut diagnostics,
         )?;
@@ -273,6 +280,13 @@ impl Provider for CodexProvider {
         );
         batch.validate_for(&self.info)?;
         Ok(batch)
+    }
+}
+
+impl ScanProgressProvider for CodexProvider {
+    fn scan_progress(&self, checkpoint: Option<&Checkpoint>) -> Result<ScanProgress> {
+        let state = checkpoint::decode(&self.info, checkpoint)?;
+        rollout::progress(&self.source, Some(&state))
     }
 }
 
