@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 #[cfg(not(feature = "e2e"))]
 use std::path::PathBuf;
@@ -14,9 +14,9 @@ use std::time::Duration;
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::providers::{claude_code::ClaudeCodeProvider, codex::CodexProvider};
 use coding_agent_data::{
-    AgentInvocation, AgentInvocationStatus, Batch, Change, DataQuality, Event, EventData, Record,
-    RecordData, Retry, Session, ToolCall, ToolKind, ToolResult, ToolSourceKind, ToolStatus,
-    UsageReport,
+    Actor, AgentInvocation, AgentInvocationStatus, Batch, Change, ContentBlock, DataQuality, Event,
+    EventData, MessageRole, Record, RecordData, Retry, Session, ToolCall, ToolKind, ToolResult,
+    ToolSourceKind, ToolStatus, UsageReport,
 };
 #[cfg(not(feature = "e2e"))]
 use coding_agent_data::{Checkpoint, Provider, WatchProvider};
@@ -42,6 +42,23 @@ pub struct AgentDataMonitor {
 struct ProviderContext {
     provider: String,
     source_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct FirstUserMessageCandidate {
+    event_id: String,
+    text: String,
+    timestamp_ms: Option<i64>,
+    sequence_position: i64,
+    sequence_part: i64,
+}
+
+#[derive(Clone, Debug)]
+struct StoredFirstUserMessage {
+    event_id: Option<String>,
+    timestamp_ms: Option<i64>,
+    sequence_position: Option<i64>,
+    sequence_part: Option<i64>,
 }
 
 #[cfg(not(feature = "e2e"))]
@@ -214,7 +231,7 @@ where
             emit_updated(&app);
             return;
         }
-        log_batch(&context.provider, "initial", &batch);
+        log_diagnostics(&context.provider, &batch);
         emit_updated(&app);
 
         if !has_more || stop.load(Ordering::Acquire) {
@@ -260,7 +277,7 @@ where
                     emit_updated(&app);
                     return;
                 }
-                log_batch(&context.provider, "incremental", &batch);
+                log_diagnostics(&context.provider, &batch);
                 emit_updated(&app);
             }
             Ok(None) => {}
@@ -352,6 +369,9 @@ fn apply_batch(
         .transaction()
         .map_err(|error| format!("failed to begin an analytics import: {error}"))?;
     let mut affected_repeat_invocations = BTreeSet::new();
+    let mut first_user_message_candidates = BTreeMap::new();
+    let mut touched_message_events = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut recompute_first_user_messages = BTreeSet::new();
 
     for change in &batch.changes {
         match change {
@@ -360,8 +380,16 @@ fn apply_batch(
                 context,
                 record,
                 &mut affected_repeat_invocations,
+                &mut first_user_message_candidates,
+                &mut touched_message_events,
+                &mut recompute_first_user_messages,
             )?,
             Change::Delete(id) => {
+                mark_deleted_first_user_message(
+                    &transaction,
+                    id.as_str(),
+                    &mut recompute_first_user_messages,
+                )?;
                 let affected_tool_call = transaction
                     .query_row(
                         "SELECT id, invocation_id, call_event_id = ?1, result_event_id = ?1 FROM mcp_tool_call WHERE call_event_id = ?1 OR result_event_id = ?1",
@@ -456,14 +484,33 @@ fn apply_batch(
                 affected_repeat_invocations.extend(retry_invocation_id);
             }
             Change::Reset(source) => {
+                mark_source_first_user_messages(
+                    &transaction,
+                    context,
+                    &source.path,
+                    &mut recompute_first_user_messages,
+                )?;
                 reset_rollout_source(&transaction, context, &source.path)?;
             }
             Change::Remove(source) => {
+                mark_source_first_user_messages(
+                    &transaction,
+                    context,
+                    &source.path,
+                    &mut recompute_first_user_messages,
+                )?;
                 remove_rollout_source(&transaction, context, &source.path)?;
             }
             _ => {}
         }
     }
+
+    refresh_first_user_message_projection(
+        &transaction,
+        &first_user_message_candidates,
+        &touched_message_events,
+        &mut recompute_first_user_messages,
+    )?;
 
     for invocation_id in affected_repeat_invocations {
         refresh_repeat_chain(&transaction, Some(&invocation_id))?;
@@ -538,16 +585,53 @@ fn import_record(
     context: &ProviderContext,
     record: &Record,
     affected_repeat_invocations: &mut BTreeSet<String>,
+    first_user_message_candidates: &mut BTreeMap<String, FirstUserMessageCandidate>,
+    touched_message_events: &mut BTreeMap<String, BTreeSet<String>>,
+    recompute_first_user_messages: &mut BTreeSet<String>,
 ) -> Result<(), String> {
     ensure_record_session(transaction, context, record)?;
     match &record.data {
-        RecordData::Session(session) => import_session(transaction, context, record, session),
+        RecordData::Session(session) => {
+            import_session(transaction, context, record, session)?;
+            let first_message_event_id = transaction
+                .query_row(
+                    "SELECT first_user_message_event_id FROM agent_sessions WHERE id = ?1",
+                    [record.id.as_str()],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()
+                .map_err(|error| {
+                    format!("failed to inspect the imported first user message: {error}")
+                })?
+                .flatten();
+            if first_message_event_id.is_none() {
+                recompute_first_user_messages.insert(record.id.as_str().to_owned());
+            }
+            Ok(())
+        }
         RecordData::AgentInvocation(invocation) => {
             import_agent_invocation(transaction, context, record, invocation)
         }
         RecordData::UsageReport(usage) => import_usage(transaction, context, record, usage),
         RecordData::Event(event) => {
-            import_event(transaction, context, record, event)?;
+            let session_id = import_event(transaction, context, record, event)?;
+            if let Some(session_id) = session_id {
+                if matches!(&event.data, EventData::Message(_)) {
+                    touched_message_events
+                        .entry(session_id.clone())
+                        .or_default()
+                        .insert(record.id.as_str().to_owned());
+                }
+                if let Some(candidate) = first_user_message_candidate(record, event) {
+                    let replace = first_user_message_candidates
+                        .get(&session_id)
+                        .map(|current| is_earlier_first_user_message(&candidate, current))
+                        .unwrap_or(true);
+                    if replace {
+                        first_user_message_candidates.insert(session_id, candidate);
+                    }
+                }
+            }
             match &event.data {
                 EventData::ToolCall(call) => {
                     if call.source_kind == ToolSourceKind::Mcp {
@@ -1206,7 +1290,7 @@ fn import_event(
     context: &ProviderContext,
     record: &Record,
     event: &Event,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let path = record.origin.path.to_string_lossy();
     let session_id = if let Some(session_id) = &record.session {
         Some(session_id.as_str().to_owned())
@@ -1222,7 +1306,7 @@ fn import_event(
             .flatten()
     };
     let Some(session_id) = session_id else {
-        return Ok(());
+        return Ok(None);
     };
     let event_json = serde_json::to_string(event)
         .map_err(|error| format!("failed to serialize a normalized session event: {error}"))?;
@@ -1279,7 +1363,375 @@ fn import_event(
             ],
         )
         .map_err(|error| format!("failed to import a normalized session event: {error}"))?;
+    Ok(Some(session_id))
+}
+
+const MAX_FIRST_USER_MESSAGE_SESSION_IDS_PER_QUERY: usize = 500;
+
+fn first_user_message_candidate(
+    record: &Record,
+    event: &Event,
+) -> Option<FirstUserMessageCandidate> {
+    let EventData::Message(message) = &event.data else {
+        return None;
+    };
+    if !matches!(message.role, MessageRole::User) && !matches!(event.actor, Actor::User) {
+        return None;
+    }
+    let text = message
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            ContentBlock::Resource {
+                text: Some(text), ..
+            } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_owned();
+    Some(FirstUserMessageCandidate {
+        event_id: record.id.as_str().to_owned(),
+        text,
+        timestamp_ms: record.timestamp.map(|timestamp| timestamp.as_millis()),
+        sequence_position: i64::try_from(event.sequence.position).unwrap_or(i64::MAX),
+        sequence_part: i64::from(event.sequence.part),
+    })
+}
+
+fn first_user_message_order(
+    timestamp_ms: Option<i64>,
+    sequence_position: i64,
+    sequence_part: i64,
+    event_id: &str,
+) -> (i64, i64, i64, &str) {
+    (
+        timestamp_ms.unwrap_or(i64::MAX),
+        sequence_position,
+        sequence_part,
+        event_id,
+    )
+}
+
+fn is_earlier_first_user_message(
+    candidate: &FirstUserMessageCandidate,
+    current: &FirstUserMessageCandidate,
+) -> bool {
+    first_user_message_order(
+        candidate.timestamp_ms,
+        candidate.sequence_position,
+        candidate.sequence_part,
+        &candidate.event_id,
+    ) < first_user_message_order(
+        current.timestamp_ms,
+        current.sequence_position,
+        current.sequence_part,
+        &current.event_id,
+    )
+}
+
+fn mark_deleted_first_user_message(
+    transaction: &Transaction<'_>,
+    event_id: &str,
+    sessions: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let session_id = transaction
+        .query_row(
+            "SELECT id FROM agent_sessions WHERE first_user_message_event_id = ?1",
+            [event_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("failed to inspect a deleted first user message: {error}"))?;
+    if let Some(session_id) = session_id {
+        sessions.insert(session_id);
+    }
     Ok(())
+}
+
+fn mark_source_first_user_messages(
+    transaction: &Transaction<'_>,
+    context: &ProviderContext,
+    path: &Path,
+    sessions: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let path = path.to_string_lossy();
+    let mut statement = transaction
+        .prepare(
+            "
+            SELECT sessions.id
+            FROM agent_sessions sessions
+            JOIN session_events events
+              ON events.id = sessions.first_user_message_event_id
+            WHERE events.source_id = ?1 AND events.source_path = ?2
+            ",
+        )
+        .map_err(|error| format!("failed to prepare source first user message lookup: {error}"))?;
+    let rows = statement
+        .query_map(params![context.source_id, path.as_ref()], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| format!("failed to query source first user messages: {error}"))?;
+    for row in rows {
+        sessions.insert(
+            row.map_err(|error| format!("failed to read source first user message: {error}"))?,
+        );
+    }
+    Ok(())
+}
+
+fn refresh_first_user_message_projection(
+    transaction: &Transaction<'_>,
+    candidates: &BTreeMap<String, FirstUserMessageCandidate>,
+    touched_message_events: &BTreeMap<String, BTreeSet<String>>,
+    recompute_sessions: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let mut session_ids = candidates.keys().cloned().collect::<BTreeSet<_>>();
+    session_ids.extend(touched_message_events.keys().cloned());
+    session_ids.extend(recompute_sessions.iter().cloned());
+    if session_ids.is_empty() {
+        return Ok(());
+    }
+
+    let stored = load_stored_first_user_messages(transaction, &session_ids)?;
+    for (session_id, touched_events) in touched_message_events {
+        let Some(current_event_id) = stored
+            .get(session_id)
+            .and_then(|message| message.event_id.as_deref())
+        else {
+            continue;
+        };
+        if touched_events.contains(current_event_id) {
+            recompute_sessions.insert(session_id.clone());
+        }
+    }
+
+    for (session_id, candidate) in candidates {
+        if recompute_sessions.contains(session_id) {
+            continue;
+        }
+        let should_update = match stored.get(session_id) {
+            None => true,
+            Some(current) if current.event_id.is_none() => true,
+            Some(current) if current.sequence_position.is_none() => true,
+            Some(current) => {
+                first_user_message_order(
+                    candidate.timestamp_ms,
+                    candidate.sequence_position,
+                    candidate.sequence_part,
+                    &candidate.event_id,
+                ) < first_user_message_order(
+                    current.timestamp_ms,
+                    current.sequence_position.unwrap_or(i64::MAX),
+                    current.sequence_part.unwrap_or(i64::MAX),
+                    current.event_id.as_deref().unwrap_or_default(),
+                )
+            }
+        };
+        if should_update {
+            update_first_user_message(transaction, session_id, candidate)?;
+        }
+    }
+
+    recompute_first_user_messages(transaction, recompute_sessions)
+}
+
+fn load_stored_first_user_messages(
+    transaction: &Transaction<'_>,
+    session_ids: &BTreeSet<String>,
+) -> Result<BTreeMap<String, StoredFirstUserMessage>, String> {
+    let mut stored = BTreeMap::new();
+    let session_ids = session_ids.iter().collect::<Vec<_>>();
+    for session_chunk in session_ids.chunks(MAX_FIRST_USER_MESSAGE_SESSION_IDS_PER_QUERY) {
+        let placeholders = (0..session_chunk.len())
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "
+            SELECT sessions.id,
+                   sessions.first_user_message_event_id,
+                   sessions.first_user_message_timestamp_ms,
+                   events.sequence_position,
+                   events.sequence_part
+            FROM agent_sessions sessions
+            LEFT JOIN session_events events
+              ON events.id = sessions.first_user_message_event_id
+            WHERE sessions.id IN ({placeholders})
+            "
+        );
+        let mut statement = transaction.prepare(&query).map_err(|error| {
+            format!("failed to prepare first user message state query: {error}")
+        })?;
+        let rows = statement
+            .query_map(rusqlite::params_from_iter(session_chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    StoredFirstUserMessage {
+                        event_id: row.get(1)?,
+                        timestamp_ms: row.get(2)?,
+                        sequence_position: row.get(3)?,
+                        sequence_part: row.get(4)?,
+                    },
+                ))
+            })
+            .map_err(|error| format!("failed to query first user message state: {error}"))?;
+        for row in rows {
+            let (session_id, message) =
+                row.map_err(|error| format!("failed to read first user message state: {error}"))?;
+            stored.insert(session_id, message);
+        }
+    }
+    Ok(stored)
+}
+
+fn update_first_user_message(
+    transaction: &Transaction<'_>,
+    session_id: &str,
+    candidate: &FirstUserMessageCandidate,
+) -> Result<(), String> {
+    transaction
+        .execute(
+            "
+            UPDATE agent_sessions
+            SET first_user_message_text = ?2,
+                first_user_message_event_id = ?3,
+                first_user_message_timestamp_ms = ?4
+            WHERE id = ?1
+            ",
+            params![
+                session_id,
+                candidate.text,
+                candidate.event_id,
+                candidate.timestamp_ms,
+            ],
+        )
+        .map_err(|error| format!("failed to update the first user message: {error}"))?;
+    Ok(())
+}
+
+fn recompute_first_user_messages(
+    transaction: &Transaction<'_>,
+    session_ids: &BTreeSet<String>,
+) -> Result<(), String> {
+    if session_ids.is_empty() {
+        return Ok(());
+    }
+    let session_ids = session_ids.iter().collect::<Vec<_>>();
+    for session_chunk in session_ids.chunks(MAX_FIRST_USER_MESSAGE_SESSION_IDS_PER_QUERY) {
+        let placeholders = (0..session_chunk.len())
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", ");
+        let clear_query = format!(
+            "
+            UPDATE agent_sessions
+            SET first_user_message_text = NULL,
+                first_user_message_event_id = NULL,
+                first_user_message_timestamp_ms = NULL
+            WHERE id IN ({placeholders})
+            "
+        );
+        transaction
+            .execute(
+                &clear_query,
+                rusqlite::params_from_iter(session_chunk.iter()),
+            )
+            .map_err(|error| format!("failed to clear first user message projections: {error}"))?;
+
+        let query = format!(
+            "
+            SELECT id, session_id, timestamp_ms, sequence_position, sequence_part, event_json
+            FROM session_events
+            WHERE event_type = 'message'
+              AND session_id IN ({placeholders})
+              AND (
+                  json_extract(event_json, '$.data.value.role') = 'user'
+                  OR json_extract(event_json, '$.actor') = 'user'
+              )
+            ORDER BY
+                session_id,
+                timestamp_ms IS NULL,
+                timestamp_ms,
+                sequence_position,
+                sequence_part,
+                id
+            "
+        );
+        let mut statement = transaction
+            .prepare(&query)
+            .map_err(|error| format!("failed to prepare first user message rebuild: {error}"))?;
+        let rows = statement
+            .query_map(rusqlite::params_from_iter(session_chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(|error| format!("failed to query first user message rebuild: {error}"))?;
+        let mut seen = BTreeSet::new();
+        for row in rows {
+            let (event_id, session_id, timestamp_ms, sequence_position, sequence_part, event_json) =
+                row.map_err(|error| format!("failed to read first user message rebuild: {error}"))?;
+            if !seen.insert(session_id.clone()) {
+                continue;
+            }
+            let Some(text) = user_message_text_from_json(&event_json) else {
+                continue;
+            };
+            update_first_user_message(
+                transaction,
+                &session_id,
+                &FirstUserMessageCandidate {
+                    event_id,
+                    text,
+                    timestamp_ms,
+                    sequence_position,
+                    sequence_part,
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn user_message_text_from_json(event_json: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(event_json).ok()?;
+    let is_user = value.pointer("/data/value/role").and_then(Value::as_str) == Some("user")
+        || value.get("actor").and_then(Value::as_str) == Some("user");
+    if !is_user {
+        return None;
+    }
+    let mut values = Vec::new();
+    if let Some(content) = value.pointer("/data/value/content") {
+        collect_user_message_text(content, &mut values);
+    }
+    Some(values.join(" ").trim().to_owned())
+}
+
+fn collect_user_message_text(value: &Value, values: &mut Vec<String>) {
+    match value {
+        Value::Array(items) => items
+            .iter()
+            .for_each(|item| collect_user_message_text(item, values)),
+        Value::Object(object) => {
+            if matches!(
+                object.get("type").and_then(Value::as_str),
+                Some("text" | "resource")
+            ) {
+                if let Some(text) = object.get("text").and_then(Value::as_str) {
+                    values.push(text.to_owned());
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn event_type(data: &EventData) -> &'static str {
@@ -2084,23 +2536,10 @@ fn is_valid_skill_name(value: &str) -> bool {
 }
 
 #[cfg(not(feature = "e2e"))]
-fn log_batch(provider: &str, phase: &str, batch: &Batch) {
-    let mut upserts = 0;
-    let mut deletes = 0;
-    let mut resets = 0;
-    for change in &batch.changes {
-        match change {
-            Change::Upsert(_) => upserts += 1,
-            Change::Delete(_) => deletes += 1,
-            Change::Reset(_) | Change::Remove(_) => resets += 1,
-            _ => {}
-        }
+fn log_diagnostics(provider: &str, batch: &Batch) {
+    if batch.diagnostics.is_empty() {
+        return;
     }
-    log::info!(
-        "{provider} analytics {phase} batch: upserts={upserts}, deletes={deletes}, source_resets={resets}, diagnostics={}, has_more={}",
-        batch.diagnostics.len(),
-        batch.has_more
-    );
     for diagnostic in batch.diagnostics.iter().take(20) {
         log::warn!(
             "{provider} analytics diagnostic [{}]: {}",

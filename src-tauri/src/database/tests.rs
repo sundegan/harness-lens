@@ -208,7 +208,80 @@ fn initialize_creates_versioned_analytics_database() {
 #[test]
 fn embedded_migration_directory_is_valid() {
     validate_embedded_migrations().unwrap();
-    assert_eq!(current_schema_version(), 10);
+    assert_eq!(current_schema_version(), 11);
+}
+
+#[test]
+fn first_user_message_migration_backfills_role_or_actor_user_events() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch(
+            r#"
+            CREATE TABLE agent_sessions (id TEXT PRIMARY KEY NOT NULL);
+            CREATE TABLE session_events (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                timestamp_ms INTEGER,
+                sequence_position INTEGER NOT NULL,
+                sequence_part INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                event_json TEXT NOT NULL
+            );
+            INSERT INTO agent_sessions (id) VALUES ('session-1'), ('session-2');
+            INSERT INTO session_events (
+                id, session_id, timestamp_ms, sequence_position, sequence_part, event_type, event_json
+            ) VALUES
+                (
+                    'event-role-user', 'session-1', 20, 2, 0, 'message',
+                    '{"actor":"agent","data":{"type":"message","value":{"role":"user","content":[{"type":"text","text":"role user"}]}}}'
+                ),
+                (
+                    'event-actor-user', 'session-1', 10, 1, 0, 'message',
+                    '{"actor":"user","data":{"type":"message","value":{"role":"assistant","content":[{"type":"text","text":"actor user"}]}}}'
+                ),
+                (
+                    'event-not-user', 'session-2', 1, 1, 0, 'message',
+                    '{"actor":"agent","data":{"type":"message","value":{"role":"assistant","content":[{"type":"text","text":"assistant"}]}}}'
+                );
+            "#,
+        )
+        .unwrap();
+
+    connection
+        .execute_batch(include_str!("migrations/11-first-user-message/up.sql"))
+        .unwrap();
+
+    let first: (Option<String>, Option<String>, Option<i64>) = connection
+        .query_row(
+            "
+            SELECT first_user_message_text,
+                   first_user_message_event_id,
+                   first_user_message_timestamp_ms
+            FROM agent_sessions
+            WHERE id = 'session-1'
+            ",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(first.0.as_deref(), Some("actor user"));
+    assert_eq!(first.1.as_deref(), Some("event-actor-user"));
+    assert_eq!(first.2, Some(10));
+
+    let empty: (Option<String>, Option<String>, Option<i64>) = connection
+        .query_row(
+            "
+            SELECT first_user_message_text,
+                   first_user_message_event_id,
+                   first_user_message_timestamp_ms
+            FROM agent_sessions
+            WHERE id = 'session-2'
+            ",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(empty, (None, None, None));
 }
 
 #[test]
@@ -250,6 +323,21 @@ fn version_8_projection_is_backed_up_and_rebuilt_as_mcp_only() {
             |row| row.get(0),
         )
         .unwrap();
+    let first_user_message_columns: i64 = connection
+        .query_row(
+            "
+            SELECT COUNT(*)
+            FROM pragma_table_info('agent_sessions')
+            WHERE name IN (
+                'first_user_message_text',
+                'first_user_message_event_id',
+                'first_user_message_timestamp_ms'
+            )
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
     let retry_table_exists: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'mcp_tool_call_retry'",
@@ -284,14 +372,15 @@ fn version_8_projection_is_backed_up_and_rebuilt_as_mcp_only() {
         [],
     );
 
-    assert_eq!(database.schema_version().unwrap(), 10);
+    assert_eq!(database.schema_version().unwrap(), 11);
     assert_eq!(rebuilt_projection_rows, 0);
     assert_eq!(required_source_columns, 3);
+    assert_eq!(first_user_message_columns, 3);
     assert_eq!(retry_table_exists, 1);
     assert_eq!(legacy_tool_table_count, 0);
     assert!(explicit_retry_insert.is_err());
     assert_eq!(backups.len(), 1);
-    assert!(backups[0].file_name.contains("pre-migration-v8-to-v10"));
+    assert!(backups[0].file_name.contains("pre-migration-v8-to-v11"));
 
     let backup_path = path
         .parent()

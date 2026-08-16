@@ -1090,6 +1090,164 @@ fn stores_paginated_sessions_and_normalized_event_history() {
     );
     assert_eq!(detail.events[0].event["data"]["type"], "message");
 
+    let first_user_message: (Option<String>, Option<String>, Option<i64>) = database
+        .connect()
+        .unwrap()
+        .query_row(
+            "
+            SELECT first_user_message_text,
+                   first_user_message_event_id,
+                   first_user_message_timestamp_ms
+            FROM agent_sessions
+            WHERE id = ?1
+            ",
+            [session_id("session-00").as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        first_user_message.0.as_deref(),
+        Some("Show the session history")
+    );
+    let expected_first_user_message_event_id = format!(
+        "{SOURCE_ID}:message:{}:0",
+        database_path
+            .parent()
+            .unwrap()
+            .join("session-00.jsonl")
+            .to_string_lossy()
+    );
+    assert_eq!(
+        first_user_message.1.as_deref(),
+        Some(expected_first_user_message_event_id.as_str())
+    );
+    assert_eq!(first_user_message.2, Some(1_700_000_000_000));
+
+    fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn first_user_message_projection_handles_reordering_and_deletion() {
+    let database_path = test_database_path();
+    let database = Database::initialize(&database_path).unwrap();
+    let transcript = database_path.parent().unwrap().join("messages.jsonl");
+    let late = message_record(
+        &transcript,
+        "session-messages",
+        "invocation-messages",
+        20,
+        MessageRole::User,
+        "late",
+    );
+    let early = message_record(
+        &transcript,
+        "session-messages",
+        "invocation-messages",
+        10,
+        MessageRole::User,
+        "early",
+    );
+    let mut actor_user = message_record(
+        &transcript,
+        "session-messages",
+        "invocation-messages",
+        15,
+        MessageRole::Assistant,
+        "actor-user",
+    );
+    if let RecordData::Event(event) = &mut actor_user.data {
+        event.actor = Actor::User;
+    }
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![
+                Change::upsert(session_record(
+                    "session-messages",
+                    "Messages",
+                    &transcript,
+                    0,
+                )),
+                Change::upsert(late),
+                Change::upsert(early),
+                Change::upsert(actor_user),
+            ],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: false,
+        },
+        "ready",
+        "watching",
+    )
+    .unwrap();
+
+    let first_text = |database: &Database| {
+        database
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT first_user_message_text FROM agent_sessions WHERE id = ?1",
+                [session_id("session-messages").as_str()],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(first_text(&database).as_deref(), Some("early"));
+
+    let earlier = message_record(
+        &transcript,
+        "session-messages",
+        "invocation-messages",
+        5,
+        MessageRole::User,
+        "earlier",
+    );
+    let earlier_id = earlier.id.clone();
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![Change::upsert(earlier)],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: false,
+        },
+        "ready",
+        "watching",
+    )
+    .unwrap();
+    assert_eq!(first_text(&database).as_deref(), Some("earlier"));
+
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![Change::Delete(earlier_id)],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: false,
+        },
+        "ready",
+        "watching",
+    )
+    .unwrap();
+    assert_eq!(first_text(&database).as_deref(), Some("early"));
+
+    apply_batch(
+        &database,
+        &Batch {
+            changes: vec![Change::Delete(RecordId::new(format!(
+                "{SOURCE_ID}:message:{}:10",
+                transcript.to_string_lossy()
+            )))],
+            checkpoint: checkpoint(),
+            diagnostics: Vec::new(),
+            has_more: false,
+        },
+        "ready",
+        "watching",
+    )
+    .unwrap();
+    assert_eq!(first_text(&database).as_deref(), Some("actor-user"));
+
     fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
 }
 
