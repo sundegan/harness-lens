@@ -402,6 +402,7 @@ pub(super) fn session_page(
         page,
         page_size,
         total,
+        generated_at_ms: now_ms(),
     })
 }
 
