@@ -1,13 +1,17 @@
 <script lang="ts">
 import CopyIcon from '@lucide/svelte/icons/copy';
 import MinusIcon from '@lucide/svelte/icons/minus';
+import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
+import PanelLeftOpenIcon from '@lucide/svelte/icons/panel-left-open';
 import SquareIcon from '@lucide/svelte/icons/square';
 import XIcon from '@lucide/svelte/icons/x';
 import type { Window as TauriWindow } from '@tauri-apps/api/window';
 import { onMount } from 'svelte';
 import { Button } from '$lib/components/ui/button';
+import * as Tooltip from '$lib/components/ui/tooltip';
 import { i18nManager } from '$lib/i18n.svelte';
 import { logWarn } from '$lib/logger';
+import { getMainSidebar } from '$lib/main-sidebar.svelte';
 import ControlBar from '$lib/menu/ControlBar.svelte';
 import { cn } from '$lib/utils';
 
@@ -17,7 +21,9 @@ const RESIZE_STATE_UPDATE_DELAY_MS = 120;
 let appWindow: TauriWindow | null = null;
 let platform = $state<TitlebarPlatform>('macos');
 let isWindowExpanded = $state(false);
+let isWindowFullscreen = $state(false);
 let resizeStateUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+const sidebar = getMainSidebar();
 
 const normalizePlatform = (value: string): TitlebarPlatform => {
   if (value === 'macos') return 'macos';
@@ -26,8 +32,10 @@ const normalizePlatform = (value: string): TitlebarPlatform => {
 };
 
 const updateWindowState = async () => {
-  if (!appWindow || platform === 'macos') return;
-  isWindowExpanded = (await appWindow.isFullscreen()) || (await appWindow.isMaximized());
+  if (!appWindow) return;
+  isWindowFullscreen = await appWindow.isFullscreen();
+  if (platform === 'macos') return;
+  isWindowExpanded = isWindowFullscreen || (await appWindow.isMaximized());
 };
 
 const toggleMaximizeWindow = async () => {
@@ -37,7 +45,7 @@ const toggleMaximizeWindow = async () => {
 };
 
 const scheduleWindowStateUpdate = () => {
-  if (!appWindow || platform === 'macos') return;
+  if (!appWindow) return;
   if (resizeStateUpdateTimer !== undefined) clearTimeout(resizeStateUpdateTimer);
   resizeStateUpdateTimer = setTimeout(() => {
     resizeStateUpdateTimer = undefined;
@@ -68,8 +76,6 @@ onMount(() => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (disposed) return;
     appWindow = getCurrentWindow();
-    if (platform === 'macos') return;
-
     await updateWindowState();
     registerUnlistener(await appWindow.onResized(scheduleWindowStateUpdate));
   })().catch((error) => logWarn('Failed to initialize titlebar controls', error));
@@ -83,19 +89,58 @@ onMount(() => {
 });
 </script>
 
+{#snippet sidebarToggle()}
+  <Tooltip.Provider delayDuration={150}>
+    <Tooltip.Root ignoreNonKeyboardFocus>
+      <Tooltip.Trigger onclick={() => sidebar.toggle()}>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon-sm"
+            class="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground [-webkit-app-region:no-drag]"
+            aria-label={i18nManager.t('main.nav.toggle')}
+            aria-expanded={sidebar.open}
+            data-testid="titlebar-sidebar-toggle"
+          >
+            {#if sidebar.open}
+              <PanelLeftCloseIcon strokeWidth={1.8} aria-hidden="true" />
+            {:else}
+              <PanelLeftOpenIcon strokeWidth={1.8} aria-hidden="true" />
+            {/if}
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" sideOffset={6}>{i18nManager.t('main.nav.toggle')}</Tooltip.Content>
+    </Tooltip.Root>
+  </Tooltip.Provider>
+{/snippet}
+
 <header
   class={cn(
     'grid h-10 shrink-0 grid-cols-[minmax(7.5rem,1fr)_minmax(0,1fr)_minmax(7.5rem,1fr)] bg-sidebar text-foreground select-none [-webkit-app-region:drag]',
-    platform === 'macos' && 'h-[2.375rem] pl-[4.75rem]'
+    platform === 'macos' && 'h-[2.375rem]',
+    platform === 'macos' && (isWindowFullscreen ? 'pl-2' : 'pl-[4.75rem]')
   )}
   data-tauri-drag-region
 >
-  <div data-tauri-drag-region></div>
+  <div
+    class={cn(
+      'flex items-center gap-1 px-1 [-webkit-app-region:drag]',
+      platform === 'macos' && !isWindowFullscreen && '-ml-1'
+    )}
+    data-tauri-drag-region
+  >
+    {#if platform === 'macos'}
+      {@render sidebarToggle()}
+    {/if}
+  </div>
   <div data-tauri-drag-region></div>
   <div class="flex min-w-0 items-center justify-end" data-tauri-drag-region>
     <ControlBar />
 
     {#if platform !== 'macos'}
+      {@render sidebarToggle()}
       <div
         class={cn(
           'flex h-full items-stretch [-webkit-app-region:no-drag]',

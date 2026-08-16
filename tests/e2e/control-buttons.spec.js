@@ -5,6 +5,7 @@ import { $, browser, expect } from '@wdio/globals';
 
 const settingsButton = '[data-testid="main-nav-settings"]';
 const pinButton = '[data-testid="titlebar-pin-button"]';
+const sidebarToggleButton = '[data-testid="titlebar-sidebar-toggle"]';
 const sessionsButton = '[data-testid="main-nav-sessions"]';
 const skillsButton = '[data-testid="main-nav-skills"]';
 const toolCallsButton = '[data-testid="main-nav-tool-calls"]';
@@ -99,6 +100,51 @@ describe('titlebar controls', () => {
         timeoutMsg: 'pin button did not reflect the updated Tauri window state',
       }
     );
+  });
+
+  it('closes the sidebar tooltip after clicking without moving the pointer', async () => {
+    const button = await $(sidebarToggleButton);
+    await browser.execute((selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return;
+      element.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+      element.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' })
+      );
+    }, sidebarToggleButton);
+
+    await browser.waitUntil(
+      () =>
+        browser.execute((selector) => {
+          const state = document.querySelector(selector)?.getAttribute('data-state');
+          return state === 'delayed-open' || state === 'instant-open';
+        }, sidebarToggleButton),
+      { timeoutMsg: 'sidebar tooltip did not open after hovering the toggle button' }
+    );
+
+    await button.click();
+    try {
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            (selector) => document.querySelector(selector)?.getAttribute('data-state') === 'closed',
+            sidebarToggleButton
+          ),
+        { timeoutMsg: 'sidebar tooltip remained open after clicking the toggle button' }
+      );
+    } finally {
+      // Restore the initial sidebar state for the following titlebar scenarios.
+      await button.click();
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            (selector) =>
+              document.querySelector(selector)?.getAttribute('aria-expanded') === 'true',
+            sidebarToggleButton
+          ),
+        { timeoutMsg: 'sidebar did not return to its initial expanded state' }
+      );
+    }
   });
 });
 

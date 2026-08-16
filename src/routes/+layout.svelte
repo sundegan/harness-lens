@@ -5,6 +5,7 @@ import AppUpdateDialog from '$lib/components/AppUpdateDialog.svelte';
 import SettingsDialog from '$lib/components/settings-dialog.svelte';
 import { i18nManager } from '$lib/i18n.svelte';
 import { installFrontendErrorLogging, logWarn } from '$lib/logger';
+import { MainSidebarState, setMainSidebar } from '$lib/main-sidebar.svelte';
 import AboutDialog from '$lib/menu/AboutDialog.svelte';
 import TitleBar from '$lib/menu/TitleBar.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
@@ -14,6 +15,8 @@ import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
 import { windowBehaviorManager } from '$lib/window-behavior.svelte';
 import '../app.css';
+
+setMainSidebar(new MainSidebarState());
 
 const syncTrayMenuLabels = async (labels: {
   showMain: string;
