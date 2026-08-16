@@ -9,6 +9,7 @@ use serde_json::Value;
 use crate::data_paths;
 
 static SETTINGS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const DEFAULT_MINIMIZE_TO_TRAY_ON_CLOSE: bool = true;
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +18,14 @@ pub struct Settings {
     pub language: Option<String>,
     pub auto_check_updates: Option<bool>,
     pub auto_check_interval_hours: Option<u64>,
+    pub minimize_to_tray_on_close: Option<bool>,
+}
+
+impl Settings {
+    fn should_minimize_to_tray_on_exit(&self) -> bool {
+        self.minimize_to_tray_on_close
+            .unwrap_or(DEFAULT_MINIMIZE_TO_TRAY_ON_CLOSE)
+    }
 }
 
 fn read_settings() -> Result<Settings, String> {
@@ -86,6 +95,25 @@ pub fn load_settings() -> Result<Settings, String> {
     read_settings()
 }
 
+pub fn should_minimize_to_tray_on_exit() -> bool {
+    let Ok(_lock) = SETTINGS_LOCK.lock() else {
+        log::warn!(
+            "failed to lock settings while reading exit behavior; defaulting to minimize to tray"
+        );
+        return DEFAULT_MINIMIZE_TO_TRAY_ON_CLOSE;
+    };
+
+    match read_settings() {
+        Ok(settings) => settings.should_minimize_to_tray_on_exit(),
+        Err(error) => {
+            log::warn!(
+                "failed to read exit behavior setting: {error}; defaulting to minimize to tray"
+            );
+            DEFAULT_MINIMIZE_TO_TRAY_ON_CLOSE
+        }
+    }
+}
+
 #[tauri::command]
 pub fn save_setting(key: String, value: Value) -> Result<(), String> {
     let _lock = SETTINGS_LOCK.lock().map_err(|error| error.to_string())?;
@@ -124,6 +152,13 @@ pub fn save_setting(key: String, value: Value) -> Result<(), String> {
             }
             settings.auto_check_interval_hours = Some(hours);
         }
+        "minimizeToTrayOnClose" => {
+            settings.minimize_to_tray_on_close = Some(
+                value
+                    .as_bool()
+                    .ok_or_else(|| "minimizeToTrayOnClose setting must be a boolean".to_owned())?,
+            );
+        }
         _ => return Err(format!("unsupported setting key: {key}")),
     }
 
@@ -135,6 +170,19 @@ mod tests {
     use std::fs;
 
     use super::{read_settings_from_path, Settings};
+
+    #[test]
+    fn missing_exit_behavior_defaults_to_minimizing_to_tray() {
+        assert!(Settings::default().should_minimize_to_tray_on_exit());
+    }
+
+    #[test]
+    fn exit_behavior_uses_saved_value() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"minimizeToTrayOnClose":false}"#).unwrap();
+
+        assert!(!settings.should_minimize_to_tray_on_exit());
+    }
 
     #[test]
     fn settings_use_camel_case_json_keys() {

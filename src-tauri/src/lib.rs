@@ -179,10 +179,13 @@ pub fn run() {
         tauri::RunEvent::ExitRequested { code, api, .. } => {
             window::persist_main_window(app_handle);
 
-            // Ordinary user exits stay resident; only the explicit tray Quit and
-            // Tauri's reserved restart request may terminate this process.
+            // When minimizing to tray on app exit is enabled, ordinary user exits
+            // stay resident; the explicit tray Quit and Tauri's reserved restart
+            // request may still terminate this process. When disabled, let
+            // ordinary exits continue through the native lifecycle.
             let is_restart = code == Some(tauri::RESTART_EXIT_CODE);
-            if !is_restart && !tray::consume_exit_authorization(code) {
+            let is_tray_quit = tray::consume_exit_authorization(code);
+            if !is_restart && !is_tray_quit && settings::should_minimize_to_tray_on_exit() {
                 api.prevent_exit();
                 window::enter_background_mode(app_handle);
             }

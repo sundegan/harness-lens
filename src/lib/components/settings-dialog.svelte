@@ -15,6 +15,7 @@ import { i18nManager } from '$lib/i18n.svelte';
 import { settingsDialogManager } from '$lib/settings-dialog.svelte';
 import { themeManager } from '$lib/theme.svelte';
 import { appUpdateManager } from '$lib/update.svelte';
+import { windowBehaviorManager } from '$lib/window-behavior.svelte';
 
 const languageOptions = $derived([
   { value: 'system', label: i18nManager.t('settings.language.lang_system') },
@@ -182,6 +183,25 @@ const selectedUpdateIntervalLabel = $derived(
                     checked={autoStartManager.enabled}
                     disabled={autoStartManager.available !== true || autoStartManager.busy}
                     onCheckedChange={(checked) => void autoStartManager.setEnabled(checked === true)}
+                  />
+                </Field.Field>
+
+                <Field.Field orientation="responsive" class="border-b py-3">
+                  <Field.Content>
+                    <Field.Label for="minimize-to-tray-on-close" class="text-sm">
+                      {i18nManager.t('settings.general.minimize_to_tray_on_close')}
+                    </Field.Label>
+                    <Field.Description class="text-xs">
+                      {i18nManager.t('settings.general.minimize_to_tray_on_close_desc')}
+                    </Field.Description>
+                  </Field.Content>
+                  <Checkbox
+                    id="minimize-to-tray-on-close"
+                    data-testid="minimize-to-tray-on-close"
+                    checked={windowBehaviorManager.minimizeToTrayOnClose}
+                    disabled={!windowBehaviorManager.ready || windowBehaviorManager.busy}
+                    onCheckedChange={(checked) =>
+                      void windowBehaviorManager.setMinimizeToTrayOnClose(checked === true)}
                   />
                 </Field.Field>
               </Field.Group>

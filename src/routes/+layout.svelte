@@ -12,6 +12,7 @@ import { syncStatusManager } from '$lib/sync-status.svelte';
 import { themeManager } from '$lib/theme.svelte';
 import { appUpdateManager } from '$lib/update.svelte';
 import { cn } from '$lib/utils';
+import { windowBehaviorManager } from '$lib/window-behavior.svelte';
 import '../app.css';
 
 const syncTrayMenuLabels = async (labels: {
@@ -52,6 +53,7 @@ onMount(() => {
   void i18nManager.init();
   void appUpdateManager.init();
   void autoStartManager.init();
+  void windowBehaviorManager.init();
   void syncStatusManager.init();
   void installFrontendErrorLogging()
     .then(registerUnlistener)

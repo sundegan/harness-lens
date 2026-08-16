@@ -210,6 +210,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.launch_at_login': 'Launch at login',
     'settings.general.launch_at_login_desc':
       'Start HarnessLens automatically when you sign in.',
+    'settings.general.minimize_to_tray_on_close': 'Minimize to tray when quitting',
+    'settings.general.minimize_to_tray_on_close_desc':
+      'When enabled, quitting from the Dock keeps the app running in the system tray. When disabled, the app exits completely. Closing the window always hides it.',
     'settings.updates.title': 'Application Updates',
     'settings.updates.auto_check': 'Check for updates automatically',
     'settings.updates.auto_check_desc': 'Check shortly after startup and at the selected interval.',
@@ -443,6 +446,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': '通用设置',
     'settings.general.launch_at_login': '开机自启',
     'settings.general.launch_at_login_desc': '开机后自动启动 HarnessLens。',
+    'settings.general.minimize_to_tray_on_close': '从 Dock 退出时最小化到托盘',
+    'settings.general.minimize_to_tray_on_close_desc':
+      '开启后，从 Dock 退出时应用会继续运行在系统托盘；关闭后应用将完全退出。关闭窗口始终只会隐藏窗口。',
     'settings.updates.title': '应用更新',
     'settings.updates.auto_check': '自动检查更新',
     'settings.updates.auto_check_desc': '应用启动后检查，并按选择的间隔自动检查。',
@@ -543,6 +549,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': '通用設定',
     'settings.general.launch_at_login': '開機自啟',
     'settings.general.launch_at_login_desc': '開機後自動啟動 HarnessLens。',
+    'settings.general.minimize_to_tray_on_close': '從 Dock 結束時最小化到系統匣',
+    'settings.general.minimize_to_tray_on_close_desc':
+      '開啟後，從 Dock 結束時應用程式會繼續在系統匣執行；關閉後應用程式將完全結束。關閉視窗一律只會隱藏視窗。',
 
     // Settings Appearance
     'settings.appearance.title': '應用主題',
@@ -623,6 +632,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.launch_at_login': 'ログイン時に起動',
     'settings.general.launch_at_login_desc':
       'サインイン時に HarnessLens を自動的に起動します。',
+    'settings.general.minimize_to_tray_on_close': 'Dockから終了するときにトレイへ最小化',
+    'settings.general.minimize_to_tray_on_close_desc':
+      '有効にすると、Dockから終了してもアプリはシステムトレイで動作し続けます。無効にすると完全に終了します。ウィンドウを閉じる操作では常に非表示になります。',
 
     // Settings Appearance
     'settings.appearance.title': 'テーマ',
@@ -702,6 +714,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': '일반 설정',
     'settings.general.launch_at_login': '로그인 시 시작',
     'settings.general.launch_at_login_desc': '로그인하면 HarnessLens를 자동으로 시작합니다.',
+    'settings.general.minimize_to_tray_on_close': 'Dock에서 종료할 때 트레이로 최소화',
+    'settings.general.minimize_to_tray_on_close_desc':
+      '켜면 Dock에서 종료해도 앱이 시스템 트레이에서 계속 실행됩니다. 끄면 앱이 완전히 종료됩니다. 창 닫기는 항상 창을 숨깁니다.',
 
     // Settings Appearance
     'settings.appearance.title': '앱 테마',
@@ -783,6 +798,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.launch_at_login': 'Iniciar al iniciar sesión',
     'settings.general.launch_at_login_desc':
       'Inicia HarnessLens automáticamente al iniciar sesión.',
+    'settings.general.minimize_to_tray_on_close': 'Minimizar a la bandeja al salir',
+    'settings.general.minimize_to_tray_on_close_desc':
+      'Activado, al salir desde el Dock, la aplicación seguirá ejecutándose en la bandeja del sistema. Desactivado, se cerrará por completo. Cerrar la ventana siempre la oculta.',
 
     // Settings Appearance
     'settings.appearance.title': 'Tema de la aplicación',
@@ -865,6 +883,10 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.launch_at_login': 'Lancer à la connexion',
     'settings.general.launch_at_login_desc':
       'Démarrer automatiquement HarnessLens lorsque vous vous connectez.',
+    'settings.general.minimize_to_tray_on_close':
+      "Réduire dans la zone de notification à la fermeture de l'application",
+    'settings.general.minimize_to_tray_on_close_desc':
+      "Lorsque cette option est activée, quitter depuis le Dock laisse l'application active dans la zone de notification. Sinon, l'application se ferme complètement. Fermer la fenêtre la masque toujours.",
 
     // Settings Appearance
     'settings.appearance.title': "Thème de l'application",
@@ -947,6 +969,9 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': 'Allgemeine Einstellungen',
     'settings.general.launch_at_login': 'Beim Anmelden starten',
     'settings.general.launch_at_login_desc': 'HarnessLens beim Anmelden automatisch starten.',
+    'settings.general.minimize_to_tray_on_close': 'Beim Beenden in den Infobereich minimieren',
+    'settings.general.minimize_to_tray_on_close_desc':
+      'Wenn aktiviert, bleibt die App beim Beenden über das Dock im Infobereich aktiv. Andernfalls wird sie vollständig beendet. Das Schließen des Fensters blendet es immer nur aus.',
 
     // Settings Appearance
     'settings.appearance.title': 'Design der Anwendung',

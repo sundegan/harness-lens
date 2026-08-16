@@ -5,6 +5,7 @@ export type Settings = {
   language?: string;
   autoCheckUpdates?: boolean;
   autoCheckIntervalHours?: number;
+  minimizeToTrayOnClose?: boolean;
 };
 
 export type SettingKey = keyof Settings;
@@ -19,8 +20,13 @@ function legacyLocalSettings(): Settings {
   const autoCheckUpdates =
     window.localStorage.getItem('harness-lens:auto-check-updates') ??
     window.localStorage.getItem('codex-timeline:auto-check-updates');
+  const readBoolean = (key: string) => {
+    const value = window.localStorage.getItem(key);
+    return value === null ? undefined : value !== 'false';
+  };
   const interval = window.localStorage.getItem('autoCheckIntervalHours');
   const autoCheckIntervalHours = interval === null ? undefined : Number(interval);
+  const minimizeToTrayOnClose = readBoolean('minimizeToTrayOnClose');
   return {
     theme,
     language,
@@ -28,6 +34,7 @@ function legacyLocalSettings(): Settings {
     autoCheckIntervalHours: Number.isFinite(autoCheckIntervalHours)
       ? autoCheckIntervalHours
       : undefined,
+    minimizeToTrayOnClose,
   };
 }
 
@@ -50,6 +57,9 @@ async function loadDesktopSettings(): Promise<Settings> {
     if (key === 'autoCheckIntervalHours') {
       migrated.autoCheckIntervalHours = legacyValue as number;
     }
+    if (key === 'minimizeToTrayOnClose') {
+      migrated.minimizeToTrayOnClose = legacyValue as boolean;
+    }
   }
 
   window.localStorage.removeItem('theme');
@@ -57,6 +67,7 @@ async function loadDesktopSettings(): Promise<Settings> {
   window.localStorage.removeItem('harness-lens:auto-check-updates');
   window.localStorage.removeItem('codex-timeline:auto-check-updates');
   window.localStorage.removeItem('autoCheckIntervalHours');
+  window.localStorage.removeItem('minimizeToTrayOnClose');
 
   return migrated;
 }
@@ -69,18 +80,25 @@ export function loadSettings(): Promise<Settings> {
   return settingsPromise;
 }
 
-export function saveSetting<K extends SettingKey>(key: K, value: Settings[K]): void {
-  void (async () => {
+export async function saveSetting<K extends SettingKey>(
+  key: K,
+  value: Settings[K]
+): Promise<boolean> {
+  try {
     const { invoke, isTauri } = await import('@tauri-apps/api/core');
     if (!isTauri()) {
       if (typeof window !== 'undefined' && value !== undefined) {
         window.localStorage.setItem(key, String(value));
       }
-      return;
+      return true;
     }
 
     await invoke('save_setting', { key, value });
     const settings = await loadSettings();
     settings[key] = value;
-  })().catch((error) => logWarn(`Failed to save ${key} setting`, error));
+    return true;
+  } catch (error) {
+    logWarn(`Failed to save ${key} setting`, error);
+    return false;
+  }
 }
