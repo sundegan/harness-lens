@@ -148,12 +148,9 @@ const selectedUpdateIntervalLabel = $derived(
             <section class="mx-auto max-w-xl" aria-label={i18nManager.t('settings.general.title')}>
               <Field.Group>
                 <Field.Field orientation="responsive" class="border-b py-3">
-                  <Field.Content>
-                    <Field.Label for="language-select" class="text-sm">
-                      {i18nManager.t('settings.language.title')}
-                    </Field.Label>
-                    <Field.Description class="text-xs">{i18nManager.t('settings.language.desc')}</Field.Description>
-                  </Field.Content>
+                  <Field.Label for="language-select" class="text-sm">
+                    {i18nManager.t('settings.language.title')}
+                  </Field.Label>
                   <Select.Root type="single" bind:value={i18nManager.language}>
                     <Select.Trigger id="language-select" class="w-full text-xs sm:w-44">
                       <span class="truncate">{selectedLanguageLabel}</span>
@@ -210,12 +207,9 @@ const selectedUpdateIntervalLabel = $derived(
             <section class="mx-auto max-w-xl" aria-label={i18nManager.t('settings.appearance.title')}>
               <Field.Group>
                 <Field.Field orientation="responsive" class="border-b py-3">
-                  <Field.Content>
-                    <Field.Label for="theme-select" class="text-sm">
-                      {i18nManager.t('settings.appearance.select')}
-                    </Field.Label>
-                    <Field.Description class="text-xs">{i18nManager.t('settings.appearance.desc')}</Field.Description>
-                  </Field.Content>
+                  <Field.Label for="theme-select" class="text-sm">
+                    {i18nManager.t('settings.appearance.select')}
+                  </Field.Label>
                   <Select.Root type="single" bind:value={themeManager.theme}>
                     <Select.Trigger id="theme-select" class="w-full text-xs sm:w-44">
                       <span class="truncate">{selectedThemeLabel}</span>

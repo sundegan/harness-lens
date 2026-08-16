@@ -17,6 +17,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'main.nav.skills': 'Skill analysis',
     'main.nav.skills_desc': 'Trace skill usage and outcomes',
     'main.nav.settings': 'Configuration',
+    'main.nav.toggle': 'Toggle sidebar',
+    'main.nav.resize': 'Resize sidebar',
     'main.skip_to_content': 'Skip to workspace',
 
     // Session History
@@ -208,16 +210,15 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': 'General Settings',
     'settings.general.launch_at_login': 'Launch at login',
-    'settings.general.launch_at_login_desc':
-      'Start HarnessLens automatically when you sign in.',
+    'settings.general.launch_at_login_desc': 'Start HarnessLens automatically when you sign in',
     'settings.general.minimize_to_tray_on_close': 'Minimize to tray when quitting',
     'settings.general.minimize_to_tray_on_close_desc':
-      'When enabled, quitting from the Dock keeps the app running in the system tray. When disabled, the app exits completely. Closing the window always hides it.',
+      'When enabled, quitting from the Dock keeps the app running in the system tray. When disabled, the app exits completely. Closing the window always hides it',
     'settings.updates.title': 'Application Updates',
     'settings.updates.auto_check': 'Check for updates automatically',
-    'settings.updates.auto_check_desc': 'Check shortly after startup and at the selected interval.',
+    'settings.updates.auto_check_desc': 'Check shortly after startup and at the selected interval',
     'settings.updates.interval': 'Automatic check interval',
-    'settings.updates.interval_desc': 'Choose how often to check while the app is running.',
+    'settings.updates.interval_desc': 'Choose how often to check while the app is running',
     'settings.updates.interval.12_hours': 'Every 12 hours',
     'settings.updates.interval.24_hours': 'Every 24 hours',
     'settings.updates.interval.3_days': 'Every 3 days',
@@ -227,14 +228,14 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.appearance.title': 'App Theme',
     'settings.appearance.select': 'Theme Selection',
     'settings.appearance.desc': 'Choose between System default, Light mode, or Dark mode',
-    'settings.appearance.theme_system': 'System Default',
+    'settings.appearance.theme_system': 'Follow system',
     'settings.appearance.theme_light': 'Light Mode',
     'settings.appearance.theme_dark': 'Dark Mode',
 
     // Settings Language
     'settings.language.title': 'App Language',
     'settings.language.desc': 'Choose between System default, English, or other languages',
-    'settings.language.lang_system': 'System Default',
+    'settings.language.lang_system': 'Follow system',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -257,6 +258,8 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'main.nav.skills': 'Skill 分析',
     'main.nav.skills_desc': '追踪 Skill 使用和结果',
     'main.nav.settings': '配置',
+    'main.nav.toggle': '展开或折叠侧边栏',
+    'main.nav.resize': '调整侧边栏宽度',
     'main.skip_to_content': '跳转到工作区',
 
     // Session History
@@ -445,15 +448,15 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': '通用设置',
     'settings.general.launch_at_login': '开机自启',
-    'settings.general.launch_at_login_desc': '开机后自动启动 HarnessLens。',
-    'settings.general.minimize_to_tray_on_close': '从 Dock 退出时最小化到托盘',
+    'settings.general.launch_at_login_desc': '开机后自动启动 HarnessLens',
+    'settings.general.minimize_to_tray_on_close': '退出时最小化到托盘',
     'settings.general.minimize_to_tray_on_close_desc':
-      '开启后，从 Dock 退出时应用会继续运行在系统托盘；关闭后应用将完全退出。关闭窗口始终只会隐藏窗口。',
+      '开启后，从 Dock 退出时应用会继续运行在系统托盘；关闭后应用将完全退出。关闭窗口始终只会隐藏窗口',
     'settings.updates.title': '应用更新',
     'settings.updates.auto_check': '自动检查更新',
-    'settings.updates.auto_check_desc': '应用启动后检查，并按选择的间隔自动检查。',
+    'settings.updates.auto_check_desc': '应用启动后检查，并按选择的间隔自动检查',
     'settings.updates.interval': '自动检查间隔',
-    'settings.updates.interval_desc': '选择应用运行期间自动检查更新的频率。',
+    'settings.updates.interval_desc': '选择应用运行期间自动检查更新的频率',
     'settings.updates.interval.12_hours': '每 12 小时',
     'settings.updates.interval.24_hours': '每 24 小时',
     'settings.updates.interval.3_days': '每 3 天',
@@ -463,14 +466,14 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.appearance.title': '应用主题',
     'settings.appearance.select': '选择主题',
     'settings.appearance.desc': '在系统默认、浅色模式或深色模式之间选择',
-    'settings.appearance.theme_system': '系统默认',
+    'settings.appearance.theme_system': '跟随系统',
     'settings.appearance.theme_light': '浅色模式',
     'settings.appearance.theme_dark': '深色模式',
 
     // Settings Language
     'settings.language.title': '应用语言',
     'settings.language.desc': '在系统默认、英文或其他语言之间选择',
-    'settings.language.lang_system': '系统默认',
+    'settings.language.lang_system': '跟随系统',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -548,23 +551,23 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': '通用設定',
     'settings.general.launch_at_login': '開機自啟',
-    'settings.general.launch_at_login_desc': '開機後自動啟動 HarnessLens。',
-    'settings.general.minimize_to_tray_on_close': '從 Dock 結束時最小化到系統匣',
+    'settings.general.launch_at_login_desc': '開機後自動啟動 HarnessLens',
+    'settings.general.minimize_to_tray_on_close': '結束時最小化到系統匣',
     'settings.general.minimize_to_tray_on_close_desc':
-      '開啟後，從 Dock 結束時應用程式會繼續在系統匣執行；關閉後應用程式將完全結束。關閉視窗一律只會隱藏視窗。',
+      '開啟後，從 Dock 結束時應用程式會繼續在系統匣執行；關閉後應用程式將完全結束。關閉視窗一律只會隱藏視窗',
 
     // Settings Appearance
     'settings.appearance.title': '應用主題',
     'settings.appearance.select': '選擇主題',
     'settings.appearance.desc': '在系統預設、淺色模式或深色模式之間選擇',
-    'settings.appearance.theme_system': '系統預設',
+    'settings.appearance.theme_system': '跟隨系統',
     'settings.appearance.theme_light': '淺色模式',
     'settings.appearance.theme_dark': '深色模式',
 
     // Settings Language
     'settings.language.title': '應用語言',
     'settings.language.desc': '在系統預設、英文或其他語言之間選擇',
-    'settings.language.lang_system': '系統預設',
+    'settings.language.lang_system': '跟隨系統',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -630,24 +633,23 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': '一般設定',
     'settings.general.launch_at_login': 'ログイン時に起動',
-    'settings.general.launch_at_login_desc':
-      'サインイン時に HarnessLens を自動的に起動します。',
-    'settings.general.minimize_to_tray_on_close': 'Dockから終了するときにトレイへ最小化',
+    'settings.general.launch_at_login_desc': 'サインイン時に HarnessLens を自動的に起動します',
+    'settings.general.minimize_to_tray_on_close': '終了するときにトレイへ最小化',
     'settings.general.minimize_to_tray_on_close_desc':
-      '有効にすると、Dockから終了してもアプリはシステムトレイで動作し続けます。無効にすると完全に終了します。ウィンドウを閉じる操作では常に非表示になります。',
+      '有効にすると、Dockから終了してもアプリはシステムトレイで動作し続けます。無効にすると完全に終了します。ウィンドウを閉じる操作では常に非表示になります',
 
     // Settings Appearance
     'settings.appearance.title': 'テーマ',
     'settings.appearance.select': 'テーマの選択',
     'settings.appearance.desc': 'システムデフォルト、ライトモード、ダークモードから選択します',
-    'settings.appearance.theme_system': 'システムデフォルト',
+    'settings.appearance.theme_system': 'システムに従う',
     'settings.appearance.theme_light': 'ライトモード',
     'settings.appearance.theme_dark': 'ダークモード',
 
     // Settings Language
     'settings.language.title': '言語',
     'settings.language.desc': 'システムデフォルト、英語、日本語、その他の言語から選択します',
-    'settings.language.lang_system': 'システムデフォルト',
+    'settings.language.lang_system': 'システムに従う',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -713,23 +715,23 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': '일반 설정',
     'settings.general.launch_at_login': '로그인 시 시작',
-    'settings.general.launch_at_login_desc': '로그인하면 HarnessLens를 자동으로 시작합니다.',
-    'settings.general.minimize_to_tray_on_close': 'Dock에서 종료할 때 트레이로 최소화',
+    'settings.general.launch_at_login_desc': '로그인하면 HarnessLens를 자동으로 시작합니다',
+    'settings.general.minimize_to_tray_on_close': '종료할 때 트레이로 최소화',
     'settings.general.minimize_to_tray_on_close_desc':
-      '켜면 Dock에서 종료해도 앱이 시스템 트레이에서 계속 실행됩니다. 끄면 앱이 완전히 종료됩니다. 창 닫기는 항상 창을 숨깁니다.',
+      '켜면 Dock에서 종료해도 앱이 시스템 트레이에서 계속 실행됩니다. 끄면 앱이 완전히 종료됩니다. 창 닫기는 항상 창을 숨깁니다',
 
     // Settings Appearance
     'settings.appearance.title': '앱 테마',
     'settings.appearance.select': '테마 선택',
     'settings.appearance.desc': '템플릿 기본, 라이트 모드, 다크 모드 중에서 선택합니다',
-    'settings.appearance.theme_system': '시스템 기본',
+    'settings.appearance.theme_system': '시스템 설정 따르기',
     'settings.appearance.theme_light': '라이트 모드',
     'settings.appearance.theme_dark': '다크 모드',
 
     // Settings Language
     'settings.language.title': '앱 언어',
     'settings.language.desc': '시스템 기본, 영어, 한국어 또는 기타 언어 중에서 선택합니다',
-    'settings.language.lang_system': '시스템 기본',
+    'settings.language.lang_system': '시스템 설정 따르기',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -797,16 +799,16 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': 'Configuración General',
     'settings.general.launch_at_login': 'Iniciar al iniciar sesión',
     'settings.general.launch_at_login_desc':
-      'Inicia HarnessLens automáticamente al iniciar sesión.',
+      'Inicia HarnessLens automáticamente al iniciar sesión',
     'settings.general.minimize_to_tray_on_close': 'Minimizar a la bandeja al salir',
     'settings.general.minimize_to_tray_on_close_desc':
-      'Activado, al salir desde el Dock, la aplicación seguirá ejecutándose en la bandeja del sistema. Desactivado, se cerrará por completo. Cerrar la ventana siempre la oculta.',
+      'Activado, al salir desde el Dock, la aplicación seguirá ejecutándose en la bandeja del sistema. Desactivado, se cerrará por completo. Cerrar la ventana siempre la oculta',
 
     // Settings Appearance
     'settings.appearance.title': 'Tema de la aplicación',
     'settings.appearance.select': 'Selección de tema',
     'settings.appearance.desc': 'Elegir entre predeterminado del sistema, modo claro o modo oscuro',
-    'settings.appearance.theme_system': 'Sistema predeterminado',
+    'settings.appearance.theme_system': 'Seguir el sistema',
     'settings.appearance.theme_light': 'Modo claro',
     'settings.appearance.theme_dark': 'Modo oscuro',
 
@@ -814,7 +816,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.title': 'Idioma de la aplicación',
     'settings.language.desc':
       'Elegir entre predeterminado del sistema, inglés, español u otros idiomas',
-    'settings.language.lang_system': 'Sistema predeterminado',
+    'settings.language.lang_system': 'Seguir el sistema',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -882,18 +884,18 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.general.title': 'Paramètres généraux',
     'settings.general.launch_at_login': 'Lancer à la connexion',
     'settings.general.launch_at_login_desc':
-      'Démarrer automatiquement HarnessLens lorsque vous vous connectez.',
+      'Démarrer automatiquement HarnessLens lorsque vous vous connectez',
     'settings.general.minimize_to_tray_on_close':
       "Réduire dans la zone de notification à la fermeture de l'application",
     'settings.general.minimize_to_tray_on_close_desc':
-      "Lorsque cette option est activée, quitter depuis le Dock laisse l'application active dans la zone de notification. Sinon, l'application se ferme complètement. Fermer la fenêtre la masque toujours.",
+      "Lorsque cette option est activée, quitter depuis le Dock laisse l'application active dans la zone de notification. Sinon, l'application se ferme complètement. Fermer la fenêtre la masque toujours",
 
     // Settings Appearance
     'settings.appearance.title': "Thème de l'application",
     'settings.appearance.select': 'Sélection du thème',
     'settings.appearance.desc':
       'Choisir entre le thème système par défaut, le mode clair ou sombre',
-    'settings.appearance.theme_system': 'Système par défaut',
+    'settings.appearance.theme_system': 'Suivre le système',
     'settings.appearance.theme_light': 'Mode clair',
     'settings.appearance.theme_dark': 'Mode sombre',
 
@@ -901,7 +903,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.title': "Langue de l'application",
     'settings.language.desc':
       "Choisir entre la langue système par défaut, l'anglais, le français ou d'autres langues",
-    'settings.language.lang_system': 'Système par défaut',
+    'settings.language.lang_system': 'Suivre le système',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
@@ -968,17 +970,17 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     // Settings General
     'settings.general.title': 'Allgemeine Einstellungen',
     'settings.general.launch_at_login': 'Beim Anmelden starten',
-    'settings.general.launch_at_login_desc': 'HarnessLens beim Anmelden automatisch starten.',
+    'settings.general.launch_at_login_desc': 'HarnessLens beim Anmelden automatisch starten',
     'settings.general.minimize_to_tray_on_close': 'Beim Beenden in den Infobereich minimieren',
     'settings.general.minimize_to_tray_on_close_desc':
-      'Wenn aktiviert, bleibt die App beim Beenden über das Dock im Infobereich aktiv. Andernfalls wird sie vollständig beendet. Das Schließen des Fensters blendet es immer nur aus.',
+      'Wenn aktiviert, bleibt die App beim Beenden über das Dock im Infobereich aktiv. Andernfalls wird sie vollständig beendet. Das Schließen des Fensters blendet es immer nur aus',
 
     // Settings Appearance
     'settings.appearance.title': 'Design der Anwendung',
     'settings.appearance.select': 'Design-Auswahl',
     'settings.appearance.desc':
       'Wählen Sie zwischen Systemstandard, hellem Modus oder dunklem Modus',
-    'settings.appearance.theme_system': 'Systemstandard',
+    'settings.appearance.theme_system': 'Systemeinstellungen folgen',
     'settings.appearance.theme_light': 'Heller Modus',
     'settings.appearance.theme_dark': 'Dunkler Modus',
 
@@ -986,7 +988,7 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'settings.language.title': 'Sprache der Anwendung',
     'settings.language.desc':
       'Wählen Sie zwischen Systemstandard, Englisch, Deutsch oder anderen Sprachen',
-    'settings.language.lang_system': 'Systemstandard',
+    'settings.language.lang_system': 'Systemeinstellungen folgen',
     'settings.language.lang_en': 'English',
     'settings.language.lang_zh': '简体中文',
     'settings.language.lang_zh_tw': '繁體中文',
