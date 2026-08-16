@@ -116,12 +116,16 @@ pub fn focus_main_window(app: &tauri::AppHandle) {
     }
 }
 
-pub fn enter_background_mode(app: &tauri::AppHandle) {
+pub fn hide_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if let Err(error) = window.hide() {
             log::error!("failed to hide main window: {error}");
         }
     }
+}
+
+pub fn enter_background_mode(app: &tauri::AppHandle) {
+    hide_main_window(app);
 
     #[cfg(target_os = "macos")]
     if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {

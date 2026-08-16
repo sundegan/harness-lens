@@ -116,7 +116,7 @@ pub fn run() {
                 api.prevent_close();
                 window::persist_main_window(window.app_handle());
 
-                window::enter_background_mode(window.app_handle());
+                window::hide_main_window(window.app_handle());
             }
         })
         .setup(|app| {
@@ -151,8 +151,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building HarnessLens");
 
-    app.run(|app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+    app.run(|app_handle, event| match event {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            // macOS reuses the resident process when the user opens the app
+            // from the Dock or Finder instead of starting a second instance.
+            window::focus_main_window(app_handle);
+        }
+        tauri::RunEvent::ExitRequested { code, api, .. } => {
             window::persist_main_window(app_handle);
 
             // Ordinary user exits stay resident; only the explicit tray Quit and
@@ -163,5 +169,6 @@ pub fn run() {
                 window::enter_background_mode(app_handle);
             }
         }
+        _ => {}
     });
 }
