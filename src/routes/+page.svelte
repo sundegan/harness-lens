@@ -244,10 +244,10 @@ function stopSidebarResize(event: PointerEvent) {
               tooltipContent={i18nManager.t('update.action.download')}
               tooltipContentProps={{ hidden: sidebarOpen, sideOffset: 8 }}
               class={cn(
-                'transition-colors duration-150',
+                'update-sidebar-entry transition-[background-color,border-color,color] duration-200',
                 sidebarOpen
-                  ? 'h-10 w-full rounded-md px-2.5 text-[13px] hover:bg-sidebar-accent/80'
-                  : 'mx-auto size-7! justify-center rounded-full p-0'
+                  ? 'h-10 w-full rounded-lg border border-green-500/25 bg-gradient-to-r from-green-500/[0.16] via-green-500/[0.07] to-transparent px-2.5 text-[13px] text-green-700 shadow-[0_0_18px_rgba(22,163,74,0.16)] ring-1 ring-green-500/10 hover:border-green-500/40 hover:from-green-500/[0.22] hover:via-green-500/[0.1] hover:text-green-800 dark:border-green-400/25 dark:from-green-400/[0.16] dark:via-green-400/[0.07] dark:text-green-400 dark:hover:border-green-400/40 dark:hover:from-green-400/[0.22]'
+                  : 'mx-auto size-7! justify-center rounded-full border border-green-500/30 bg-green-500/[0.14] p-0 text-green-600 shadow-[0_0_10px_rgba(22,163,74,0.24)] ring-1 ring-green-500/20 hover:bg-green-500/[0.22] hover:ring-green-500/35 dark:border-green-400/30 dark:bg-green-400/[0.14] dark:text-green-400 dark:ring-green-400/20'
               )}
               aria-label={i18nManager.t('update.action.download')}
               data-testid="main-nav-update"
@@ -256,13 +256,19 @@ function stopSidebarResize(event: PointerEvent) {
               <span
                 class={cn(
                   'flex shrink-0 items-center justify-center',
-                  sidebarOpen ? 'size-8 rounded-md bg-muted/70 text-muted-foreground' : 'size-4'
+                  sidebarOpen
+                    ? 'size-7 rounded-full bg-green-500/15 text-green-600 shadow-sm ring-1 ring-green-500/20 dark:bg-green-400/15 dark:text-green-400 dark:ring-green-400/20'
+                    : 'size-4'
                 )}
               >
                 <DownloadIcon class="size-4" strokeWidth={1.8} aria-hidden="true" />
               </span>
               {#if sidebarOpen}
-                <span class="min-w-0 truncate">{i18nManager.t('update.action.download')}</span>
+                <span class="min-w-0 flex-1 truncate">{i18nManager.t('update.action.download')}</span>
+                <span
+                  class="size-1.5 shrink-0 rounded-full bg-green-500 ring-2 ring-green-500/20 shadow-[0_0_10px_rgba(22,163,74,0.45)] dark:bg-green-400 dark:ring-green-400/20"
+                  aria-hidden="true"
+                ></span>
               {/if}
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>
@@ -347,3 +353,35 @@ function stopSidebarResize(event: PointerEvent) {
     </div>
   </Sidebar.Inset>
 </Sidebar.Provider>
+
+<style>
+  :global(.update-sidebar-entry) {
+    --update-glow: rgb(22 163 74 / 18%);
+    --update-glow-soft: rgb(22 163 74 / 10%);
+    --update-glow-strong: rgb(22 163 74 / 24%);
+    animation: update-sidebar-pulse 2.6s infinite ease-in-out;
+  }
+
+  :global(.dark .update-sidebar-entry) {
+    --update-glow: rgb(74 222 128 / 20%);
+    --update-glow-soft: rgb(74 222 128 / 12%);
+    --update-glow-strong: rgb(74 222 128 / 28%);
+  }
+
+  @keyframes update-sidebar-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--update-glow), 0 0 12px var(--update-glow-soft);
+    }
+
+    50% {
+      box-shadow: 0 0 0 4px rgb(22 163 74 / 0%), 0 0 24px var(--update-glow-strong);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.update-sidebar-entry) {
+      animation: none;
+    }
+  }
+</style>
