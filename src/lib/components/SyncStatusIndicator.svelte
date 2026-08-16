@@ -37,8 +37,10 @@ function scanProgress(status: SyncStatus): number {
 }
 
 const syncIndicator = $derived.by<SyncIndicator | null>(() => {
-  if (syncStatusManager.databaseStatus === 'pending') return { kind: 'initializing' };
   if (syncStatusManager.databaseStatus === 'failed') return { kind: 'error' };
+  if (syncStatusManager.databaseStatus !== 'ready' || syncStatusManager.statuses.length === 0) {
+    return { kind: 'initializing' };
+  }
   const initialScan = syncStatusManager.activeStatuses.find(
     (status) => status.phase === 'initial_scan'
   );

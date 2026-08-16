@@ -18,6 +18,17 @@ export interface SyncStatus {
   updatedAtMs: number;
 }
 
+function isIncrementalSync(status: SyncStatus): boolean {
+  return (
+    status.status === 'syncing' &&
+    (status.phase === 'incremental' || status.phase === 'watching')
+  );
+}
+
+function isWatching(status: SyncStatus): boolean {
+  return status.status === 'ready' && status.phase === 'watching';
+}
+
 class SyncStatusManager {
   statuses = $state.raw<SyncStatus[]>([]);
   databaseStatus = $state<DatabaseRuntimeStatus | null>(null);
@@ -32,9 +43,32 @@ class SyncStatusManager {
     this.statuses.filter((status) => status.status === 'ready' && status.phase === 'watching')
   );
   lastUpdatedAtMs = $derived.by<number | null>(() => {
+    const hasInitialScan = this.statuses.some(
+      (status) => status.status === 'syncing' && status.phase === 'initial_scan'
+    );
+    const hasIncrementalSync = this.statuses.some(isIncrementalSync);
+    const hasWatching = this.statuses.some(isWatching);
+    const hasFailedStatus = this.statuses.some(
+      (status) => status.status === 'error' || status.status === 'unavailable'
+    );
+    if (
+      this.databaseStatus !== 'ready' ||
+      hasInitialScan ||
+      (!hasIncrementalSync && hasFailedStatus) ||
+      (!hasIncrementalSync && !hasWatching)
+    ) {
+      return null;
+    }
+
     let latest: number | null = null;
     for (const status of this.statuses) {
-      if (status.updatedAtMs <= 0 || (latest !== null && status.updatedAtMs <= latest)) continue;
+      if (
+        (!isIncrementalSync(status) && !isWatching(status)) ||
+        status.updatedAtMs <= 0 ||
+        (latest !== null && status.updatedAtMs <= latest)
+      ) {
+        continue;
+      }
       latest = status.updatedAtMs;
     }
     return latest;

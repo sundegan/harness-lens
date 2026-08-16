@@ -138,7 +138,12 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': 'No Skill calls were detected.',
     'dashboard.empty.filtered': 'No results match the current filters.',
     'dashboard.sync.error': 'Sync error',
-    'sync.status.initializing': 'Syncing',
+    'sync.status.initializing': 'Initializing',
+    'sync.status.initial_active': 'Initial scan',
+    'sync.status.incremental_active': 'Incremental scan',
+    'sync.status.watching': 'Watching',
+    'sync.status.error': 'Sync failed',
+    'sync.status.data_updated': 'Data updated: {time}',
 
     // Pagination
     'pagination.rows_per_page': 'Rows per page',
@@ -364,7 +369,12 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': '未检测到 Skill 调用。',
     'dashboard.empty.filtered': '没有符合当前筛选条件的结果。',
     'dashboard.sync.error': '同步失败',
-    'sync.status.initializing': '同步中',
+    'sync.status.initializing': '初始化中',
+    'sync.status.initial_active': '首次扫描',
+    'sync.status.incremental_active': '增量扫描',
+    'sync.status.watching': 'Watching',
+    'sync.status.error': '同步失败',
+    'sync.status.data_updated': '数据更新：{time}',
 
     // Pagination
     'pagination.rows_per_page': '每页行数',
@@ -484,7 +494,12 @@ const dictionaries: Record<ResolvedLanguage, Dictionary> = {
     'dashboard.empty.skills': '未偵測到 Skill 呼叫。',
     'dashboard.empty.filtered': '沒有符合目前篩選條件的結果。',
     'dashboard.sync.error': '同步失敗',
-    'sync.status.initializing': '同步中',
+    'sync.status.initializing': '初始化中',
+    'sync.status.initial_active': '首次掃描',
+    'sync.status.incremental_active': '增量掃描',
+    'sync.status.watching': 'Watching',
+    'sync.status.error': '同步失敗',
+    'sync.status.data_updated': '資料更新：{time}',
 
     // Pagination
     'pagination.rows_per_page': '每頁行數',
